@@ -1,30 +1,11 @@
 import { supabase, isSupabaseConfigured } from "./supabaseClient";
 
-const TABLE = "personas";
-const LOCAL_KEY = "personas-data-v1";
+const TABLE = "personas_categorias";
+const LOCAL_KEY = "personas-categorias-data-v1";
 
-/* ---------- mapeo JS (camelCase) <-> DB (snake_case) ---------- */
-const toDb = (p) => ({
-  id: p.id,
-  nombre: p.nombre || "",
-  rol_habitual: p.rolHabitual || null,
-  telefono: p.telefono || null,
-  email: p.email || null,
-  categoria_id: p.categoriaId || null,
-  activo: p.activo !== false,
-});
+const toDb = (c) => ({ id: c.id, nombre: c.nombre || "" });
+const fromDb = (r) => ({ id: r.id, nombre: r.nombre || "" });
 
-const fromDb = (r) => ({
-  id: r.id,
-  nombre: r.nombre || "",
-  rolHabitual: r.rol_habitual || "",
-  telefono: r.telefono || "",
-  email: r.email || "",
-  categoriaId: r.categoria_id || "",
-  activo: r.activo !== false,
-});
-
-/* ---------- modo local (sin Supabase configurado) ---------- */
 function loadLocal() {
   try {
     return JSON.parse(localStorage.getItem(LOCAL_KEY)) || [];
@@ -36,8 +17,7 @@ function saveLocal(data) {
   localStorage.setItem(LOCAL_KEY, JSON.stringify(data));
 }
 
-/* ---------- API pública ---------- */
-export async function listPersonas() {
+export async function listCategoriasPersonal() {
   if (!isSupabaseConfigured) {
     return loadLocal().sort((a, b) => a.nombre.localeCompare(b.nombre));
   }
@@ -49,11 +29,11 @@ export async function listPersonas() {
   return (data || []).map(fromDb);
 }
 
-export async function upsertPersona(persona) {
-  const item = { id: persona.id || crypto.randomUUID(), ...persona };
+export async function upsertCategoriaPersonal(categoria) {
+  const item = { id: categoria.id || crypto.randomUUID(), ...categoria };
   if (!isSupabaseConfigured) {
     const data = loadLocal();
-    const idx = data.findIndex((p) => p.id === item.id);
+    const idx = data.findIndex((c) => c.id === item.id);
     if (idx >= 0) data[idx] = item;
     else data.push(item);
     saveLocal(data);
@@ -68,20 +48,19 @@ export async function upsertPersona(persona) {
   return fromDb(data);
 }
 
-export async function deletePersona(id) {
+export async function deleteCategoriaPersonal(id) {
   if (!isSupabaseConfigured) {
-    saveLocal(loadLocal().filter((p) => p.id !== id));
+    saveLocal(loadLocal().filter((c) => c.id !== id));
     return;
   }
   const { error } = await supabase.from(TABLE).delete().eq("id", id);
   if (error) throw error;
 }
 
-/** Se suscribe a cambios en tiempo real (otros usuarios cargando/editando personal). */
-export function subscribePersonas(onChange) {
+export function subscribeCategoriasPersonal(onChange) {
   if (!isSupabaseConfigured) return () => {};
   const channel = supabase
-    .channel("personas-changes")
+    .channel("personas-categorias-changes")
     .on("postgres_changes", { event: "*", schema: "public", table: TABLE }, onChange)
     .subscribe();
   return () => supabase.removeChannel(channel);

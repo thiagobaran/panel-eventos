@@ -17,15 +17,21 @@ ver de un vistazo qué falta facturar o qué falta el comprobante de pago.
    asigna el rol que ocupa en ese evento puntual.
 3. **Nuevo evento**: botón dorado arriba a la derecha. Completa los datos del
    evento por secciones (Producción, Integrantes, Dirección, Facturación,
-   Observaciones) y guardá. Los campos "Facturado", "Comprobante de pago" y
-   "Facturado total" no se cargan acá — se habilitan después, desde el
-   detalle del evento (ver punto 5).
+   Observaciones) y guardá. En **Facturación** se elige la distribución entre
+   las dos razones sociales: **M1** (factura con IVA), **M2** (efectivo, sin
+   IVA) o **M1 + M2** (mixto: una parte por cada una). El "Importe + IVA" y
+   el "Total facturable" se calculan solos según lo elegido. Las facturas y
+   comprobantes **no se cargan acá** — se suben como archivo desde el detalle
+   del evento, una vez creado.
 4. **Click en un evento**: abre el detalle, desde ahí se puede **Editar** o
    **Borrar**.
-5. **Estado administrativo (en el detalle)**: una vez creado el evento, se
-   puede marcar "Facturado", "Comprobante de pago adjunto" y "Facturado
-   total". Estos cambios se guardan al toque. (Más adelante esto va a quedar
-   restringido al rol de Administración — ver sección 7).
+5. **Estado administrativo y archivos (en el detalle)**: una vez creado el
+   evento, se pueden subir las facturas (hasta la cantidad indicada en "Cant.
+   facturas") y los comprobantes de pago como archivos PDF/imagen. Los
+   marcadores "Facturado", "Comprobante de pago" y "Facturado total" se
+   activan solos al subir los archivos correspondientes y se pueden
+   sobreescribir manualmente. (Más adelante esto va a quedar restringido al
+   rol de Administración — ver sección 7).
 6. **Pendientes**: muestra dos tablas — eventos sin facturar y eventos
    facturados sin comprobante de pago cargado. Sirve como recordatorio para
    administración.
@@ -58,10 +64,13 @@ cualquier lugar.
    pide).
 2. Ir a **SQL Editor** → **New query**, pegar el contenido completo del
    archivo [`supabase/schema.sql`](supabase/schema.sql) de este repositorio y
-   darle **Run**. Esto crea las tablas `eventos` y `personas` con todos los
-   campos. Si ya habías corrido una versión anterior del script (sin la tabla
-   `personas`), podés volver a correr el script completo: las partes ya
-   creadas usan `if not exists` y no se duplican.
+   darle **Run**. Esto crea las tablas `eventos` y `personas`, agrega las
+   columnas nuevas (`distribucion`, `monto_m1`, `monto_m2`, `facturas`,
+   `comprobantes`) si todavía no estaban, y crea el bucket de Storage
+   `eventos-archivos` que se usa para guardar las facturas y los comprobantes
+   de pago de cada evento. Si ya habías corrido una versión anterior del
+   script, podés volver a correrlo: usa `if not exists` / `on conflict` y no
+   duplica nada.
 3. Ir a **Project Settings → API**. Copiar:
    - **Project URL** → va en `VITE_SUPABASE_URL`
    - **anon public key** → va en `VITE_SUPABASE_ANON_KEY`
@@ -106,8 +115,9 @@ src/
     supabaseClient.js  -> conexión a Supabase (o null si no está configurado)
     eventosApi.js       -> leer/guardar/borrar eventos (Supabase o localStorage)
     personasApi.js      -> leer/guardar/borrar personal (Supabase o localStorage)
+    storageApi.js       -> subir/descargar/borrar facturas y comprobantes (Supabase Storage)
 supabase/
-  schema.sql            -> script para crear las tablas "eventos" y "personas" en Supabase
+  schema.sql            -> script para crear las tablas "eventos", "personas" y el bucket de archivos
 ```
 
 ## 6. Categorías y listas predefinidas

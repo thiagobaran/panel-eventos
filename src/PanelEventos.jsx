@@ -3,19 +3,36 @@ import {
   Plus, Search, Calendar, Film, Layers, Camera, Crosshair,
   Wrench, Users, Building2, Phone, FileText, Check, X,
   Trash2, Pencil, AlertTriangle, Clock, DollarSign, ChevronLeft,
-  Download, Upload, Link as LinkIcon, WifiOff, RefreshCw
+  Download, Upload, WifiOff, RefreshCw, Paperclip, Receipt, Eye
 } from "lucide-react";
 import { listEventos, upsertEvento, deleteEvento, subscribeEventos } from "./lib/eventosApi";
 import { listPersonas, upsertPersona, deletePersona, subscribePersonas } from "./lib/personasApi";
+import {
+  listCategoriasPersonal, upsertCategoriaPersonal, deleteCategoriaPersonal,
+  subscribeCategoriasPersonal
+} from "./lib/categoriasPersonalApi";
+import { subirArchivo, urlArchivo, borrarArchivo } from "./lib/storageApi";
 import { isSupabaseConfigured } from "./lib/supabaseClient";
 
 /* ---------- constantes ---------- */
 const CATEGORIAS = ["Videoclip", "Publicidad", "Película", "Serie"];
 const ESTUDIOS = ["1", "2", "3"];
 const MONEDAS = ["ARS", "USD"];
-const EMPRESAS = ["MG M1", "MG M2"];
 const TIPO_PROD = ["Virtual Production", "Back Projecting"];
 const TRACKEO = ["Con trackeo", "Sin trackeo"];
+
+// Distribución de facturación entre las dos razones sociales.
+// M1 = factura con IVA · M2 = efectivo (sin IVA) · MIXTO = una parte por cada una
+const DISTRIBUCION_OPCIONES = [
+  { value: "M1", label: "Todo M1", help: "Factura con IVA" },
+  { value: "M2", label: "Todo M2", help: "Efectivo, sin IVA" },
+  { value: "MIXTO", label: "M1 + M2", help: "Mixto: parte facturado, parte efectivo" },
+];
+const DISTRIBUCION_FILTRO = [
+  { value: "M1", label: "MG M1" },
+  { value: "M2", label: "MG M2" },
+  { value: "MIXTO", label: "Mixto" },
+];
 
 const C = {
   bg: "#000000",
@@ -47,10 +64,14 @@ const nuevoEvento = () => ({
   empresa: "",
   moneda: "ARS",
   importe: "",
+  distribucion: "M1",
+  montoM1: "",
+  montoM2: "",
   cantFacturas: "",
   medioPago: "",
   formaPago: "",
-  facturasLinks: "",
+  facturas: [],
+  comprobantes: [],
   facturado: false,
   comprobantePago: false,
   facturadoTotal: false,
@@ -71,11 +92,26 @@ const fmtFecha = (f) => {
   const [y, mo, d] = f.split("-");
   return `${d}/${mo}/${y}`;
 };
+const fmtBytes = (b) => {
+  const n = Number(b) || 0;
+  if (n < 1024) return `${n} B`;
+  if (n < 1024 * 1024) return `${(n / 1024).toFixed(1)} KB`;
+  return `${(n / 1024 / 1024).toFixed(1)} MB`;
+};
+
+// Totales derivados de la distribución M1 / M2 / MIXTO.
+const montoM1 = (ev) => Number(ev?.montoM1) || 0;
+const montoM2 = (ev) => Number(ev?.montoM2) || 0;
+const totalNeto = (ev) => montoM1(ev) + montoM2(ev);
+const totalFacturable = (ev) => montoM1(ev) * 1.21 + montoM2(ev);
+const empresaLabel = (d) =>
+  d === "MIXTO" ? "MG M1 + M2" : d === "M2" ? "MG M2" : "MG M1";
 
 /* ===================================================================== */
 export default function PanelEventos() {
   const [eventos, setEventos] = useState([]);
   const [personas, setPersonas] = useState([]);
+  const [categoriasPersonal, setCategoriasPersonal] = useState([]);
   const [cargando, setCargando] = useState(true);
   const [error, setError] = useState("");
   const [guardando, setGuardando] = useState(false);
@@ -107,14 +143,23 @@ export default function PanelEventos() {
     }
   }, []);
 
+  const recargarCategoriasPersonal = useCallback(async () => {
+    try {
+      const data = await listCategoriasPersonal();
+      setCategoriasPersonal(data);
+    } catch (e) {
+      console.error(e);
+    }
+  }, []);
+
   /* carga inicial */
   useEffect(() => {
     (async () => {
       setCargando(true);
-      await Promise.all([recargar(), recargarPersonas()]);
+      await Promise.all([recargar(), recargarPersonas(), recargarCategoriasPersonal()]);
       setCargando(false);
     })();
-  }, [recargar, recargarPersonas]);
+  }, [recargar, recargarPersonas, recargarCategoriasPersonal]);
 
   /* tiempo real: refresca si otro usuario carga/edita/borra un evento */
   useEffect(() => {
@@ -127,6 +172,12 @@ export default function PanelEventos() {
     const unsub = subscribePersonas(() => recargarPersonas());
     return unsub;
   }, [recargarPersonas]);
+
+  /* tiempo real: categorías del personal */
+  useEffect(() => {
+    const unsub = subscribeCategoriasPersonal(() => recargarCategoriasPersonal());
+    return unsub;
+  }, [recargarCategoriasPersonal]);
 
   const guardarEvento = async (ev) => {
     setGuardando(true);
@@ -186,6 +237,26 @@ export default function PanelEventos() {
     }
   };
 
+  const guardarCategoriaPersonal = async (categoria) => {
+    try {
+      await upsertCategoriaPersonal(categoria);
+      await recargarCategoriasPersonal();
+    } catch (e) {
+      console.error(e);
+      alert("No se pudo guardar la categoría: " + e.message);
+    }
+  };
+
+  const borrarCategoriaPersonal = async (id) => {
+    try {
+      await deleteCategoriaPersonal(id);
+      await Promise.all([recargarCategoriasPersonal(), recargarPersonas()]);
+    } catch (e) {
+      console.error(e);
+      alert("No se pudo borrar la categoría: " + e.message);
+    }
+  };
+
   /* exportar / importar JSON (respaldo manual) */
   const exportarJSON = () => {
     const blob = new Blob([JSON.stringify(eventos, null, 2)], { type: "application/json" });
@@ -218,7 +289,7 @@ export default function PanelEventos() {
     const q = busqueda.trim().toLowerCase();
     return eventos.filter((e) => {
       if (filtroCat && e.categoria !== filtroCat) return false;
-      if (filtroEmp && e.empresa !== filtroEmp) return false;
+      if (filtroEmp && (e.distribucion || "M1") !== filtroEmp) return false;
       if (!q) return true;
       return (
         (e.nombre || "").toLowerCase().includes(q) ||
@@ -347,7 +418,14 @@ export default function PanelEventos() {
             onVer={(id) => { setVerId(id); setVista("detalle"); }}
           />
         ) : vista === "personal" ? (
-          <Personal personas={personas} onSave={guardarPersona} onDelete={borrarPersona} />
+          <Personal
+            personas={personas}
+            categorias={categoriasPersonal}
+            onSave={guardarPersona}
+            onDelete={borrarPersona}
+            onSaveCategoria={guardarCategoriaPersonal}
+            onDeleteCategoria={borrarCategoriaPersonal}
+          />
         ) : (
           <Lista
             eventos={filtrados}
@@ -415,7 +493,7 @@ function Lista({ eventos, total, busqueda, setBusqueda, filtroCat, setFiltroCat,
           />
         </div>
         <Select value={filtroCat} onChange={setFiltroCat} placeholder="Categoría" options={CATEGORIAS} compact />
-        <Select value={filtroEmp} onChange={setFiltroEmp} placeholder="Empresa" options={EMPRESAS} compact />
+        <SelectKV value={filtroEmp} onChange={setFiltroEmp} placeholder="Empresa" options={DISTRIBUCION_FILTRO} compact />
       </div>
 
       {eventos.length === 0 ? (
@@ -449,13 +527,13 @@ function Lista({ eventos, total, busqueda, setBusqueda, filtroCat, setFiltroCat,
                   {e.categoria && <Badge color={C.gold}><Film size={11} />{e.categoria}</Badge>}
                   {e.tipoProd && <Badge color="#9b8cff">{e.tipoProd}</Badge>}
                   {e.trackeo && <Badge color={e.trackeo === "Con trackeo" ? C.green : C.dim}><Crosshair size={11} />{e.trackeo.replace(" trackeo", "")}</Badge>}
-                  {e.empresa && <Badge color={C.dim}><Building2 size={11} />{e.empresa}</Badge>}
+                  <Badge color={C.dim}><Building2 size={11} />{empresaLabel(e.distribucion)}</Badge>
                 </div>
               </div>
               <div className="flex items-center gap-3 shrink-0">
                 <div className="text-right">
-                  <div className="font-mono text-sm">{fmtMoneda(e.importe, e.moneda)}</div>
-                  <div className="flex gap-1 justify-end mt-1">
+                  <div className="font-mono text-sm">{fmtMoneda(totalFacturable(e), e.moneda)}</div>
+                  <div className="flex gap-1 justify-end mt-1 flex-wrap">
                     {e.facturado ? <Badge solid color={C.green}>Facturado</Badge> : <Badge color={C.amber}>S/ facturar</Badge>}
                     {e.facturado && !e.comprobantePago && <Badge color={C.rose}>S/ comprob.</Badge>}
                   </div>
@@ -511,7 +589,7 @@ function TablaPend({ titulo, icon, color, rows, onVer, vacio }) {
           <table className="w-full text-sm">
             <thead>
               <tr style={{ color: C.dim }} className="text-[11px] uppercase tracking-wide">
-                {["Fecha", "Evento", "Estudio", "Empresa", "Importe", "Importe + IVA"].map((h) => (
+                {["Fecha", "Evento", "Estudio", "Distrib.", "Monto M1", "Monto M2", "Total"].map((h) => (
                   <th key={h} className="text-left font-medium px-4 py-2 whitespace-nowrap">{h}</th>
                 ))}
               </tr>
@@ -525,9 +603,16 @@ function TablaPend({ titulo, icon, color, rows, onVer, vacio }) {
                   <td className="px-4 py-2.5 font-mono text-xs whitespace-nowrap" style={{ color: C.dim }}>{fmtFecha(e.fecha)}</td>
                   <td className="px-4 py-2.5 font-medium">{e.nombre}</td>
                   <td className="px-4 py-2.5">{e.estudio || "—"}</td>
-                  <td className="px-4 py-2.5">{e.empresa || "—"}</td>
-                  <td className="px-4 py-2.5 font-mono whitespace-nowrap">{fmtMoneda(e.importe, e.moneda)}</td>
-                  <td className="px-4 py-2.5 font-mono whitespace-nowrap" style={{ color: C.gold }}>{fmtMoneda(conIva(e.importe), e.moneda)}</td>
+                  <td className="px-4 py-2.5 text-xs">{empresaLabel(e.distribucion)}</td>
+                  <td className="px-4 py-2.5 font-mono whitespace-nowrap text-xs">
+                    {montoM1(e) ? fmtMoneda(montoM1(e) * 1.21, e.moneda) : "—"}
+                  </td>
+                  <td className="px-4 py-2.5 font-mono whitespace-nowrap text-xs">
+                    {montoM2(e) ? fmtMoneda(montoM2(e), e.moneda) : "—"}
+                  </td>
+                  <td className="px-4 py-2.5 font-mono whitespace-nowrap" style={{ color: C.gold }}>
+                    {fmtMoneda(totalFacturable(e), e.moneda)}
+                  </td>
                 </tr>
               ))}
             </tbody>
@@ -539,19 +624,40 @@ function TablaPend({ titulo, icon, color, rows, onVer, vacio }) {
 }
 
 /* ====================== PERSONAL ====================== */
-function Personal({ personas, onSave, onDelete }) {
-  const vacio = { nombre: "", rolHabitual: "", telefono: "", email: "", activo: true };
+function Personal({ personas, categorias, onSave, onDelete, onSaveCategoria, onDeleteCategoria }) {
+  const vacio = { nombre: "", rolHabitual: "", telefono: "", email: "", categoriaId: "", activo: true };
   const [editando, setEditando] = useState(null); // null | "new" | persona id
   const [f, setF] = useState(vacio);
+  const [filtroCatId, setFiltroCatId] = useState(""); // "" todas, "__sin" sin categoría, o id
 
   const empezarNuevo = () => { setF(vacio); setEditando("new"); };
-  const empezarEditar = (p) => { setF(p); setEditando(p.id); };
+  const empezarEditar = (p) => { setF({ ...vacio, ...p }); setEditando(p.id); };
   const cancelar = () => { setEditando(null); setF(vacio); };
   const guardar = async () => {
     if (!f.nombre.trim()) { alert("Poné el nombre de la persona."); return; }
     await onSave(f);
     cancelar();
   };
+
+  const nombreCategoria = (id) => categorias.find((c) => c.id === id)?.nombre || "";
+
+  const filtradas = useMemo(() => {
+    if (!filtroCatId) return personas;
+    if (filtroCatId === "__sin") return personas.filter((p) => !p.categoriaId);
+    return personas.filter((p) => p.categoriaId === filtroCatId);
+  }, [personas, filtroCatId]);
+
+  // Personas agrupadas por categoría (para vista sin filtro)
+  const grupos = useMemo(() => {
+    const map = new Map();
+    categorias.forEach((c) => map.set(c.id, { categoria: c, items: [] }));
+    map.set("__sin", { categoria: { id: "__sin", nombre: "Sin categoría" }, items: [] });
+    filtradas.forEach((p) => {
+      const key = p.categoriaId && map.has(p.categoriaId) ? p.categoriaId : "__sin";
+      map.get(key).items.push(p);
+    });
+    return [...map.values()].filter((g) => g.items.length > 0);
+  }, [filtradas, categorias]);
 
   return (
     <div className="fade max-w-3xl">
@@ -566,14 +672,33 @@ function Personal({ personas, onSave, onDelete }) {
       </div>
 
       <p className="text-xs mb-4" style={{ color: C.dim }}>
-        Cargá acá a todo el personal de la productora. Después, al crear o editar un evento,
-        podés elegirlos de esta lista y asignarles el rol que ocupan en ese evento puntual.
+        Cargá acá a todo el personal de la productora, agrupado por categoría
+        (Cámara, Iluminación, Producción, etc.). Las categorías las creás vos
+        en el bloque de abajo. Después, al armar un evento, elegís a las personas
+        de esta lista y les asignás el rol puntual.
       </p>
+
+      <CategoriasPersonal
+        categorias={categorias}
+        personas={personas}
+        onSave={onSaveCategoria}
+        onDelete={onDeleteCategoria}
+      />
 
       {editando !== null && (
         <div className="rounded-xl p-4 mb-4 grid sm:grid-cols-2 gap-3.5" style={{ background: C.panel, border: `1px solid ${C.border}` }}>
           <Field label="Nombre" full>
             <Input value={f.nombre} onChange={(v) => setF({ ...f, nombre: v })} placeholder="Nombre y apellido" />
+          </Field>
+          <Field label="Categoría">
+            <select value={f.categoriaId || ""} onChange={(e) => setF({ ...f, categoriaId: e.target.value })}
+              className="w-full text-sm px-3 py-2 rounded-md"
+              style={{ background: C.panel2, border: `1px solid ${C.border}`, color: f.categoriaId ? C.text : C.dim, colorScheme: "dark" }}>
+              <option value="" style={{ background: C.panel2, color: C.dim }}>Sin categoría</option>
+              {categorias.map((c) => (
+                <option key={c.id} value={c.id} style={{ background: C.panel2, color: C.text }}>{c.nombre}</option>
+              ))}
+            </select>
           </Field>
           <Field label="Rol habitual">
             <Input value={f.rolHabitual} onChange={(v) => setF({ ...f, rolHabitual: v })} placeholder="DF, gaffer, op. LED…" />
@@ -593,29 +718,200 @@ function Personal({ personas, onSave, onDelete }) {
         </div>
       )}
 
+      {personas.length > 0 && (
+        <div className="flex flex-wrap items-center gap-2 mb-3">
+          <span className="text-xs" style={{ color: C.dim }}>Filtrar:</span>
+          <button
+            onClick={() => setFiltroCatId("")}
+            className="text-xs px-2.5 py-1 rounded-full"
+            style={{
+              background: !filtroCatId ? C.gold : C.panel2,
+              color: !filtroCatId ? C.onGold : C.dim,
+              border: `1px solid ${!filtroCatId ? C.gold : C.border}`,
+            }}
+          >
+            Todas
+          </button>
+          {categorias.map((c) => (
+            <button
+              key={c.id}
+              onClick={() => setFiltroCatId(c.id)}
+              className="text-xs px-2.5 py-1 rounded-full"
+              style={{
+                background: filtroCatId === c.id ? C.gold : C.panel2,
+                color: filtroCatId === c.id ? C.onGold : C.dim,
+                border: `1px solid ${filtroCatId === c.id ? C.gold : C.border}`,
+              }}
+            >
+              {c.nombre}
+            </button>
+          ))}
+          <button
+            onClick={() => setFiltroCatId("__sin")}
+            className="text-xs px-2.5 py-1 rounded-full"
+            style={{
+              background: filtroCatId === "__sin" ? C.gold : C.panel2,
+              color: filtroCatId === "__sin" ? C.onGold : C.dim,
+              border: `1px solid ${filtroCatId === "__sin" ? C.gold : C.border}`,
+            }}
+          >
+            Sin categoría
+          </button>
+        </div>
+      )}
+
       {personas.length === 0 ? (
         <div className="rounded-xl text-center py-16 px-4" style={{ background: C.panel, border: `1px dashed ${C.border}` }}>
           <Users size={28} color={C.dim} className="mx-auto mb-3" />
           <p className="text-sm" style={{ color: C.dim }}>Todavía no cargaste personal.</p>
         </div>
+      ) : grupos.length === 0 ? (
+        <div className="rounded-xl text-center py-10 px-4" style={{ background: C.panel, border: `1px dashed ${C.border}` }}>
+          <p className="text-sm" style={{ color: C.dim }}>Ninguna persona en esta categoría.</p>
+        </div>
       ) : (
-        <div className="grid gap-2">
-          {personas.map((p) => (
-            <div key={p.id} className="rounded-xl p-3.5 flex flex-col sm:flex-row sm:items-center gap-2" style={{ background: C.panel, border: `1px solid ${C.border}` }}>
-              <div className="flex-1 min-w-0">
-                <div className="font-medium truncate">{p.nombre}</div>
-                <div className="flex flex-wrap gap-1.5 mt-1.5 text-xs" style={{ color: C.dim }}>
-                  {p.rolHabitual && <span className="font-mono px-2 py-0.5 rounded" style={{ background: C.panel2 }}>{p.rolHabitual}</span>}
-                  {p.telefono && <span>{p.telefono}</span>}
-                  {p.email && <span>{p.email}</span>}
-                </div>
+        <div className="grid gap-4">
+          {grupos.map((g) => (
+            <div key={g.categoria.id}>
+              <div className="flex items-center gap-2 mb-2">
+                <h2 className="text-xs font-semibold uppercase tracking-wide" style={{ color: C.gold }}>
+                  {g.categoria.nombre}
+                </h2>
+                <span className="font-mono text-[10px] px-1.5 py-0.5 rounded-full" style={{ background: C.panel2, color: C.dim }}>
+                  {g.items.length}
+                </span>
               </div>
-              <div className="flex gap-1">
-                <IconBtn onClick={() => empezarEditar(p)} title="Editar"><Pencil size={15} /></IconBtn>
-                <IconBtn onClick={() => { if (confirm("¿Borrar de la lista de personal?")) onDelete(p.id); }} title="Borrar" danger><Trash2 size={15} /></IconBtn>
+              <div className="grid gap-2">
+                {g.items.map((p) => (
+                  <div key={p.id} className="rounded-xl p-3.5 flex flex-col sm:flex-row sm:items-center gap-2" style={{ background: C.panel, border: `1px solid ${C.border}` }}>
+                    <div className="flex-1 min-w-0">
+                      <div className="font-medium truncate">{p.nombre}</div>
+                      <div className="flex flex-wrap gap-1.5 mt-1.5 text-xs" style={{ color: C.dim }}>
+                        {p.categoriaId && nombreCategoria(p.categoriaId) && (
+                          <Badge color={C.gold}>{nombreCategoria(p.categoriaId)}</Badge>
+                        )}
+                        {p.rolHabitual && <span className="font-mono px-2 py-0.5 rounded" style={{ background: C.panel2 }}>{p.rolHabitual}</span>}
+                        {p.telefono && <span>{p.telefono}</span>}
+                        {p.email && <span>{p.email}</span>}
+                      </div>
+                    </div>
+                    <div className="flex gap-1">
+                      <IconBtn onClick={() => empezarEditar(p)} title="Editar"><Pencil size={15} /></IconBtn>
+                      <IconBtn onClick={() => { if (confirm("¿Borrar de la lista de personal?")) onDelete(p.id); }} title="Borrar" danger><Trash2 size={15} /></IconBtn>
+                    </div>
+                  </div>
+                ))}
               </div>
             </div>
           ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+/* Bloque para gestionar las categorías del personal (crear / renombrar / borrar). */
+function CategoriasPersonal({ categorias, personas, onSave, onDelete }) {
+  const [abierto, setAbierto] = useState(false);
+  const [nuevo, setNuevo] = useState("");
+  const [editId, setEditId] = useState(null);
+  const [editNombre, setEditNombre] = useState("");
+
+  const cuenta = (id) => personas.filter((p) => p.categoriaId === id).length;
+
+  const agregar = async () => {
+    const n = nuevo.trim();
+    if (!n) return;
+    if (categorias.some((c) => c.nombre.toLowerCase() === n.toLowerCase())) {
+      alert("Ya existe una categoría con ese nombre.");
+      return;
+    }
+    await onSave({ nombre: n });
+    setNuevo("");
+  };
+
+  const guardarEdicion = async () => {
+    const n = editNombre.trim();
+    if (!n) return;
+    await onSave({ id: editId, nombre: n });
+    setEditId(null);
+    setEditNombre("");
+  };
+
+  const borrar = async (c) => {
+    const usados = cuenta(c.id);
+    const msg = usados > 0
+      ? `Hay ${usados} persona(s) asignadas a "${c.nombre}". Si la borrás, quedan sin categoría. ¿Continuar?`
+      : `¿Borrar la categoría "${c.nombre}"?`;
+    if (confirm(msg)) await onDelete(c.id);
+  };
+
+  return (
+    <div className="rounded-xl mb-4" style={{ background: C.panel, border: `1px solid ${C.border}` }}>
+      <button
+        type="button"
+        onClick={() => setAbierto(!abierto)}
+        className="w-full flex items-center gap-2 px-4 py-3"
+      >
+        <Layers size={15} color={C.gold} />
+        <span className="text-sm font-semibold">Categorías del personal</span>
+        <span className="font-mono text-[11px] px-2 py-0.5 rounded-full" style={{ background: C.panel2, color: C.dim }}>
+          {categorias.length}
+        </span>
+        <span className="ml-auto text-xs" style={{ color: C.dim }}>
+          {abierto ? "Ocultar" : "Gestionar"}
+        </span>
+      </button>
+
+      {abierto && (
+        <div className="px-4 pb-4">
+          <div className="flex gap-2 mb-3">
+            <Input
+              value={nuevo}
+              onChange={setNuevo}
+              placeholder="Nueva categoría (ej: Cámara, Iluminación, Producción…)"
+            />
+            <button
+              onClick={agregar}
+              className="text-sm font-medium px-3 py-2 rounded-md flex items-center gap-1.5 shrink-0"
+              style={{ background: C.gold, color: C.onGold }}
+            >
+              <Plus size={14} /> Agregar
+            </button>
+          </div>
+
+          {categorias.length === 0 ? (
+            <p className="text-xs py-2" style={{ color: C.dim }}>
+              Todavía no hay categorías. Creá la primera arriba.
+            </p>
+          ) : (
+            <div className="grid gap-1.5">
+              {categorias.map((c) => (
+                <div
+                  key={c.id}
+                  className="flex items-center gap-2 px-3 py-2 rounded"
+                  style={{ background: C.panel2, border: `1px solid ${C.border}` }}
+                >
+                  {editId === c.id ? (
+                    <>
+                      <Input value={editNombre} onChange={setEditNombre} placeholder="Nombre" />
+                      <IconBtn onClick={guardarEdicion} title="Guardar"><Check size={14} /></IconBtn>
+                      <IconBtn onClick={() => { setEditId(null); setEditNombre(""); }} title="Cancelar"><X size={14} /></IconBtn>
+                    </>
+                  ) : (
+                    <>
+                      <span className="text-sm flex-1">{c.nombre}</span>
+                      <span className="font-mono text-[10px] px-1.5 py-0.5 rounded-full" style={{ background: C.panel, color: C.dim }}>
+                        {cuenta(c.id)}
+                      </span>
+                      <IconBtn onClick={() => { setEditId(c.id); setEditNombre(c.nombre); }} title="Renombrar"><Pencil size={13} /></IconBtn>
+                      <IconBtn onClick={() => borrar(c)} title="Borrar" danger><Trash2 size={13} /></IconBtn>
+                    </>
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
         </div>
       )}
     </div>
@@ -650,19 +946,21 @@ function Detalle({ ev, onBack, onEdit, onDelete, onUpdate }) {
         </Card>
 
         <Card titulo="Facturación" icon={<DollarSign size={15} color={C.green} />}>
-          <Dato k="Empresa" v={ev.empresa || "—"} />
+          <Dato k="Distribución" v={empresaLabel(ev.distribucion)} />
           <Dato k="Razón social" v={ev.razonSocial || "—"} />
-          <Dato k="Importe" v={fmtMoneda(ev.importe, ev.moneda)} mono />
-          <Dato k="Importe + IVA" v={fmtMoneda(conIva(ev.importe), ev.moneda)} mono accent />
+          {(ev.distribucion === "M1" || ev.distribucion === "MIXTO") && (
+            <>
+              <Dato k="Monto M1 (neto)" v={fmtMoneda(montoM1(ev), ev.moneda)} mono />
+              <Dato k="Monto M1 + IVA" v={fmtMoneda(montoM1(ev) * 1.21, ev.moneda)} mono accent />
+            </>
+          )}
+          {(ev.distribucion === "M2" || ev.distribucion === "MIXTO") && (
+            <Dato k="Monto M2 (efectivo)" v={fmtMoneda(montoM2(ev), ev.moneda)} mono />
+          )}
+          <Dato k="Total facturable" v={fmtMoneda(totalFacturable(ev), ev.moneda)} mono accent />
           <Dato k="Cant. facturas" v={ev.cantFacturas || "—"} />
           <Dato k="Medio de pago" v={ev.medioPago || "—"} />
           <Dato k="Forma de pago" v={ev.formaPago || "—"} />
-          {ev.facturasLinks && (
-            <a href={ev.facturasLinks.split(/\s|,/)[0]} target="_blank" rel="noreferrer"
-              className="inline-flex items-center gap-1.5 text-xs mt-1" style={{ color: C.gold }}>
-              <LinkIcon size={12} /> Ver facturas adjuntas
-            </a>
-          )}
         </Card>
 
         <Card titulo="Estado administrativo" icon={<DollarSign size={15} color={C.gold} />}>
@@ -672,7 +970,12 @@ function Detalle({ ev, onBack, onEdit, onDelete, onUpdate }) {
           <Toggle checked={ev.facturado} onChange={(v) => onUpdate({ facturado: v })} label="Facturado" />
           <Toggle checked={ev.comprobantePago} onChange={(v) => onUpdate({ comprobantePago: v })} label="Comprobante de pago adjunto" />
           <Toggle checked={ev.facturadoTotal} onChange={(v) => onUpdate({ facturadoTotal: v })} label="Facturado total" />
+          <p className="text-[11px] mt-2" style={{ color: C.dim }}>
+            Los marcadores se actualizan automáticamente al subir archivos en la sección de abajo.
+          </p>
         </Card>
+
+        <Archivos ev={ev} onUpdate={onUpdate} />
 
         <Card titulo="Equipo" icon={<Users size={15} color={C.gold} />}>
           {ev.integrantes?.length ? (
@@ -699,6 +1002,195 @@ function Detalle({ ev, onBack, onEdit, onDelete, onUpdate }) {
           </Card>
         )}
       </div>
+    </div>
+  );
+}
+
+/* ====================== ARCHIVOS (facturas + comprobantes) ====================== */
+function Archivos({ ev, onUpdate }) {
+  const facturas = ev.facturas || [];
+  const comprobantes = ev.comprobantes || [];
+  const maxFact = Number(ev.cantFacturas) || 0;
+  const restantes = Math.max(0, maxFact - facturas.length);
+
+  return (
+    <div className="sm:col-span-2 rounded-xl p-4" style={{ background: C.panel, border: `1px solid ${C.border}` }}>
+      <div className="flex items-center gap-2 mb-3">
+        <Paperclip size={15} color={C.gold} />
+        <h3 className="text-sm font-semibold">Archivos del evento</h3>
+        <span className="ml-auto text-[11px]" style={{ color: C.dim }}>
+          {isSupabaseConfigured ? "Guardados en la nube" : "Modo local (este navegador)"}
+        </span>
+      </div>
+
+      <div className="grid sm:grid-cols-2 gap-4">
+        <ArchivoLista
+          ev={ev}
+          tipo="facturas"
+          titulo="Facturas"
+          icono={<Receipt size={14} color={C.green} />}
+          archivos={facturas}
+          max={maxFact}
+          textoVacio={
+            maxFact > 0
+              ? `Falta cargar ${restantes} de ${maxFact} factura(s).`
+              : "Definí cuántas facturas se van a emitir (en Editar → Facturación) y después subilas acá."
+          }
+          onUpdate={onUpdate}
+        />
+        <ArchivoLista
+          ev={ev}
+          tipo="comprobantes"
+          titulo="Comprobantes de pago"
+          icono={<DollarSign size={14} color={C.amber} />}
+          archivos={comprobantes}
+          textoVacio="No hay comprobantes cargados todavía."
+          onUpdate={onUpdate}
+        />
+      </div>
+    </div>
+  );
+}
+
+function ArchivoLista({ ev, tipo, titulo, icono, archivos, max, textoVacio, onUpdate }) {
+  const [subiendo, setSubiendo] = useState(false);
+  const inputRef = useRef(null);
+  const lleno = max ? archivos.length >= max : false;
+
+  const subir = async (files) => {
+    if (!files?.length) return;
+    if (max) {
+      const disponible = Math.max(0, max - archivos.length);
+      if (disponible === 0) {
+        alert(`Ya cargaste las ${max} facturas indicadas. Editá el evento si necesitás más.`);
+        return;
+      }
+      if (files.length > disponible) {
+        alert(`Solo podés cargar ${disponible} archivo(s) más (cant. facturas = ${max}).`);
+        return;
+      }
+    }
+    setSubiendo(true);
+    try {
+      const nuevos = [];
+      for (const f of files) {
+        nuevos.push(await subirArchivo(ev.id, tipo, f));
+      }
+      const lista = [...archivos, ...nuevos];
+      const patch = { [tipo]: lista };
+      if (tipo === "facturas") {
+        if (max && lista.length >= max) {
+          patch.facturado = true;
+          patch.facturadoTotal = true;
+        } else if (lista.length > 0) {
+          patch.facturado = true;
+        }
+      }
+      if (tipo === "comprobantes" && lista.length > 0) patch.comprobantePago = true;
+      await onUpdate(patch);
+    } catch (e) {
+      console.error(e);
+      alert("No se pudo subir el archivo: " + e.message);
+    } finally {
+      setSubiendo(false);
+    }
+  };
+
+  const eliminar = async (meta) => {
+    if (!confirm(`¿Borrar "${meta.name}"?`)) return;
+    try {
+      await borrarArchivo(meta);
+      const lista = archivos.filter((x) => x.id !== meta.id);
+      const patch = { [tipo]: lista };
+      if (tipo === "facturas" && lista.length === 0) {
+        patch.facturado = false;
+        patch.facturadoTotal = false;
+      } else if (tipo === "facturas" && max && lista.length < max) {
+        patch.facturadoTotal = false;
+      }
+      if (tipo === "comprobantes" && lista.length === 0) patch.comprobantePago = false;
+      await onUpdate(patch);
+    } catch (e) {
+      console.error(e);
+      alert("No se pudo borrar el archivo: " + e.message);
+    }
+  };
+
+  const abrir = async (meta) => {
+    try {
+      const url = await urlArchivo(meta);
+      if (!url) {
+        alert("No se puede abrir el archivo (sin conexión al storage).");
+        return;
+      }
+      window.open(url, "_blank", "noopener");
+    } catch (e) {
+      alert("No se pudo abrir: " + e.message);
+    }
+  };
+
+  return (
+    <div className="rounded-lg p-3" style={{ background: C.panel2, border: `1px solid ${C.border}` }}>
+      <div className="flex items-center gap-2 mb-2">
+        {icono}
+        <span className="text-sm font-medium">{titulo}</span>
+        <span className="ml-auto font-mono text-[11px] px-2 py-0.5 rounded-full" style={{ background: C.panel, color: C.dim }}>
+          {archivos.length}{max ? ` / ${max}` : ""}
+        </span>
+      </div>
+
+      {archivos.length === 0 ? (
+        <p className="text-xs py-2" style={{ color: C.dim }}>{textoVacio}</p>
+      ) : (
+        <div className="grid gap-1.5 mb-3">
+          {archivos.map((a) => (
+            <div key={a.id} className="flex items-center gap-2 text-xs px-2.5 py-2 rounded" style={{ background: C.panel, border: `1px solid ${C.border}` }}>
+              <FileText size={13} color={C.gold} className="shrink-0" />
+              <div className="flex-1 min-w-0">
+                <div className="truncate" title={a.name}>{a.name}</div>
+                <div className="font-mono text-[10px]" style={{ color: C.dim }}>
+                  {fmtBytes(a.size)} · {a.uploadedAt ? fmtFecha(a.uploadedAt.slice(0, 10)) : "—"}
+                </div>
+              </div>
+              <IconBtn onClick={() => abrir(a)} title="Abrir / descargar"><Eye size={14} /></IconBtn>
+              <IconBtn onClick={() => eliminar(a)} title="Borrar" danger><Trash2 size={14} /></IconBtn>
+            </div>
+          ))}
+        </div>
+      )}
+
+      <input
+        ref={inputRef}
+        type="file"
+        multiple
+        accept=".pdf,image/*"
+        className="hidden"
+        onChange={(e) => {
+          const files = Array.from(e.target.files || []);
+          e.target.value = "";
+          subir(files);
+        }}
+      />
+      <button
+        type="button"
+        onClick={() => inputRef.current?.click()}
+        disabled={subiendo || lleno}
+        className="w-full text-xs font-medium px-3 py-2 rounded-md flex items-center justify-center gap-1.5 transition-colors"
+        style={{
+          background: lleno ? C.panel : C.gold,
+          color: lleno ? C.dim : C.onGold,
+          border: `1px solid ${lleno ? C.border : C.gold}`,
+          cursor: subiendo || lleno ? "not-allowed" : "pointer",
+          opacity: subiendo ? 0.7 : 1,
+        }}
+      >
+        <Upload size={13} />
+        {subiendo
+          ? "Subiendo…"
+          : lleno
+          ? "Cant. de facturas completa"
+          : `Subir ${tipo === "facturas" ? "factura" : "comprobante"}`}
+      </button>
     </div>
   );
 }
@@ -825,37 +1317,85 @@ function FormEvento({ base, onCancel, onSave, guardando, personas = [], onIrAPer
 
         {/* Facturación */}
         <Seccion titulo="Facturación" icon={<DollarSign size={15} color={C.green} />}>
-          <Field label="Empresa">
-            <Select value={f.empresa} onChange={(v) => set("empresa", v)} options={EMPRESAS} placeholder="Elegir" />
-          </Field>
-          <Field label="Razón social (facturación)">
+          <Field label="Razón social (facturación)" full>
             <Input value={f.razonSocial} onChange={(v) => set("razonSocial", v)} placeholder="Razón social + CUIT" />
           </Field>
+
+          <Field label="Distribución" full>
+            <div className="grid sm:grid-cols-3 gap-2">
+              {DISTRIBUCION_OPCIONES.map((o) => {
+                const active = (f.distribucion || "M1") === o.value;
+                return (
+                  <button
+                    type="button"
+                    key={o.value}
+                    onClick={() => set("distribucion", o.value)}
+                    className="text-left rounded-md px-3 py-2 transition-colors"
+                    style={{
+                      background: active ? C.gold : C.panel2,
+                      color: active ? C.onGold : C.text,
+                      border: `1px solid ${active ? C.gold : C.border}`,
+                    }}
+                  >
+                    <div className="text-sm font-semibold">{o.label}</div>
+                    <div className="text-[11px] mt-0.5" style={{ color: active ? C.onGold : C.dim }}>{o.help}</div>
+                  </button>
+                );
+              })}
+            </div>
+          </Field>
+
           <Field label="Moneda">
             <Select value={f.moneda} onChange={(v) => set("moneda", v)} options={MONEDAS} />
           </Field>
-          <Field label="Importe (neto)">
-            <Input type="number" value={f.importe} onChange={(v) => set("importe", v)} placeholder="0" />
-          </Field>
-          <Field label="Importe + IVA (auto)">
-            <div className="font-mono text-sm px-3 py-2 rounded-md" style={{ background: C.panel2, border: `1px solid ${C.border}`, color: C.gold }}>
-              {fmtMoneda(conIva(f.importe), f.moneda)}
-            </div>
-          </Field>
-          <Field label="Cant. facturas">
+          <Field label="Cant. facturas a emitir">
             <Input type="number" value={f.cantFacturas} onChange={(v) => set("cantFacturas", v)} placeholder="0" />
           </Field>
+
+          {(f.distribucion === "M1" || f.distribucion === "MIXTO") && (
+            <>
+              <Field label="Monto M1 (neto, sin IVA)">
+                <Input type="number" value={f.montoM1} onChange={(v) => set("montoM1", v)} placeholder="0" />
+              </Field>
+              <Field label="Monto M1 + IVA (auto)">
+                <div className="font-mono text-sm px-3 py-2 rounded-md" style={{ background: C.panel2, border: `1px solid ${C.border}`, color: C.gold }}>
+                  {fmtMoneda(conIva(f.montoM1), f.moneda)}
+                </div>
+              </Field>
+            </>
+          )}
+
+          {(f.distribucion === "M2" || f.distribucion === "MIXTO") && (
+            <Field label="Monto M2 (efectivo, sin IVA)" full={f.distribucion === "M2"}>
+              <Input type="number" value={f.montoM2} onChange={(v) => set("montoM2", v)} placeholder="0" />
+            </Field>
+          )}
+
+          <Field label="Total facturable (auto)" full>
+            <div className="font-mono text-sm px-3 py-2 rounded-md flex items-center justify-between" style={{ background: C.panel2, border: `1px solid ${C.border}`, color: C.gold }}>
+              <span>{fmtMoneda(totalFacturable(f), f.moneda)}</span>
+              <span className="text-[11px]" style={{ color: C.dim }}>
+                {f.distribucion === "M1" && "= M1 + IVA"}
+                {f.distribucion === "M2" && "= efectivo M2"}
+                {f.distribucion === "MIXTO" && "= (M1 + IVA) + efectivo M2"}
+              </span>
+            </div>
+          </Field>
+
           <Field label="Medio de pago">
             <Input value={f.medioPago} onChange={(v) => set("medioPago", v)} placeholder="Transferencia, efectivo…" />
           </Field>
           <Field label="Forma de pago">
             <Input value={f.formaPago} onChange={(v) => set("formaPago", v)} placeholder="Contado, 30 días…" />
           </Field>
-          <Field label="Facturas adjuntas (links Drive)" full>
-            <Input value={f.facturasLinks} onChange={(v) => set("facturasLinks", v)} placeholder="https://drive.google.com/…" />
-          </Field>
-          <div className="sm:col-span-2 text-xs px-3 py-2 rounded-md" style={{ background: C.panel2, border: `1px solid ${C.border}`, color: C.dim }}>
-            El estado de "Facturado", "Comprobante de pago" y "Facturado total" se carga desde el detalle del evento, una vez creado.
+
+          <div className="sm:col-span-2 text-xs px-3 py-2 rounded-md flex items-start gap-2" style={{ background: C.panel2, border: `1px solid ${C.border}`, color: C.dim }}>
+            <Paperclip size={14} className="mt-0.5 shrink-0" />
+            <span>
+              Las <strong style={{ color: C.text }}>facturas</strong> y <strong style={{ color: C.text }}>comprobantes de pago</strong> se cargan como archivo
+              desde el detalle del evento, una vez creado. Lo mismo aplica para los marcadores
+              "Facturado", "Comprobante de pago" y "Facturado total".
+            </span>
           </div>
         </Seccion>
 
@@ -912,6 +1452,16 @@ function Select({ value, onChange, options, placeholder, compact }) {
       style={{ background: compact ? C.panel : C.panel2, border: `1px solid ${C.border}`, color: value ? C.text : C.dim, colorScheme: "dark" }}>
       {placeholder && <option value="" style={{ background: C.panel2, color: C.dim }}>{placeholder}</option>}
       {options.map((o) => <option key={o} value={o} style={{ background: C.panel2, color: C.text }}>{o}</option>)}
+    </select>
+  );
+}
+function SelectKV({ value, onChange, options, placeholder, compact }) {
+  return (
+    <select value={value} onChange={(e) => onChange(e.target.value)}
+      className={`text-sm px-3 py-2 rounded-md ${compact ? "" : "w-full"}`}
+      style={{ background: compact ? C.panel : C.panel2, border: `1px solid ${C.border}`, color: value ? C.text : C.dim, colorScheme: "dark" }}>
+      {placeholder && <option value="" style={{ background: C.panel2, color: C.dim }}>{placeholder}</option>}
+      {options.map((o) => <option key={o.value} value={o.value} style={{ background: C.panel2, color: C.text }}>{o.label}</option>)}
     </select>
   );
 }

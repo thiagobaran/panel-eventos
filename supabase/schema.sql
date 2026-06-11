@@ -28,12 +28,28 @@ create table if not exists public.eventos (
   forma_pago text,
   facturas_links text,
 
+  -- Distribución entre razones sociales (M1 = con IVA, M2 = efectivo sin IVA)
+  distribucion text default 'M1',          -- 'M1' | 'M2' | 'MIXTO'
+  monto_m1 numeric,                        -- neto facturado por M1 (se le suma 21% IVA)
+  monto_m2 numeric,                        -- efectivo cobrado por M2 (sin IVA)
+
+  -- Archivos cargados después de creado el evento
+  facturas jsonb not null default '[]'::jsonb,    -- [{id, name, path, size, uploadedAt}]
+  comprobantes jsonb not null default '[]'::jsonb,
+
   facturado boolean not null default false,
   comprobante_pago boolean not null default false,
   facturado_total boolean not null default false,
 
   observaciones text
 );
+
+-- Columnas agregadas en versiones posteriores: se aplican aunque la tabla ya exista.
+alter table public.eventos add column if not exists distribucion text default 'M1';
+alter table public.eventos add column if not exists monto_m1 numeric;
+alter table public.eventos add column if not exists monto_m2 numeric;
+alter table public.eventos add column if not exists facturas jsonb not null default '[]'::jsonb;
+alter table public.eventos add column if not exists comprobantes jsonb not null default '[]'::jsonb;
 
 -- Mantiene "updated_at" al día en cada modificación
 create or replace function public.set_updated_at()
@@ -77,6 +93,34 @@ end $$;
 -- ---------------------------------------------------------------------
 -- Personal (listado maestro de integrantes de la productora)
 -- ---------------------------------------------------------------------
+
+-- Categorías del personal (ej: Cámara, Iluminación, Producción, Arte…)
+-- Se gestionan desde la app y se asignan a cada persona del listado.
+create table if not exists public.personas_categorias (
+  id uuid primary key default gen_random_uuid(),
+  created_at timestamptz not null default now(),
+  nombre text not null
+);
+
+alter table public.personas_categorias enable row level security;
+
+drop policy if exists "Acceso interno completo" on public.personas_categorias;
+create policy "Acceso interno completo"
+  on public.personas_categorias
+  for all
+  using (true)
+  with check (true);
+
+do $$
+begin
+  if not exists (
+    select 1 from pg_publication_tables
+    where pubname = 'supabase_realtime' and tablename = 'personas_categorias'
+  ) then
+    alter publication supabase_realtime add table public.personas_categorias;
+  end if;
+end $$;
+
 create table if not exists public.personas (
   id uuid primary key default gen_random_uuid(),
   created_at timestamptz not null default now(),
@@ -87,6 +131,11 @@ create table if not exists public.personas (
   email text,
   activo boolean not null default true
 );
+
+-- Categoría asignada a cada persona (Cámara, Iluminación, etc.).
+-- Si se borra la categoría, queda en NULL y la persona aparece como "Sin categoría".
+alter table public.personas
+  add column if not exists categoria_id uuid references public.personas_categorias(id) on delete set null;
 
 alter table public.personas enable row level security;
 
@@ -106,3 +155,21 @@ begin
     alter publication supabase_realtime add table public.personas;
   end if;
 end $$;
+
+-- ---------------------------------------------------------------------
+-- Storage: bucket para facturas y comprobantes de pago de cada evento
+-- ---------------------------------------------------------------------
+insert into storage.buckets (id, name, public)
+values ('eventos-archivos', 'eventos-archivos', false)
+on conflict (id) do nothing;
+
+-- Política simple, acorde al resto del esquema: cualquier cliente con la
+-- API key (anon) puede subir/leer/borrar archivos de este bucket.
+-- La URL de la app no es pública. Si más adelante se agrega login, conviene
+-- reemplazar esto por políticas basadas en auth.uid().
+drop policy if exists "Acceso interno archivos eventos" on storage.objects;
+create policy "Acceso interno archivos eventos"
+  on storage.objects
+  for all
+  using (bucket_id = 'eventos-archivos')
+  with check (bucket_id = 'eventos-archivos');
