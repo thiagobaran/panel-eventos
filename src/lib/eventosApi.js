@@ -44,7 +44,7 @@ const fromDb = (r) => ({
   equipamiento: !!r.equipamiento,
   equipamientoDetalle: r.equipamiento_detalle || "",
   integrantes: r.integrantes || [],
-  director: r.director || { nombre: "", contacto: "" },
+  director: r.director || { nombre: "", telefono: "", email: "" },
   razonSocial: r.razon_social || "",
   empresa: r.empresa || "",
   moneda: r.moneda || "ARS",

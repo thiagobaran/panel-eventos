@@ -6,25 +6,27 @@ import {
   Download, Upload, Link as LinkIcon, WifiOff, RefreshCw
 } from "lucide-react";
 import { listEventos, upsertEvento, deleteEvento, subscribeEventos } from "./lib/eventosApi";
+import { listPersonas, upsertPersona, deletePersona, subscribePersonas } from "./lib/personasApi";
 import { isSupabaseConfigured } from "./lib/supabaseClient";
 
 /* ---------- constantes ---------- */
 const CATEGORIAS = ["Videoclip", "Publicidad", "Película", "Serie"];
 const ESTUDIOS = ["1", "2", "3"];
 const MONEDAS = ["ARS", "USD"];
-const EMPRESAS = ["Productora MG", "Anzur", "Distrisur", "Orgaz"];
+const EMPRESAS = ["MG M1", "MG M2"];
 const TIPO_PROD = ["Virtual Production", "Back Projecting"];
 const TRACKEO = ["Con trackeo", "Sin trackeo"];
 
 const C = {
-  bg: "#0B0E13",
-  panel: "#141A23",
-  panel2: "#1B232E",
-  border: "#26303D",
-  text: "#E6EDF3",
-  dim: "#8B98A8",
-  cyan: "#3DD4C8",
-  amber: "#F5A623",
+  bg: "#000000",
+  panel: "#141414",
+  panel2: "#1F1B12",
+  border: "#3A3122",
+  text: "#F5F1E8",
+  dim: "#A39A88",
+  gold: "#D4AF37",
+  onGold: "#1A1400",
+  amber: "#F0B429",
   rose: "#F2557A",
   green: "#4FD18B",
 };
@@ -40,7 +42,7 @@ const nuevoEvento = () => ({
   equipamiento: false,
   equipamientoDetalle: "",
   integrantes: [],
-  director: { nombre: "", contacto: "" },
+  director: { nombre: "", telefono: "", email: "" },
   razonSocial: "",
   empresa: "",
   moneda: "ARS",
@@ -73,10 +75,11 @@ const fmtFecha = (f) => {
 /* ===================================================================== */
 export default function PanelEventos() {
   const [eventos, setEventos] = useState([]);
+  const [personas, setPersonas] = useState([]);
   const [cargando, setCargando] = useState(true);
   const [error, setError] = useState("");
   const [guardando, setGuardando] = useState(false);
-  const [vista, setVista] = useState("lista"); // lista | form | detalle | dashboard
+  const [vista, setVista] = useState("lista"); // lista | form | detalle | dashboard | personal
   const [editId, setEditId] = useState(null);
   const [verId, setVerId] = useState(null);
   const [busqueda, setBusqueda] = useState("");
@@ -95,20 +98,35 @@ export default function PanelEventos() {
     }
   }, []);
 
+  const recargarPersonas = useCallback(async () => {
+    try {
+      const data = await listPersonas();
+      setPersonas(data);
+    } catch (e) {
+      console.error(e);
+    }
+  }, []);
+
   /* carga inicial */
   useEffect(() => {
     (async () => {
       setCargando(true);
-      await recargar();
+      await Promise.all([recargar(), recargarPersonas()]);
       setCargando(false);
     })();
-  }, [recargar]);
+  }, [recargar, recargarPersonas]);
 
   /* tiempo real: refresca si otro usuario carga/edita/borra un evento */
   useEffect(() => {
     const unsub = subscribeEventos(() => recargar());
     return unsub;
   }, [recargar]);
+
+  /* tiempo real: refresca si otro usuario edita el listado de personal */
+  useEffect(() => {
+    const unsub = subscribePersonas(() => recargarPersonas());
+    return unsub;
+  }, [recargarPersonas]);
 
   const guardarEvento = async (ev) => {
     setGuardando(true);
@@ -125,6 +143,18 @@ export default function PanelEventos() {
     }
   };
 
+  const actualizarEvento = async (id, patch) => {
+    const ev = eventos.find((e) => e.id === id);
+    if (!ev) return;
+    try {
+      await upsertEvento({ ...ev, ...patch });
+      await recargar();
+    } catch (e) {
+      console.error(e);
+      alert("No se pudo actualizar el evento: " + e.message);
+    }
+  };
+
   const borrarEvento = async (id) => {
     try {
       await deleteEvento(id);
@@ -133,6 +163,26 @@ export default function PanelEventos() {
     } catch (e) {
       console.error(e);
       alert("No se pudo borrar el evento: " + e.message);
+    }
+  };
+
+  const guardarPersona = async (persona) => {
+    try {
+      await upsertPersona(persona);
+      await recargarPersonas();
+    } catch (e) {
+      console.error(e);
+      alert("No se pudo guardar la persona: " + e.message);
+    }
+  };
+
+  const borrarPersona = async (id) => {
+    try {
+      await deletePersona(id);
+      await recargarPersonas();
+    } catch (e) {
+      console.error(e);
+      alert("No se pudo borrar la persona: " + e.message);
     }
   };
 
@@ -198,9 +248,9 @@ export default function PanelEventos() {
         *::-webkit-scrollbar{width:10px;height:10px}
         *::-webkit-scrollbar-thumb{background:${C.border};border-radius:6px}
         input,select,textarea{outline:none}
-        input:focus,select:focus,textarea:focus{border-color:${C.cyan}!important;box-shadow:0 0 0 1px ${C.cyan}}
-        .led{box-shadow:0 0 0 1px ${C.border},0 0 24px -8px ${C.cyan}40}
-        button:focus-visible{outline:2px solid ${C.cyan};outline-offset:2px}
+        input:focus,select:focus,textarea:focus{border-color:${C.gold}!important;box-shadow:0 0 0 1px ${C.gold}}
+        .led{box-shadow:0 0 0 1px ${C.border},0 0 24px -8px ${C.gold}40}
+        button:focus-visible{outline:2px solid ${C.gold};outline-offset:2px}
         @media (prefers-reduced-motion: no-preference){.fade{animation:f .25s ease both}}
         @keyframes f{from{opacity:0;transform:translateY(4px)}to{opacity:1;transform:none}}
       `}</style>
@@ -215,7 +265,7 @@ export default function PanelEventos() {
             className="led grid place-items-center rounded-md"
             style={{ width: 34, height: 34, background: C.panel2 }}
           >
-            <Camera size={18} color={C.cyan} />
+            <Camera size={18} color={C.gold} />
           </div>
           <div className="leading-tight">
             <div className="font-semibold tracking-tight text-sm sm:text-base">Panel de Eventos</div>
@@ -225,6 +275,7 @@ export default function PanelEventos() {
 
         <nav className="flex items-center gap-1 ml-auto">
           <Tab active={vista === "lista"} onClick={() => setVista("lista")} icon={<Layers size={15} />}>Eventos</Tab>
+          <Tab active={vista === "personal"} onClick={() => setVista("personal")} icon={<Users size={15} />}>Personal</Tab>
           <Tab active={vista === "dashboard"} onClick={() => setVista("dashboard")} icon={<AlertTriangle size={15} />}>
             Pendientes
             {(pendFact.length + pendComp.length) > 0 && (
@@ -247,7 +298,7 @@ export default function PanelEventos() {
           <button
             onClick={() => { setEditId(null); setVista("form"); }}
             className="ml-1 flex items-center gap-1.5 text-sm font-medium px-3 py-1.5 rounded-md transition-colors"
-            style={{ background: C.cyan, color: "#04201d" }}
+            style={{ background: C.gold, color: C.onGold }}
           >
             <Plus size={16} /> <span className="hidden sm:inline">Nuevo evento</span>
           </button>
@@ -278,6 +329,8 @@ export default function PanelEventos() {
             onCancel={() => { setVista(eventoEdit ? "lista" : "lista"); setEditId(null); }}
             onSave={guardarEvento}
             guardando={guardando}
+            personas={personas}
+            onIrAPersonal={() => setVista("personal")}
           />
         ) : vista === "detalle" && eventoVer ? (
           <Detalle
@@ -285,6 +338,7 @@ export default function PanelEventos() {
             onBack={() => setVista("lista")}
             onEdit={() => { setEditId(eventoVer.id); setVista("form"); }}
             onDelete={() => borrarEvento(eventoVer.id)}
+            onUpdate={(patch) => actualizarEvento(eventoVer.id, patch)}
           />
         ) : vista === "dashboard" ? (
           <Dashboard
@@ -292,6 +346,8 @@ export default function PanelEventos() {
             pendComp={pendComp}
             onVer={(id) => { setVerId(id); setVista("detalle"); }}
           />
+        ) : vista === "personal" ? (
+          <Personal personas={personas} onSave={guardarPersona} onDelete={borrarPersona} />
         ) : (
           <Lista
             eventos={filtrados}
@@ -333,7 +389,7 @@ function Badge({ color, children, solid }) {
     <span
       className="inline-flex items-center gap-1 text-[11px] font-medium px-2 py-0.5 rounded-full whitespace-nowrap"
       style={{
-        color: solid ? "#04201d" : color,
+        color: solid ? C.onGold : color,
         background: solid ? color : `${color}1a`,
         border: `1px solid ${color}40`,
       }}
@@ -370,7 +426,7 @@ function Lista({ eventos, total, busqueda, setBusqueda, filtroCat, setFiltroCat,
           </p>
           {total === 0 && (
             <button onClick={onNuevo} className="mt-4 text-sm font-medium px-4 py-2 rounded-md inline-flex items-center gap-1.5"
-              style={{ background: C.cyan, color: "#04201d" }}>
+              style={{ background: C.gold, color: C.onGold }}>
               <Plus size={15} /> Cargar el primero
             </button>
           )}
@@ -381,7 +437,7 @@ function Lista({ eventos, total, busqueda, setBusqueda, filtroCat, setFiltroCat,
             <div key={e.id} onClick={() => onVer(e.id)}
               className="group rounded-xl p-3.5 cursor-pointer transition-colors flex flex-col sm:flex-row sm:items-center gap-3"
               style={{ background: C.panel, border: `1px solid ${C.border}` }}
-              onMouseEnter={(ev) => ev.currentTarget.style.borderColor = C.cyan + "80"}
+              onMouseEnter={(ev) => ev.currentTarget.style.borderColor = C.gold + "80"}
               onMouseLeave={(ev) => ev.currentTarget.style.borderColor = C.border}
             >
               <div className="font-mono text-xs w-20 shrink-0 flex items-center gap-1.5" style={{ color: C.dim }}>
@@ -390,7 +446,7 @@ function Lista({ eventos, total, busqueda, setBusqueda, filtroCat, setFiltroCat,
               <div className="flex-1 min-w-0">
                 <div className="font-medium truncate">{e.nombre || <span style={{ color: C.dim }}>Sin nombre</span>}</div>
                 <div className="flex flex-wrap gap-1.5 mt-1.5">
-                  {e.categoria && <Badge color={C.cyan}><Film size={11} />{e.categoria}</Badge>}
+                  {e.categoria && <Badge color={C.gold}><Film size={11} />{e.categoria}</Badge>}
                   {e.tipoProd && <Badge color="#9b8cff">{e.tipoProd}</Badge>}
                   {e.trackeo && <Badge color={e.trackeo === "Con trackeo" ? C.green : C.dim}><Crosshair size={11} />{e.trackeo.replace(" trackeo", "")}</Badge>}
                   {e.empresa && <Badge color={C.dim}><Building2 size={11} />{e.empresa}</Badge>}
@@ -471,7 +527,7 @@ function TablaPend({ titulo, icon, color, rows, onVer, vacio }) {
                   <td className="px-4 py-2.5">{e.estudio || "—"}</td>
                   <td className="px-4 py-2.5">{e.empresa || "—"}</td>
                   <td className="px-4 py-2.5 font-mono whitespace-nowrap">{fmtMoneda(e.importe, e.moneda)}</td>
-                  <td className="px-4 py-2.5 font-mono whitespace-nowrap" style={{ color: C.cyan }}>{fmtMoneda(conIva(e.importe), e.moneda)}</td>
+                  <td className="px-4 py-2.5 font-mono whitespace-nowrap" style={{ color: C.gold }}>{fmtMoneda(conIva(e.importe), e.moneda)}</td>
                 </tr>
               ))}
             </tbody>
@@ -482,8 +538,92 @@ function TablaPend({ titulo, icon, color, rows, onVer, vacio }) {
   );
 }
 
+/* ====================== PERSONAL ====================== */
+function Personal({ personas, onSave, onDelete }) {
+  const vacio = { nombre: "", rolHabitual: "", telefono: "", email: "", activo: true };
+  const [editando, setEditando] = useState(null); // null | "new" | persona id
+  const [f, setF] = useState(vacio);
+
+  const empezarNuevo = () => { setF(vacio); setEditando("new"); };
+  const empezarEditar = (p) => { setF(p); setEditando(p.id); };
+  const cancelar = () => { setEditando(null); setF(vacio); };
+  const guardar = async () => {
+    if (!f.nombre.trim()) { alert("Poné el nombre de la persona."); return; }
+    await onSave(f);
+    cancelar();
+  };
+
+  return (
+    <div className="fade max-w-3xl">
+      <div className="flex items-center gap-2 mb-4">
+        <h1 className="text-lg font-semibold flex-1">Personal</h1>
+        {editando === null && (
+          <button onClick={empezarNuevo} className="text-sm font-medium px-3 py-1.5 rounded-md flex items-center gap-1.5"
+            style={{ background: C.gold, color: C.onGold }}>
+            <Plus size={15} /> Agregar persona
+          </button>
+        )}
+      </div>
+
+      <p className="text-xs mb-4" style={{ color: C.dim }}>
+        Cargá acá a todo el personal de la productora. Después, al crear o editar un evento,
+        podés elegirlos de esta lista y asignarles el rol que ocupan en ese evento puntual.
+      </p>
+
+      {editando !== null && (
+        <div className="rounded-xl p-4 mb-4 grid sm:grid-cols-2 gap-3.5" style={{ background: C.panel, border: `1px solid ${C.border}` }}>
+          <Field label="Nombre" full>
+            <Input value={f.nombre} onChange={(v) => setF({ ...f, nombre: v })} placeholder="Nombre y apellido" />
+          </Field>
+          <Field label="Rol habitual">
+            <Input value={f.rolHabitual} onChange={(v) => setF({ ...f, rolHabitual: v })} placeholder="DF, gaffer, op. LED…" />
+          </Field>
+          <Field label="Teléfono">
+            <Input value={f.telefono} onChange={(v) => setF({ ...f, telefono: v })} placeholder="+54 9 11 ..." />
+          </Field>
+          <Field label="Email" full>
+            <Input type="email" value={f.email} onChange={(v) => setF({ ...f, email: v })} placeholder="nombre@ejemplo.com" />
+          </Field>
+          <div className="sm:col-span-2 flex gap-2 justify-end">
+            <button onClick={cancelar} className="text-sm px-4 py-2 rounded-md" style={{ background: C.panel2, border: `1px solid ${C.border}`, color: C.dim }}>Cancelar</button>
+            <button onClick={guardar} className="text-sm font-medium px-5 py-2 rounded-md flex items-center gap-1.5" style={{ background: C.gold, color: C.onGold }}>
+              <Check size={16} /> Guardar
+            </button>
+          </div>
+        </div>
+      )}
+
+      {personas.length === 0 ? (
+        <div className="rounded-xl text-center py-16 px-4" style={{ background: C.panel, border: `1px dashed ${C.border}` }}>
+          <Users size={28} color={C.dim} className="mx-auto mb-3" />
+          <p className="text-sm" style={{ color: C.dim }}>Todavía no cargaste personal.</p>
+        </div>
+      ) : (
+        <div className="grid gap-2">
+          {personas.map((p) => (
+            <div key={p.id} className="rounded-xl p-3.5 flex flex-col sm:flex-row sm:items-center gap-2" style={{ background: C.panel, border: `1px solid ${C.border}` }}>
+              <div className="flex-1 min-w-0">
+                <div className="font-medium truncate">{p.nombre}</div>
+                <div className="flex flex-wrap gap-1.5 mt-1.5 text-xs" style={{ color: C.dim }}>
+                  {p.rolHabitual && <span className="font-mono px-2 py-0.5 rounded" style={{ background: C.panel2 }}>{p.rolHabitual}</span>}
+                  {p.telefono && <span>{p.telefono}</span>}
+                  {p.email && <span>{p.email}</span>}
+                </div>
+              </div>
+              <div className="flex gap-1">
+                <IconBtn onClick={() => empezarEditar(p)} title="Editar"><Pencil size={15} /></IconBtn>
+                <IconBtn onClick={() => { if (confirm("¿Borrar de la lista de personal?")) onDelete(p.id); }} title="Borrar" danger><Trash2 size={15} /></IconBtn>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 /* ====================== DETALLE ====================== */
-function Detalle({ ev, onBack, onEdit, onDelete }) {
+function Detalle({ ev, onBack, onEdit, onDelete, onUpdate }) {
   return (
     <div className="fade">
       <div className="flex items-center gap-2 mb-4">
@@ -494,14 +634,14 @@ function Detalle({ ev, onBack, onEdit, onDelete }) {
       </div>
 
       <div className="flex flex-wrap gap-1.5 mb-4">
-        {ev.categoria && <Badge color={C.cyan}><Film size={11} />{ev.categoria}</Badge>}
+        {ev.categoria && <Badge color={C.gold}><Film size={11} />{ev.categoria}</Badge>}
         {ev.tipoProd && <Badge color="#9b8cff">{ev.tipoProd}</Badge>}
         {ev.trackeo && <Badge color={ev.trackeo === "Con trackeo" ? C.green : C.dim}><Crosshair size={11} />{ev.trackeo}</Badge>}
         {ev.equipamiento ? <Badge color={C.green}><Wrench size={11} />Con equipamiento</Badge> : <Badge color={C.dim}><Wrench size={11} />Sin equipamiento</Badge>}
       </div>
 
       <div className="grid sm:grid-cols-2 gap-4">
-        <Card titulo="Producción" icon={<Camera size={15} color={C.cyan} />}>
+        <Card titulo="Producción" icon={<Camera size={15} color={C.gold} />}>
           <Dato k="Fecha" v={fmtFecha(ev.fecha)} mono />
           <Dato k="Estudio" v={ev.estudio || "—"} />
           <Dato k="Tipo" v={ev.tipoProd || "—"} />
@@ -517,20 +657,24 @@ function Detalle({ ev, onBack, onEdit, onDelete }) {
           <Dato k="Cant. facturas" v={ev.cantFacturas || "—"} />
           <Dato k="Medio de pago" v={ev.medioPago || "—"} />
           <Dato k="Forma de pago" v={ev.formaPago || "—"} />
-          <div className="flex flex-wrap gap-1.5 pt-1">
-            {ev.facturado ? <Badge solid color={C.green}><Check size={11} />Facturado</Badge> : <Badge color={C.amber}>Sin facturar</Badge>}
-            {ev.comprobantePago ? <Badge solid color={C.green}><Check size={11} />Comprob. cargado</Badge> : <Badge color={C.rose}>Sin comprobante</Badge>}
-            {ev.facturadoTotal && <Badge solid color={C.cyan}>Facturado total</Badge>}
-          </div>
           {ev.facturasLinks && (
             <a href={ev.facturasLinks.split(/\s|,/)[0]} target="_blank" rel="noreferrer"
-              className="inline-flex items-center gap-1.5 text-xs mt-1" style={{ color: C.cyan }}>
+              className="inline-flex items-center gap-1.5 text-xs mt-1" style={{ color: C.gold }}>
               <LinkIcon size={12} /> Ver facturas adjuntas
             </a>
           )}
         </Card>
 
-        <Card titulo="Equipo" icon={<Users size={15} color={C.cyan} />}>
+        <Card titulo="Estado administrativo" icon={<DollarSign size={15} color={C.gold} />}>
+          <p className="text-xs mb-1" style={{ color: C.dim }}>
+            Editable solo por administración una vez creado el evento.
+          </p>
+          <Toggle checked={ev.facturado} onChange={(v) => onUpdate({ facturado: v })} label="Facturado" />
+          <Toggle checked={ev.comprobantePago} onChange={(v) => onUpdate({ comprobantePago: v })} label="Comprobante de pago adjunto" />
+          <Toggle checked={ev.facturadoTotal} onChange={(v) => onUpdate({ facturadoTotal: v })} label="Facturado total" />
+        </Card>
+
+        <Card titulo="Equipo" icon={<Users size={15} color={C.gold} />}>
           {ev.integrantes?.length ? (
             <div className="grid gap-1.5">
               {ev.integrantes.map((i, idx) => (
@@ -545,7 +689,8 @@ function Detalle({ ev, onBack, onEdit, onDelete }) {
 
         <Card titulo="Dirección" icon={<Phone size={15} color={C.amber} />}>
           <Dato k="Director" v={ev.director?.nombre || "—"} />
-          <Dato k="Contacto" v={ev.director?.contacto || "—"} mono />
+          <Dato k="Teléfono" v={ev.director?.telefono || "—"} mono />
+          <Dato k="Email" v={ev.director?.email || "—"} mono />
         </Card>
 
         {ev.observaciones && (
@@ -570,20 +715,26 @@ function Dato({ k, v, mono, accent }) {
   return (
     <div className="flex items-baseline justify-between gap-3 text-sm">
       <span style={{ color: C.dim }} className="text-[13px]">{k}</span>
-      <span className={mono ? "font-mono" : ""} style={{ color: accent ? C.cyan : C.text, textAlign: "right" }}>{v}</span>
+      <span className={mono ? "font-mono" : ""} style={{ color: accent ? C.gold : C.text, textAlign: "right" }}>{v}</span>
     </div>
   );
 }
 
 /* ====================== FORMULARIO ====================== */
-function FormEvento({ base, onCancel, onSave, guardando }) {
+function FormEvento({ base, onCancel, onSave, guardando, personas = [], onIrAPersonal }) {
   const [f, setF] = useState(base);
   const set = (k, v) => setF((p) => ({ ...p, [k]: v }));
   const setDir = (k, v) => setF((p) => ({ ...p, director: { ...p.director, [k]: v } }));
 
-  const addIntegrante = () => set("integrantes", [...f.integrantes, { nombre: "", rol: "" }]);
+  const addIntegrante = () => set("integrantes", [...f.integrantes, { personaId: "", nombre: "", rol: "" }]);
   const setIntegrante = (i, k, v) =>
     set("integrantes", f.integrantes.map((x, idx) => (idx === i ? { ...x, [k]: v } : x)));
+  const elegirPersona = (i, personaId) => {
+    const p = personas.find((p) => p.id === personaId);
+    set("integrantes", f.integrantes.map((x, idx) => idx === i
+      ? { ...x, personaId, nombre: p ? p.nombre : "", rol: x.rol || (p ? p.rolHabitual : "") }
+      : x));
+  };
   const delIntegrante = (i) => set("integrantes", f.integrantes.filter((_, idx) => idx !== i));
 
   const submit = () => {
@@ -600,7 +751,7 @@ function FormEvento({ base, onCancel, onSave, guardando }) {
 
       <div className="grid gap-5">
         {/* Producción */}
-        <Seccion titulo="Producción" icon={<Camera size={15} color={C.cyan} />}>
+        <Seccion titulo="Producción" icon={<Camera size={15} color={C.gold} />}>
           <Field label="Nombre del evento" full>
             <Input value={f.nombre} onChange={(v) => set("nombre", v)} placeholder="Ej: Videoclip — Artista X" />
           </Field>
@@ -619,28 +770,41 @@ function FormEvento({ base, onCancel, onSave, guardando }) {
           <Field label="Trackeo">
             <Select value={f.trackeo} onChange={(v) => set("trackeo", v)} options={TRACKEO} placeholder="Elegir" />
           </Field>
-          <Field label="Equipamiento" full>
-            <div className="flex flex-col sm:flex-row gap-2 sm:items-center">
-              <Toggle checked={f.equipamiento} onChange={(v) => set("equipamiento", v)} label={f.equipamiento ? "Con equipamiento" : "Sin equipamiento"} />
-              {f.equipamiento && (
-                <Input value={f.equipamientoDetalle} onChange={(v) => set("equipamientoDetalle", v)} placeholder="Detalle (cámaras, LED wall, grip…)" />
-              )}
-            </div>
-          </Field>
+          <div className="sm:col-span-2 flex flex-col sm:flex-row gap-3 sm:items-center">
+            <Toggle checked={f.equipamiento} onChange={(v) => set("equipamiento", v)} label="Equipamiento" />
+            {f.equipamiento && (
+              <Input value={f.equipamientoDetalle} onChange={(v) => set("equipamientoDetalle", v)} placeholder="Detalle (cámaras, LED wall, grip…)" />
+            )}
+          </div>
         </Seccion>
 
         {/* Equipo */}
-        <Seccion titulo="Integrantes y roles" icon={<Users size={15} color={C.cyan} />}>
+        <Seccion titulo="Integrantes y roles" icon={<Users size={15} color={C.gold} />}>
           <div className="sm:col-span-2 grid gap-2">
+            {personas.length === 0 && (
+              <p className="text-xs px-3 py-2 rounded-md" style={{ background: C.panel2, border: `1px solid ${C.border}`, color: C.dim }}>
+                Todavía no hay personal cargado.{" "}
+                {onIrAPersonal && (
+                  <button type="button" onClick={onIrAPersonal} className="underline" style={{ color: C.gold }}>
+                    Cargalo en la sección Personal
+                  </button>
+                )}
+              </p>
+            )}
             {f.integrantes.map((i, idx) => (
-              <div key={idx} className="flex gap-2 items-center">
-                <Input value={i.nombre} onChange={(v) => setIntegrante(idx, "nombre", v)} placeholder="Nombre" />
-                <Input value={i.rol} onChange={(v) => setIntegrante(idx, "rol", v)} placeholder="Rol (DF, gaffer, op. LED…)" />
+              <div key={idx} className="flex flex-col sm:flex-row gap-2 sm:items-center">
+                <select value={i.personaId || ""} onChange={(e) => elegirPersona(idx, e.target.value)}
+                  className="text-sm px-3 py-2 rounded-md sm:flex-1"
+                  style={{ background: C.panel2, border: `1px solid ${C.border}`, color: i.personaId ? C.text : C.dim, colorScheme: "dark" }}>
+                  <option value="" style={{ background: C.panel2, color: C.dim }}>Elegir persona…</option>
+                  {personas.map((p) => <option key={p.id} value={p.id} style={{ background: C.panel2, color: C.text }}>{p.nombre}</option>)}
+                </select>
+                <Input value={i.rol} onChange={(v) => setIntegrante(idx, "rol", v)} placeholder="Rol en este evento (DF, gaffer…)" />
                 <IconBtn onClick={() => delIntegrante(idx)} title="Quitar" danger><X size={16} /></IconBtn>
               </div>
             ))}
             <button onClick={addIntegrante} className="self-start text-sm flex items-center gap-1.5 px-3 py-1.5 rounded-md mt-1"
-              style={{ background: C.panel2, border: `1px solid ${C.border}`, color: C.cyan }}>
+              style={{ background: C.panel2, border: `1px solid ${C.border}`, color: C.gold }}>
               <Plus size={14} /> Agregar integrante
             </button>
           </div>
@@ -648,11 +812,14 @@ function FormEvento({ base, onCancel, onSave, guardando }) {
 
         {/* Dirección */}
         <Seccion titulo="Dirección" icon={<Phone size={15} color={C.amber} />}>
-          <Field label="Director">
+          <Field label="Director" full>
             <Input value={f.director.nombre} onChange={(v) => setDir("nombre", v)} placeholder="Nombre del director" />
           </Field>
-          <Field label="Contacto del director">
-            <Input value={f.director.contacto} onChange={(v) => setDir("contacto", v)} placeholder="Tel / mail" />
+          <Field label="Teléfono">
+            <Input value={f.director.telefono} onChange={(v) => setDir("telefono", v)} placeholder="+54 9 11 ..." />
+          </Field>
+          <Field label="Email">
+            <Input type="email" value={f.director.email} onChange={(v) => setDir("email", v)} placeholder="director@ejemplo.com" />
           </Field>
         </Seccion>
 
@@ -671,7 +838,7 @@ function FormEvento({ base, onCancel, onSave, guardando }) {
             <Input type="number" value={f.importe} onChange={(v) => set("importe", v)} placeholder="0" />
           </Field>
           <Field label="Importe + IVA (auto)">
-            <div className="font-mono text-sm px-3 py-2 rounded-md" style={{ background: C.panel2, border: `1px solid ${C.border}`, color: C.cyan }}>
+            <div className="font-mono text-sm px-3 py-2 rounded-md" style={{ background: C.panel2, border: `1px solid ${C.border}`, color: C.gold }}>
               {fmtMoneda(conIva(f.importe), f.moneda)}
             </div>
           </Field>
@@ -687,10 +854,8 @@ function FormEvento({ base, onCancel, onSave, guardando }) {
           <Field label="Facturas adjuntas (links Drive)" full>
             <Input value={f.facturasLinks} onChange={(v) => set("facturasLinks", v)} placeholder="https://drive.google.com/…" />
           </Field>
-          <div className="sm:col-span-2 flex flex-wrap gap-4 pt-1">
-            <Toggle checked={f.facturado} onChange={(v) => set("facturado", v)} label="Facturado" />
-            <Toggle checked={f.comprobantePago} onChange={(v) => set("comprobantePago", v)} label="Comprobante de pago adjunto" />
-            <Toggle checked={f.facturadoTotal} onChange={(v) => set("facturadoTotal", v)} label="Facturado total" />
+          <div className="sm:col-span-2 text-xs px-3 py-2 rounded-md" style={{ background: C.panel2, border: `1px solid ${C.border}`, color: C.dim }}>
+            El estado de "Facturado", "Comprobante de pago" y "Facturado total" se carga desde el detalle del evento, una vez creado.
           </div>
         </Seccion>
 
@@ -707,7 +872,7 @@ function FormEvento({ base, onCancel, onSave, guardando }) {
         <div className="flex gap-2 justify-end pb-8">
           <button onClick={onCancel} className="text-sm px-4 py-2 rounded-md" style={{ background: C.panel2, border: `1px solid ${C.border}`, color: C.dim }}>Cancelar</button>
           <button onClick={submit} disabled={guardando} className="text-sm font-medium px-5 py-2 rounded-md flex items-center gap-1.5"
-            style={{ background: C.cyan, color: "#04201d", opacity: guardando ? 0.6 : 1, cursor: guardando ? "wait" : "pointer" }}>
+            style={{ background: C.gold, color: C.onGold, opacity: guardando ? 0.6 : 1, cursor: guardando ? "wait" : "pointer" }}>
             <Check size={16} /> {guardando ? "Guardando…" : "Guardar evento"}
           </button>
         </div>
@@ -745,8 +910,8 @@ function Select({ value, onChange, options, placeholder, compact }) {
     <select value={value} onChange={(e) => onChange(e.target.value)}
       className={`text-sm px-3 py-2 rounded-md ${compact ? "" : "w-full"}`}
       style={{ background: compact ? C.panel : C.panel2, border: `1px solid ${C.border}`, color: value ? C.text : C.dim, colorScheme: "dark" }}>
-      {placeholder && <option value="">{placeholder}</option>}
-      {options.map((o) => <option key={o} value={o} style={{ color: "#000" }}>{o}</option>)}
+      {placeholder && <option value="" style={{ background: C.panel2, color: C.dim }}>{placeholder}</option>}
+      {options.map((o) => <option key={o} value={o} style={{ background: C.panel2, color: C.text }}>{o}</option>)}
     </select>
   );
 }
@@ -754,10 +919,10 @@ function Toggle({ checked, onChange, label }) {
   return (
     <button onClick={() => onChange(!checked)} className="flex items-center gap-2 text-sm">
       <span className="grid place-items-center rounded transition-colors" style={{
-        width: 20, height: 20, background: checked ? C.cyan : C.panel2,
-        border: `1px solid ${checked ? C.cyan : C.border}`,
+        width: 20, height: 20, background: checked ? C.gold : C.panel2,
+        border: `1px solid ${checked ? C.gold : C.border}`,
       }}>
-        {checked && <Check size={14} color="#04201d" />}
+        {checked && <Check size={14} color={C.onGold} />}
       </span>
       <span style={{ color: checked ? C.text : C.dim }}>{label}</span>
     </button>

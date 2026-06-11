@@ -16,8 +16,8 @@ create table if not exists public.eventos (
   equipamiento boolean not null default false,
   equipamiento_detalle text,
 
-  integrantes jsonb not null default '[]'::jsonb, -- [{nombre, rol}, ...]
-  director jsonb not null default '{}'::jsonb,    -- {nombre, contacto}
+  integrantes jsonb not null default '[]'::jsonb, -- [{personaId, nombre, rol}, ...]
+  director jsonb not null default '{}'::jsonb,    -- {nombre, telefono, email}
 
   razon_social text,
   empresa text,
@@ -71,5 +71,38 @@ begin
     where pubname = 'supabase_realtime' and tablename = 'eventos'
   ) then
     alter publication supabase_realtime add table public.eventos;
+  end if;
+end $$;
+
+-- ---------------------------------------------------------------------
+-- Personal (listado maestro de integrantes de la productora)
+-- ---------------------------------------------------------------------
+create table if not exists public.personas (
+  id uuid primary key default gen_random_uuid(),
+  created_at timestamptz not null default now(),
+
+  nombre text not null default '',
+  rol_habitual text,
+  telefono text,
+  email text,
+  activo boolean not null default true
+);
+
+alter table public.personas enable row level security;
+
+drop policy if exists "Acceso interno completo" on public.personas;
+create policy "Acceso interno completo"
+  on public.personas
+  for all
+  using (true)
+  with check (true);
+
+do $$
+begin
+  if not exists (
+    select 1 from pg_publication_tables
+    where pubname = 'supabase_realtime' and tablename = 'personas'
+  ) then
+    alter publication supabase_realtime add table public.personas;
   end if;
 end $$;

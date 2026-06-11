@@ -11,15 +11,25 @@ ver de un vistazo qué falta facturar o qué falta el comprobante de pago.
 
 1. **Eventos**: lista todos los eventos cargados. Se puede buscar por nombre,
    director, razón social o integrante, y filtrar por categoría/empresa.
-2. **Nuevo evento**: botón celeste arriba a la derecha. Completa los datos del
+2. **Personal**: listado maestro de todo el personal de la productora (nombre,
+   rol habitual, teléfono, email). Se carga una sola vez acá y después, al
+   crear o editar un evento, se elige a cada persona de esta lista y se le
+   asigna el rol que ocupa en ese evento puntual.
+3. **Nuevo evento**: botón dorado arriba a la derecha. Completa los datos del
    evento por secciones (Producción, Integrantes, Dirección, Facturación,
-   Observaciones) y guardá.
-3. **Click en un evento**: abre el detalle, desde ahí se puede **Editar** o
+   Observaciones) y guardá. Los campos "Facturado", "Comprobante de pago" y
+   "Facturado total" no se cargan acá — se habilitan después, desde el
+   detalle del evento (ver punto 5).
+4. **Click en un evento**: abre el detalle, desde ahí se puede **Editar** o
    **Borrar**.
-4. **Pendientes**: muestra dos tablas — eventos sin facturar y eventos
+5. **Estado administrativo (en el detalle)**: una vez creado el evento, se
+   puede marcar "Facturado", "Comprobante de pago adjunto" y "Facturado
+   total". Estos cambios se guardan al toque. (Más adelante esto va a quedar
+   restringido al rol de Administración — ver sección 7).
+6. **Pendientes**: muestra dos tablas — eventos sin facturar y eventos
    facturados sin comprobante de pago cargado. Sirve como recordatorio para
    administración.
-5. **Exportar / Importar (íconos de descarga/subida en el header)**: genera o
+7. **Exportar / Importar (íconos de descarga/subida en el header)**: genera o
    carga un archivo JSON con todos los eventos. Útil como respaldo manual.
 
 La app es **multiusuario**: si se configura Supabase (paso 3), todas las
@@ -48,7 +58,10 @@ cualquier lugar.
    pide).
 2. Ir a **SQL Editor** → **New query**, pegar el contenido completo del
    archivo [`supabase/schema.sql`](supabase/schema.sql) de este repositorio y
-   darle **Run**. Esto crea la tabla `eventos` con todos los campos.
+   darle **Run**. Esto crea las tablas `eventos` y `personas` con todos los
+   campos. Si ya habías corrido una versión anterior del script (sin la tabla
+   `personas`), podés volver a correr el script completo: las partes ya
+   creadas usan `if not exists` y no se duplican.
 3. Ir a **Project Settings → API**. Copiar:
    - **Project URL** → va en `VITE_SUPABASE_URL`
    - **anon public key** → va en `VITE_SUPABASE_ANON_KEY`
@@ -88,12 +101,13 @@ Después del primer deploy, configurar las variables de entorno
 
 ```
 src/
-  PanelEventos.jsx     -> toda la interfaz (lista, formulario, detalle, pendientes)
+  PanelEventos.jsx     -> toda la interfaz (lista, personal, formulario, detalle, pendientes)
   lib/
     supabaseClient.js  -> conexión a Supabase (o null si no está configurado)
     eventosApi.js       -> leer/guardar/borrar eventos (Supabase o localStorage)
+    personasApi.js      -> leer/guardar/borrar personal (Supabase o localStorage)
 supabase/
-  schema.sql            -> script para crear la tabla "eventos" en Supabase
+  schema.sql            -> script para crear las tablas "eventos" y "personas" en Supabase
 ```
 
 ## 6. Categorías y listas predefinidas
@@ -105,5 +119,28 @@ archivo):
 - **Estudio**: 1, 2, 3
 - **Tipo de producción**: Virtual Production, Back Projecting
 - **Trackeo**: Con trackeo, Sin trackeo
-- **Empresas (facturación)**: Productora MG, Anzur, Distrisur, Orgaz
+- **Empresas (facturación)**: MG M1, MG M2
 - **Moneda**: ARS, USD
+
+## 7. Roles de usuario (futuro)
+
+Todavía **no hay sistema de login ni de usuarios** — toda la app es de acceso
+libre con la URL. Cuando se implemente, está pensado que existan tres
+perfiles:
+
+- **Administración**: además de ver todos los eventos, puede marcar un
+  evento como "Facturado", marcar que se cobró, y subir facturas y
+  comprobantes de pago.
+- **Creador de eventos**: puede ver toda la información de los eventos
+  (crear, editar, consultar), pero **no** puede marcar "Facturado", **no**
+  puede subir comprobantes de pago ni facturas.
+- **Admin (super-admin)**: control total — agregar, eliminar y modificar
+  usuarios y sus permisos, además de todas las capacidades de los otros dos
+  perfiles.
+
+Cuando se implemente login, lo más simple es usar **Supabase Auth** +
+una tabla `usuarios` (o una columna `rol` en una tabla de perfiles) y
+restringir las políticas RLS de `eventos`/`personas` según `auth.uid()` y el
+rol de cada usuario. La UI ya está organizada para que los controles de
+"Facturado / Comprobante de pago / Facturado total" (en el detalle del
+evento) puedan ocultarse o deshabilitarse fácilmente según el rol.
