@@ -161,6 +161,42 @@ begin
 end $$;
 
 -- ---------------------------------------------------------------------
+-- Usuarios (login + roles)
+-- ---------------------------------------------------------------------
+-- Tabla simple de usuarios para login interno. Las contraseñas se guardan
+-- como SHA-256 hex con salt por usuario (calculado en el cliente).
+-- Roles iniciales: 'admin', 'contabilidad', 'produccion'. Se pueden
+-- agregar nuevos roles desde el panel de Usuarios.
+create table if not exists public.usuarios (
+  id uuid primary key default gen_random_uuid(),
+  created_at timestamptz not null default now(),
+  nombre text not null unique,
+  password_hash text not null,
+  password_salt text not null,
+  rol text not null default 'produccion',
+  activo boolean not null default true
+);
+
+alter table public.usuarios enable row level security;
+
+drop policy if exists "Acceso interno completo" on public.usuarios;
+create policy "Acceso interno completo"
+  on public.usuarios
+  for all
+  using (true)
+  with check (true);
+
+do $$
+begin
+  if not exists (
+    select 1 from pg_publication_tables
+    where pubname = 'supabase_realtime' and tablename = 'usuarios'
+  ) then
+    alter publication supabase_realtime add table public.usuarios;
+  end if;
+end $$;
+
+-- ---------------------------------------------------------------------
 -- Storage: bucket para facturas y comprobantes de pago de cada evento
 -- ---------------------------------------------------------------------
 insert into storage.buckets (id, name, public)

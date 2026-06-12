@@ -3,7 +3,8 @@ import {
   Plus, Search, Calendar, Film, Layers, Camera, Crosshair,
   Wrench, Users, Building2, Phone, FileText, Check, X,
   Trash2, Pencil, AlertTriangle, Clock, DollarSign, ChevronLeft,
-  Download, Upload, WifiOff, RefreshCw, Paperclip, Receipt, Eye
+  Download, Upload, WifiOff, RefreshCw, Paperclip, Receipt, Eye,
+  LogOut, KeyRound, UserCog, ShieldCheck, Lock
 } from "lucide-react";
 import { listEventos, upsertEvento, deleteEvento, subscribeEventos } from "./lib/eventosApi";
 import { listPersonas, upsertPersona, deletePersona, subscribePersonas } from "./lib/personasApi";
@@ -13,6 +14,11 @@ import {
 } from "./lib/categoriasPersonalApi";
 import { subirArchivo, urlArchivo, borrarArchivo } from "./lib/storageApi";
 import { isSupabaseConfigured } from "./lib/supabaseClient";
+import {
+  listUsuarios, crearUsuario, actualizarUsuario, cambiarPassword, borrarUsuario,
+  loginUsuario, seedUsuariosIniciales, guardarSesion, leerSesion, subscribeUsuarios,
+  ROLES, perms,
+} from "./lib/usuariosApi";
 
 /* ---------- constantes ---------- */
 const CATEGORIAS = ["Videoclip", "Publicidad", "Película", "Serie"];
@@ -110,13 +116,72 @@ const empresaLabel = (d) =>
 
 /* ===================================================================== */
 export default function PanelEventos() {
+  /* ---------- sesión / usuarios ---------- */
+  const [usuario, setUsuario] = useState(() => leerSesion());
+  const [bootError, setBootError] = useState("");
+  const [usuarios, setUsuarios] = useState([]);
+  const [seedInfo, setSeedInfo] = useState(null); // {sembrados, defaults} si recién creamos los iniciales
+
+  const recargarUsuarios = useCallback(async () => {
+    try {
+      const data = await listUsuarios();
+      setUsuarios(data);
+    } catch (e) {
+      console.error(e);
+    }
+  }, []);
+
+  // Bootstrap: si no hay usuarios todavía en la base, los sembramos.
+  useEffect(() => {
+    (async () => {
+      try {
+        const info = await seedUsuariosIniciales();
+        if (info.sembrados) setSeedInfo(info);
+        await recargarUsuarios();
+      } catch (e) {
+        console.error(e);
+        const msg = String(e?.message || "");
+        if (e?.code === "42P01" || /relation .* does not exist|could not find the table/i.test(msg)) {
+          setBootError(
+            "Falta correr la versión actualizada de supabase/schema.sql en Supabase " +
+            "(SQL Editor → New query → Run) para crear la tabla de usuarios."
+          );
+        } else {
+          setBootError("No se pudo inicializar usuarios: " + msg);
+        }
+      }
+    })();
+  }, [recargarUsuarios]);
+
+  // Realtime: si el admin agrega/edita usuarios desde otra pantalla
+  useEffect(() => {
+    const unsub = subscribeUsuarios(() => recargarUsuarios());
+    return unsub;
+  }, [recargarUsuarios]);
+
+  const hacerLogin = async (nombre, password) => {
+    const u = await loginUsuario(nombre, password);
+    if (!u) throw new Error("Usuario o contraseña incorrectos.");
+    guardarSesion(u);
+    setUsuario(u);
+    return u;
+  };
+
+  const hacerLogout = () => {
+    guardarSesion(null);
+    setUsuario(null);
+  };
+
+  const p = useMemo(() => perms(usuario?.rol), [usuario]);
+
+  /* ---------- datos del panel ---------- */
   const [eventos, setEventos] = useState([]);
   const [personas, setPersonas] = useState([]);
   const [categoriasPersonal, setCategoriasPersonal] = useState([]);
   const [cargando, setCargando] = useState(true);
   const [error, setError] = useState("");
   const [guardando, setGuardando] = useState(false);
-  const [vista, setVista] = useState("lista"); // lista | form | detalle | dashboard | personal
+  const [vista, setVista] = useState("lista"); // lista | form | detalle | dashboard | personal | usuarios
   const [editId, setEditId] = useState(null);
   const [verId, setVerId] = useState(null);
   const [busqueda, setBusqueda] = useState("");
@@ -357,6 +422,40 @@ export default function PanelEventos() {
   const eventoEdit = editId ? eventos.find((e) => e.id === editId) : null;
   const eventoVer = verId ? eventos.find((e) => e.id === verId) : null;
 
+  /* ---------- handlers de usuarios (admin) ---------- */
+  const onCrearUsuario = async (datos) => {
+    await crearUsuario(datos);
+    await recargarUsuarios();
+  };
+  const onActualizarUsuario = async (datos) => {
+    await actualizarUsuario(datos);
+    await recargarUsuarios();
+  };
+  const onCambiarPassword = async (id, nueva) => {
+    await cambiarPassword(id, nueva);
+    await recargarUsuarios();
+  };
+  const onBorrarUsuario = async (id) => {
+    if (id === usuario?.id) {
+      alert("No podés borrar tu propio usuario.");
+      return;
+    }
+    await borrarUsuario(id);
+    await recargarUsuarios();
+  };
+
+  /* ---------- Login screen ---------- */
+  if (!usuario) {
+    return (
+      <Login
+        onLogin={hacerLogin}
+        bootError={bootError}
+        seedInfo={seedInfo}
+        hayUsuarios={usuarios.length > 0}
+      />
+    );
+  }
+
   return (
     <div
       style={{ background: C.bg, color: C.text, fontFamily: "ui-sans-serif, system-ui, sans-serif" }}
@@ -403,23 +502,43 @@ export default function PanelEventos() {
               </span>
             )}
           </Tab>
-          <IconBtn onClick={exportarJSON} title="Exportar respaldo (JSON)">
-            <Download size={15} />
-          </IconBtn>
-          <input
-            ref={fileInputRef} type="file" accept="application/json" className="hidden"
-            onChange={(e) => { const f = e.target.files?.[0]; if (f) importarJSON(f); e.target.value = ""; }}
-          />
-          <IconBtn onClick={() => fileInputRef.current?.click()} title="Importar respaldo (JSON)">
-            <Upload size={15} />
-          </IconBtn>
-          <button
-            onClick={() => { setEditId(null); setVista("form"); }}
-            className="ml-1 flex items-center gap-1.5 text-sm font-medium px-3 py-1.5 rounded-md transition-colors"
-            style={{ background: C.gold, color: C.onGold }}
-          >
-            <Plus size={16} /> <span className="hidden sm:inline">Nuevo evento</span>
-          </button>
+          {p.usuarios && (
+            <Tab active={vista === "usuarios"} onClick={() => setVista("usuarios")} icon={<UserCog size={15} />}>
+              Usuarios
+            </Tab>
+          )}
+          {p.importarExportar && (
+            <>
+              <IconBtn onClick={exportarJSON} title="Exportar respaldo (JSON)">
+                <Download size={15} />
+              </IconBtn>
+              <input
+                ref={fileInputRef} type="file" accept="application/json" className="hidden"
+                onChange={(e) => { const f = e.target.files?.[0]; if (f) importarJSON(f); e.target.value = ""; }}
+              />
+              <IconBtn onClick={() => fileInputRef.current?.click()} title="Importar respaldo (JSON)">
+                <Upload size={15} />
+              </IconBtn>
+            </>
+          )}
+          {p.eventoCrear && (
+            <button
+              onClick={() => { setEditId(null); setVista("form"); }}
+              className="ml-1 flex items-center gap-1.5 text-sm font-medium px-3 py-1.5 rounded-md transition-colors"
+              style={{ background: C.gold, color: C.onGold }}
+            >
+              <Plus size={16} /> <span className="hidden sm:inline">Nuevo evento</span>
+            </button>
+          )}
+          <div className="ml-2 flex items-center gap-2 pl-2" style={{ borderLeft: `1px solid ${C.border}` }}>
+            <div className="hidden sm:flex flex-col leading-tight items-end">
+              <span className="text-xs font-medium">{usuario.nombre}</span>
+              <span className="text-[10px] font-mono uppercase tracking-wide" style={{ color: C.gold }}>{usuario.rol}</span>
+            </div>
+            <IconBtn onClick={hacerLogout} title="Cerrar sesión">
+              <LogOut size={15} />
+            </IconBtn>
+          </div>
         </nav>
       </header>
 
@@ -459,12 +578,22 @@ export default function PanelEventos() {
             onEdit={() => { setEditId(eventoVer.id); setVista("form"); }}
             onDelete={() => borrarEvento(eventoVer.id)}
             onUpdate={(patch) => actualizarEvento(eventoVer.id, patch)}
+            perms={p}
           />
         ) : vista === "dashboard" ? (
           <Dashboard
             pendFact={pendFact}
             pendComp={pendComp}
             onVer={(id) => { setVerId(id); setVista("detalle"); }}
+          />
+        ) : vista === "usuarios" && p.usuarios ? (
+          <Usuarios
+            usuarios={usuarios}
+            actual={usuario}
+            onCrear={onCrearUsuario}
+            onActualizar={onActualizarUsuario}
+            onCambiarPassword={onCambiarPassword}
+            onBorrar={onBorrarUsuario}
           />
         ) : vista === "personal" ? (
           <Personal
@@ -474,6 +603,7 @@ export default function PanelEventos() {
             onDelete={borrarPersona}
             onSaveCategoria={guardarCategoriaPersonal}
             onDeleteCategoria={borrarCategoriaPersonal}
+            perms={p}
           />
         ) : (
           <Lista
@@ -488,6 +618,7 @@ export default function PanelEventos() {
             onEdit={(id) => { setEditId(id); setVista("form"); }}
             onDelete={borrarEvento}
             onNuevo={() => { setEditId(null); setVista("form"); }}
+            perms={p}
           />
         )}
       </main>
@@ -529,7 +660,7 @@ function Badge({ color, children, solid }) {
 }
 
 /* ====================== LISTA ====================== */
-function Lista({ eventos, total, busqueda, setBusqueda, filtroCat, setFiltroCat, filtroEmp, setFiltroEmp, filtroTiempo, setFiltroTiempo, conteosTiempo, onVer, onEdit, onDelete, onNuevo }) {
+function Lista({ eventos, total, busqueda, setBusqueda, filtroCat, setFiltroCat, filtroEmp, setFiltroEmp, filtroTiempo, setFiltroTiempo, conteosTiempo, onVer, onEdit, onDelete, onNuevo, perms = {} }) {
   const hoyISO = new Date().toISOString().slice(0, 10);
   const tabs = [
     { value: "proximos", label: "Próximos", count: conteosTiempo.proximos },
@@ -585,7 +716,7 @@ function Lista({ eventos, total, busqueda, setBusqueda, filtroCat, setFiltroCat,
           <p className="text-sm" style={{ color: C.dim }}>
             {total === 0 ? "Todavía no cargaste eventos." : "Ningún evento coincide con el filtro."}
           </p>
-          {total === 0 && (
+          {total === 0 && perms.eventoCrear && (
             <button onClick={onNuevo} className="mt-4 text-sm font-medium px-4 py-2 rounded-md inline-flex items-center gap-1.5"
               style={{ background: C.gold, color: C.onGold }}>
               <Plus size={15} /> Cargar el primero
@@ -629,8 +760,12 @@ function Lista({ eventos, total, busqueda, setBusqueda, filtroCat, setFiltroCat,
                   </div>
                 </div>
                 <div className="flex gap-1 opacity-60 group-hover:opacity-100 transition-opacity">
-                  <IconBtn onClick={(ev) => { ev.stopPropagation(); onEdit(e.id); }} title="Editar"><Pencil size={15} /></IconBtn>
-                  <IconBtn onClick={(ev) => { ev.stopPropagation(); if (confirm("¿Borrar evento?")) onDelete(e.id); }} title="Borrar" danger><Trash2 size={15} /></IconBtn>
+                  {perms.eventoEditar && (
+                    <IconBtn onClick={(ev) => { ev.stopPropagation(); onEdit(e.id); }} title="Editar"><Pencil size={15} /></IconBtn>
+                  )}
+                  {perms.eventoBorrar && (
+                    <IconBtn onClick={(ev) => { ev.stopPropagation(); if (confirm("¿Borrar evento?")) onDelete(e.id); }} title="Borrar" danger><Trash2 size={15} /></IconBtn>
+                  )}
                 </div>
               </div>
             </div>
@@ -715,7 +850,7 @@ function TablaPend({ titulo, icon, color, rows, onVer, vacio }) {
 }
 
 /* ====================== PERSONAL ====================== */
-function Personal({ personas, categorias, onSave, onDelete, onSaveCategoria, onDeleteCategoria }) {
+function Personal({ personas, categorias, onSave, onDelete, onSaveCategoria, onDeleteCategoria, perms = {} }) {
   const vacio = { nombre: "", rolHabitual: "", telefono: "", email: "", categoriaId: "", activo: true };
   const [editando, setEditando] = useState(null); // null | "new" | persona id
   const [f, setF] = useState(vacio);
@@ -757,14 +892,18 @@ function Personal({ personas, categorias, onSave, onDelete, onSaveCategoria, onD
         <h1 className="text-lg font-semibold flex-1">Personal</h1>
         {editando === null && (
           <>
-            <button onClick={() => setCatAbierto(true)} className="text-sm font-medium px-3 py-1.5 rounded-md flex items-center gap-1.5"
-              style={{ background: C.gold, color: C.onGold }}>
-              <Plus size={15} /> Agregar categoría
-            </button>
-            <button onClick={empezarNuevo} className="text-sm font-medium px-3 py-1.5 rounded-md flex items-center gap-1.5"
-              style={{ background: C.gold, color: C.onGold }}>
-              <Plus size={15} /> Agregar persona
-            </button>
+            {perms.categoriaAgregar && (
+              <button onClick={() => setCatAbierto(true)} className="text-sm font-medium px-3 py-1.5 rounded-md flex items-center gap-1.5"
+                style={{ background: C.gold, color: C.onGold }}>
+                <Plus size={15} /> Agregar categoría
+              </button>
+            )}
+            {perms.personalAgregar && (
+              <button onClick={empezarNuevo} className="text-sm font-medium px-3 py-1.5 rounded-md flex items-center gap-1.5"
+                style={{ background: C.gold, color: C.onGold }}>
+                <Plus size={15} /> Agregar persona
+              </button>
+            )}
           </>
         )}
       </div>
@@ -782,6 +921,7 @@ function Personal({ personas, categorias, onSave, onDelete, onSaveCategoria, onD
         onDelete={onDeleteCategoria}
         abierto={catAbierto}
         setAbierto={setCatAbierto}
+        perms={perms}
       />
 
       {editando !== null && (
@@ -895,8 +1035,12 @@ function Personal({ personas, categorias, onSave, onDelete, onSaveCategoria, onD
                       </div>
                     </div>
                     <div className="flex gap-1">
-                      <IconBtn onClick={() => empezarEditar(p)} title="Editar"><Pencil size={15} /></IconBtn>
-                      <IconBtn onClick={() => { if (confirm("¿Borrar de la lista de personal?")) onDelete(p.id); }} title="Borrar" danger><Trash2 size={15} /></IconBtn>
+                      {perms.personalEditar && (
+                        <IconBtn onClick={() => empezarEditar(p)} title="Editar"><Pencil size={15} /></IconBtn>
+                      )}
+                      {perms.personalBorrar && (
+                        <IconBtn onClick={() => { if (confirm("¿Borrar de la lista de personal?")) onDelete(p.id); }} title="Borrar" danger><Trash2 size={15} /></IconBtn>
+                      )}
                     </div>
                   </div>
                 ))}
@@ -910,7 +1054,7 @@ function Personal({ personas, categorias, onSave, onDelete, onSaveCategoria, onD
 }
 
 /* Bloque para gestionar las categorías del personal (crear / renombrar / borrar). */
-function CategoriasPersonal({ categorias, personas, onSave, onDelete, abierto, setAbierto }) {
+function CategoriasPersonal({ categorias, personas, onSave, onDelete, abierto, setAbierto, perms = {} }) {
   const [nuevo, setNuevo] = useState("");
   const [editId, setEditId] = useState(null);
   const [editNombre, setEditNombre] = useState("");
@@ -963,20 +1107,22 @@ function CategoriasPersonal({ categorias, personas, onSave, onDelete, abierto, s
 
       {abierto && (
         <div className="px-4 pb-4">
-          <div className="flex gap-2 mb-3">
-            <Input
-              value={nuevo}
-              onChange={setNuevo}
-              placeholder="Nueva categoría (ej: Cámara, Iluminación, Producción…)"
-            />
-            <button
-              onClick={agregar}
-              className="text-sm font-medium px-3 py-2 rounded-md flex items-center gap-1.5 shrink-0"
-              style={{ background: C.gold, color: C.onGold }}
-            >
-              <Plus size={14} /> Agregar
-            </button>
-          </div>
+          {perms.categoriaAgregar && (
+            <div className="flex gap-2 mb-3">
+              <Input
+                value={nuevo}
+                onChange={setNuevo}
+                placeholder="Nueva categoría (ej: Cámara, Iluminación, Producción…)"
+              />
+              <button
+                onClick={agregar}
+                className="text-sm font-medium px-3 py-2 rounded-md flex items-center gap-1.5 shrink-0"
+                style={{ background: C.gold, color: C.onGold }}
+              >
+                <Plus size={14} /> Agregar
+              </button>
+            </div>
+          )}
 
           {categorias.length === 0 ? (
             <p className="text-xs py-2" style={{ color: C.dim }}>
@@ -1002,8 +1148,12 @@ function CategoriasPersonal({ categorias, personas, onSave, onDelete, abierto, s
                       <span className="font-mono text-[10px] px-1.5 py-0.5 rounded-full" style={{ background: C.panel, color: C.dim }}>
                         {cuenta(c.id)}
                       </span>
-                      <IconBtn onClick={() => { setEditId(c.id); setEditNombre(c.nombre); }} title="Renombrar"><Pencil size={13} /></IconBtn>
-                      <IconBtn onClick={() => borrar(c)} title="Borrar" danger><Trash2 size={13} /></IconBtn>
+                      {perms.categoriaEditar && (
+                        <IconBtn onClick={() => { setEditId(c.id); setEditNombre(c.nombre); }} title="Renombrar"><Pencil size={13} /></IconBtn>
+                      )}
+                      {perms.categoriaBorrar && (
+                        <IconBtn onClick={() => borrar(c)} title="Borrar" danger><Trash2 size={13} /></IconBtn>
+                      )}
                     </>
                   )}
                 </div>
@@ -1017,14 +1167,18 @@ function CategoriasPersonal({ categorias, personas, onSave, onDelete, abierto, s
 }
 
 /* ====================== DETALLE ====================== */
-function Detalle({ ev, onBack, onEdit, onDelete, onUpdate }) {
+function Detalle({ ev, onBack, onEdit, onDelete, onUpdate, perms = {} }) {
   return (
     <div className="fade">
       <div className="flex items-center gap-2 mb-4">
         <IconBtn onClick={onBack} title="Volver"><ChevronLeft size={18} /></IconBtn>
         <h1 className="text-lg font-semibold flex-1 truncate">{ev.nombre || "Sin nombre"}</h1>
-        <button onClick={onEdit} className="text-sm flex items-center gap-1.5 px-3 py-1.5 rounded-md" style={{ background: C.panel2, border: `1px solid ${C.border}` }}><Pencil size={14} /> Editar</button>
-        <IconBtn onClick={() => { if (confirm("¿Borrar evento?")) onDelete(); }} title="Borrar" danger><Trash2 size={16} /></IconBtn>
+        {perms.eventoEditar && (
+          <button onClick={onEdit} className="text-sm flex items-center gap-1.5 px-3 py-1.5 rounded-md" style={{ background: C.panel2, border: `1px solid ${C.border}` }}><Pencil size={14} /> Editar</button>
+        )}
+        {perms.eventoBorrar && (
+          <IconBtn onClick={() => { if (confirm("¿Borrar evento?")) onDelete(); }} title="Borrar" danger><Trash2 size={16} /></IconBtn>
+        )}
       </div>
 
       <div className="flex flex-wrap gap-1.5 mb-4">
@@ -1063,17 +1217,27 @@ function Detalle({ ev, onBack, onEdit, onDelete, onUpdate }) {
 
         <Card titulo="Estado administrativo" icon={<DollarSign size={15} color={C.gold} />}>
           <p className="text-xs mb-1" style={{ color: C.dim }}>
-            Editable solo por administración una vez creado el evento.
+            {perms.eventoFacturar
+              ? "Editable solo por administración una vez creado el evento."
+              : "Solo administración / contabilidad puede modificar este estado."}
           </p>
-          <Toggle checked={ev.facturado} onChange={(v) => onUpdate({ facturado: v })} label="Facturado" />
-          <Toggle checked={ev.comprobantePago} onChange={(v) => onUpdate({ comprobantePago: v })} label="Comprobante de pago adjunto" />
-          <Toggle checked={ev.facturadoTotal} onChange={(v) => onUpdate({ facturadoTotal: v })} label="Facturado total" />
+          <Toggle checked={ev.facturado} onChange={(v) => onUpdate({ facturado: v })} label="Facturado" disabled={!perms.eventoFacturar} />
+          <Toggle checked={ev.comprobantePago} onChange={(v) => onUpdate({ comprobantePago: v })} label="Comprobante de pago adjunto" disabled={!perms.eventoFacturar} />
+          <Toggle checked={ev.facturadoTotal} onChange={(v) => onUpdate({ facturadoTotal: v })} label="Facturado total" disabled={!perms.eventoFacturar} />
           <p className="text-[11px] mt-2" style={{ color: C.dim }}>
             Los marcadores se actualizan automáticamente al subir archivos en la sección de abajo.
           </p>
         </Card>
 
-        <Archivos ev={ev} onUpdate={onUpdate} />
+        {perms.archivos ? (
+          <Archivos ev={ev} onUpdate={onUpdate} />
+        ) : (
+          <div className="sm:col-span-2 rounded-xl p-4 flex items-center gap-2 text-xs"
+               style={{ background: C.panel, border: `1px dashed ${C.border}`, color: C.dim }}>
+            <Lock size={14} color={C.dim} />
+            Los archivos (facturas y comprobantes) los administra el área de contabilidad.
+          </div>
+        )}
 
         <Card titulo="Equipo" icon={<Users size={15} color={C.gold} />}>
           {ev.integrantes?.length ? (
@@ -1716,9 +1880,15 @@ function SelectKV({ value, onChange, options, placeholder, compact }) {
     </select>
   );
 }
-function Toggle({ checked, onChange, label }) {
+function Toggle({ checked, onChange, label, disabled }) {
   return (
-    <button onClick={() => onChange(!checked)} className="flex items-center gap-2 text-sm">
+    <button
+      onClick={() => !disabled && onChange(!checked)}
+      disabled={disabled}
+      className="flex items-center gap-2 text-sm"
+      style={{ cursor: disabled ? "not-allowed" : "pointer", opacity: disabled ? 0.55 : 1 }}
+      title={disabled ? "No tenés permiso para cambiar esto" : undefined}
+    >
       <span className="grid place-items-center rounded transition-colors" style={{
         width: 20, height: 20, background: checked ? C.gold : C.panel2,
         border: `1px solid ${checked ? C.gold : C.border}`,
@@ -1738,5 +1908,320 @@ function IconBtn({ onClick, children, title, danger }) {
       onMouseLeave={(e) => e.currentTarget.style.color = danger ? C.rose : C.dim}>
       {children}
     </button>
+  );
+}
+
+/* ====================== LOGIN ====================== */
+function Login({ onLogin, bootError, seedInfo, hayUsuarios }) {
+  const [nombre, setNombre] = useState("");
+  const [password, setPassword] = useState("");
+  const [error, setError] = useState("");
+  const [cargando, setCargando] = useState(false);
+
+  const submit = async (e) => {
+    e.preventDefault();
+    setError("");
+    setCargando(true);
+    try {
+      await onLogin(nombre, password);
+    } catch (err) {
+      setError(err.message || "No se pudo iniciar sesión.");
+    } finally {
+      setCargando(false);
+    }
+  };
+
+  return (
+    <div
+      style={{ background: C.bg, color: C.text, fontFamily: "ui-sans-serif, system-ui, sans-serif" }}
+      className="min-h-screen w-full flex items-center justify-center px-4"
+    >
+      <div className="w-full max-w-sm">
+        <div className="flex items-center gap-3 mb-6 justify-center">
+          <div className="led grid place-items-center rounded-md"
+               style={{ width: 44, height: 44, background: C.panel2 }}>
+            <Camera size={22} color={C.gold} />
+          </div>
+          <div className="leading-tight">
+            <div className="font-semibold tracking-tight">Panel de Eventos</div>
+            <div style={{ color: C.dim }} className="text-[11px] font-mono">PRODUCCIÓN · VIRTUAL STUDIO</div>
+          </div>
+        </div>
+
+        {bootError && (
+          <div className="mb-4 p-3 rounded-md text-xs flex items-start gap-2"
+               style={{ background: `${C.rose}1a`, border: `1px solid ${C.rose}40`, color: C.rose }}>
+            <AlertTriangle size={14} className="mt-0.5 shrink-0" />
+            <span>{bootError}</span>
+          </div>
+        )}
+
+        {seedInfo?.sembrados && (
+          <div className="mb-4 p-3 rounded-md text-xs"
+               style={{ background: `${C.amber}1a`, border: `1px solid ${C.amber}40`, color: C.amber }}>
+            <div className="flex items-center gap-2 font-medium mb-1.5">
+              <ShieldCheck size={14} /> Usuarios iniciales creados
+            </div>
+            <div style={{ color: C.text }} className="grid gap-0.5 font-mono">
+              {seedInfo.defaults.map((u) => (
+                <div key={u.nombre}>· <b>{u.nombre}</b> / {u.password} · <span style={{ color: C.dim }}>{u.rol}</span></div>
+              ))}
+            </div>
+            <div className="mt-2" style={{ color: C.dim }}>
+              Cambiá las contraseñas desde el panel de Usuarios después de entrar como admin.
+            </div>
+          </div>
+        )}
+
+        <form onSubmit={submit} className="rounded-xl p-5"
+              style={{ background: C.panel, border: `1px solid ${C.border}` }}>
+          <h1 className="text-base font-semibold mb-4 flex items-center gap-2">
+            <KeyRound size={16} color={C.gold} /> Iniciar sesión
+          </h1>
+
+          <label className="text-xs block mb-1" style={{ color: C.dim }}>Usuario</label>
+          <Input value={nombre} onChange={setNombre} placeholder="admin / nacho / pablo" />
+
+          <label className="text-xs block mb-1 mt-3" style={{ color: C.dim }}>Contraseña</label>
+          <input
+            type="password"
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+            placeholder="••••"
+            autoComplete="current-password"
+            className="w-full text-sm px-3 py-2 rounded-md"
+            style={{ background: C.panel2, border: `1px solid ${C.border}`, color: C.text, colorScheme: "dark" }}
+          />
+
+          {error && (
+            <div className="mt-3 text-xs flex items-center gap-1.5" style={{ color: C.rose }}>
+              <AlertTriangle size={12} /> {error}
+            </div>
+          )}
+
+          <button
+            type="submit"
+            disabled={cargando}
+            className="mt-4 w-full text-sm font-medium px-4 py-2.5 rounded-md flex items-center justify-center gap-1.5"
+            style={{ background: C.gold, color: C.onGold, opacity: cargando ? 0.6 : 1 }}
+          >
+            {cargando ? "Verificando…" : (<><KeyRound size={14} /> Entrar</>)}
+          </button>
+
+          {!hayUsuarios && !bootError && (
+            <p className="text-[11px] mt-3 text-center" style={{ color: C.dim }}>
+              Inicializando usuarios… recargá la página si tarda más de unos segundos.
+            </p>
+          )}
+        </form>
+      </div>
+    </div>
+  );
+}
+
+/* ====================== USUARIOS (admin) ====================== */
+function Usuarios({ usuarios, actual, onCrear, onActualizar, onCambiarPassword, onBorrar }) {
+  const [creando, setCreando] = useState(false);
+  const [nuevoNombre, setNuevoNombre] = useState("");
+  const [nuevoPass, setNuevoPass] = useState("");
+  const [nuevoRol, setNuevoRol] = useState("produccion");
+  const [editPassId, setEditPassId] = useState(null);
+  const [editPassValor, setEditPassValor] = useState("");
+  const [editRolId, setEditRolId] = useState(null);
+  const [editRolValor, setEditRolValor] = useState("");
+
+  const rolLabel = (r) => ROLES.find((x) => x.value === r)?.label || r;
+
+  const crear = async () => {
+    try {
+      await onCrear({ nombre: nuevoNombre, password: nuevoPass, rol: nuevoRol });
+      setNuevoNombre(""); setNuevoPass(""); setNuevoRol("produccion");
+      setCreando(false);
+    } catch (e) {
+      alert("No se pudo crear el usuario: " + e.message);
+    }
+  };
+
+  const guardarPass = async (id) => {
+    try {
+      await onCambiarPassword(id, editPassValor);
+      setEditPassId(null); setEditPassValor("");
+      alert("Contraseña actualizada.");
+    } catch (e) {
+      alert("No se pudo cambiar la contraseña: " + e.message);
+    }
+  };
+
+  const guardarRol = async (u) => {
+    try {
+      await onActualizar({ id: u.id, rol: editRolValor });
+      setEditRolId(null);
+    } catch (e) {
+      alert("No se pudo cambiar el rol: " + e.message);
+    }
+  };
+
+  const toggleActivo = async (u) => {
+    if (u.id === actual.id && u.activo) {
+      alert("No podés desactivar tu propio usuario.");
+      return;
+    }
+    try { await onActualizar({ id: u.id, activo: !u.activo }); }
+    catch (e) { alert("No se pudo actualizar el usuario: " + e.message); }
+  };
+
+  const borrar = async (u) => {
+    if (u.id === actual.id) { alert("No podés borrar tu propio usuario."); return; }
+    if (!confirm(`¿Borrar al usuario "${u.nombre}"? Esta acción no se puede deshacer.`)) return;
+    try { await onBorrar(u.id); }
+    catch (e) { alert("No se pudo borrar el usuario: " + e.message); }
+  };
+
+  return (
+    <div className="fade max-w-3xl">
+      <div className="flex items-center gap-2 mb-4">
+        <h1 className="text-lg font-semibold flex-1">Usuarios</h1>
+        {!creando && (
+          <button onClick={() => setCreando(true)}
+            className="text-sm font-medium px-3 py-1.5 rounded-md flex items-center gap-1.5"
+            style={{ background: C.gold, color: C.onGold }}>
+            <Plus size={15} /> Agregar usuario
+          </button>
+        )}
+      </div>
+
+      <p className="text-xs mb-4" style={{ color: C.dim }}>
+        Cada usuario tiene un rol que define qué puede hacer en el panel. Los
+        roles se pueden ampliar en el futuro; por ahora hay {ROLES.length}.
+      </p>
+
+      {creando && (
+        <div className="rounded-xl p-4 mb-4 grid sm:grid-cols-2 gap-3" style={{ background: C.panel, border: `1px solid ${C.border}` }}>
+          <Field label="Nombre de usuario">
+            <Input value={nuevoNombre} onChange={setNuevoNombre} placeholder="ej: martina" />
+          </Field>
+          <Field label="Contraseña">
+            <input type="password" value={nuevoPass} onChange={(e) => setNuevoPass(e.target.value)} placeholder="mínimo 4 caracteres"
+              className="w-full text-sm px-3 py-2 rounded-md"
+              style={{ background: C.panel2, border: `1px solid ${C.border}`, color: C.text, colorScheme: "dark" }} />
+          </Field>
+          <Field label="Rol" full>
+            <select value={nuevoRol} onChange={(e) => setNuevoRol(e.target.value)}
+              className="w-full text-sm px-3 py-2 rounded-md"
+              style={{ background: C.panel2, border: `1px solid ${C.border}`, color: C.text, colorScheme: "dark" }}>
+              {ROLES.map((r) => (
+                <option key={r.value} value={r.value} style={{ background: C.panel2, color: C.text }}>
+                  {r.label} — {r.desc}
+                </option>
+              ))}
+            </select>
+          </Field>
+          <div className="sm:col-span-2 flex gap-2 justify-end">
+            <button onClick={() => { setCreando(false); setNuevoNombre(""); setNuevoPass(""); }}
+              className="text-sm px-4 py-2 rounded-md"
+              style={{ background: C.panel2, border: `1px solid ${C.border}`, color: C.dim }}>
+              Cancelar
+            </button>
+            <button onClick={crear} className="text-sm font-medium px-5 py-2 rounded-md flex items-center gap-1.5"
+              style={{ background: C.gold, color: C.onGold }}>
+              <Check size={16} /> Crear
+            </button>
+          </div>
+        </div>
+      )}
+
+      <div className="grid gap-2">
+        {usuarios.map((u) => {
+          const yo = u.id === actual.id;
+          return (
+            <div key={u.id} className="rounded-xl p-3.5"
+                 style={{ background: C.panel, border: `1px solid ${C.border}`, opacity: u.activo ? 1 : 0.6 }}>
+              <div className="flex flex-col sm:flex-row sm:items-center gap-2">
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-2">
+                    <span className="font-medium truncate">{u.nombre}</span>
+                    {yo && <Badge color={C.gold}>Vos</Badge>}
+                    {!u.activo && <Badge color={C.dim}>Desactivado</Badge>}
+                  </div>
+                  <div className="text-xs mt-1 flex items-center gap-2 flex-wrap" style={{ color: C.dim }}>
+                    {editRolId === u.id ? (
+                      <>
+                        <select value={editRolValor} onChange={(e) => setEditRolValor(e.target.value)}
+                          className="text-xs px-2 py-1 rounded"
+                          style={{ background: C.panel2, border: `1px solid ${C.border}`, color: C.text, colorScheme: "dark" }}>
+                          {ROLES.map((r) => (
+                            <option key={r.value} value={r.value} style={{ background: C.panel2, color: C.text }}>{r.label}</option>
+                          ))}
+                        </select>
+                        <IconBtn onClick={() => guardarRol(u)} title="Guardar rol"><Check size={14} /></IconBtn>
+                        <IconBtn onClick={() => setEditRolId(null)} title="Cancelar"><X size={14} /></IconBtn>
+                      </>
+                    ) : (
+                      <>
+                        <Badge color={C.gold}>{rolLabel(u.rol)}</Badge>
+                        <span style={{ color: C.dim }}>{ROLES.find((r) => r.value === u.rol)?.desc || ""}</span>
+                      </>
+                    )}
+                  </div>
+                </div>
+
+                <div className="flex gap-1 flex-wrap">
+                  {editRolId !== u.id && (
+                    <button
+                      onClick={() => { setEditRolId(u.id); setEditRolValor(u.rol); }}
+                      title="Cambiar rol"
+                      className="text-xs px-2 py-1.5 rounded-md flex items-center gap-1"
+                      style={{ background: C.panel2, border: `1px solid ${C.border}`, color: C.dim }}
+                    >
+                      <UserCog size={12} /> Rol
+                    </button>
+                  )}
+                  <button
+                    onClick={() => { setEditPassId(u.id); setEditPassValor(""); }}
+                    title="Cambiar contraseña"
+                    className="text-xs px-2 py-1.5 rounded-md flex items-center gap-1"
+                    style={{ background: C.panel2, border: `1px solid ${C.border}`, color: C.dim }}
+                  >
+                    <KeyRound size={12} /> Contraseña
+                  </button>
+                  <button
+                    onClick={() => toggleActivo(u)}
+                    className="text-xs px-2 py-1.5 rounded-md"
+                    style={{ background: C.panel2, border: `1px solid ${C.border}`, color: u.activo ? C.dim : C.amber }}
+                  >
+                    {u.activo ? "Desactivar" : "Activar"}
+                  </button>
+                  <IconBtn onClick={() => borrar(u)} title="Borrar usuario" danger><Trash2 size={14} /></IconBtn>
+                </div>
+              </div>
+
+              {editPassId === u.id && (
+                <div className="flex gap-2 mt-3 pt-3" style={{ borderTop: `1px solid ${C.border}` }}>
+                  <input
+                    type="password"
+                    value={editPassValor}
+                    onChange={(e) => setEditPassValor(e.target.value)}
+                    placeholder="Nueva contraseña (mínimo 4 caracteres)"
+                    className="flex-1 text-sm px-3 py-2 rounded-md"
+                    style={{ background: C.panel2, border: `1px solid ${C.border}`, color: C.text, colorScheme: "dark" }}
+                  />
+                  <button onClick={() => guardarPass(u.id)}
+                    className="text-sm font-medium px-3 py-2 rounded-md flex items-center gap-1.5"
+                    style={{ background: C.gold, color: C.onGold }}>
+                    <Check size={14} /> Guardar
+                  </button>
+                  <IconBtn onClick={() => { setEditPassId(null); setEditPassValor(""); }} title="Cancelar"><X size={14} /></IconBtn>
+                </div>
+              )}
+            </div>
+          );
+        })}
+        {usuarios.length === 0 && (
+          <div className="rounded-xl text-center py-10 px-4" style={{ background: C.panel, border: `1px dashed ${C.border}` }}>
+            <p className="text-sm" style={{ color: C.dim }}>No hay usuarios cargados todavía.</p>
+          </div>
+        )}
+      </div>
+    </div>
   );
 }
