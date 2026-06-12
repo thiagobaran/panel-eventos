@@ -37,6 +37,9 @@ create table if not exists public.eventos (
   facturas jsonb not null default '[]'::jsonb,    -- [{id, name, path, size, uploadedAt}]
   comprobantes jsonb not null default '[]'::jsonb,
 
+  -- Equipo técnico externo (de otra productora): [{nombre, rol}]
+  equipo_externo jsonb not null default '[]'::jsonb,
+
   facturado boolean not null default false,
   comprobante_pago boolean not null default false,
   facturado_total boolean not null default false,
@@ -50,6 +53,7 @@ alter table public.eventos add column if not exists monto_m1 numeric;
 alter table public.eventos add column if not exists monto_m2 numeric;
 alter table public.eventos add column if not exists facturas jsonb not null default '[]'::jsonb;
 alter table public.eventos add column if not exists comprobantes jsonb not null default '[]'::jsonb;
+alter table public.eventos add column if not exists equipo_externo jsonb not null default '[]'::jsonb;
 
 -- Mantiene "updated_at" al día en cada modificación
 create or replace function public.set_updated_at()

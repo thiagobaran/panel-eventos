@@ -59,6 +59,7 @@ const nuevoEvento = () => ({
   equipamiento: false,
   equipamientoDetalle: "",
   integrantes: [],
+  equipoExterno: [],
   director: { nombre: "", telefono: "", email: "" },
   razonSocial: "",
   empresa: "",
@@ -121,6 +122,7 @@ export default function PanelEventos() {
   const [busqueda, setBusqueda] = useState("");
   const [filtroCat, setFiltroCat] = useState("");
   const [filtroEmp, setFiltroEmp] = useState("");
+  const [filtroTiempo, setFiltroTiempo] = useState("proximos"); // proximos | finalizados | todos
   const fileInputRef = useRef(null);
 
   const recargar = useCallback(async () => {
@@ -237,13 +239,30 @@ export default function PanelEventos() {
     }
   };
 
+  const explicarErrorSchema = (e, fallback) => {
+    const msg = String(e?.message || e || "");
+    const code = e?.code || "";
+    const faltaTabla =
+      code === "42P01" ||
+      /relation .* does not exist/i.test(msg) ||
+      /could not find the table/i.test(msg);
+    if (faltaTabla) {
+      return (
+        "Falta correr la versión actualizada de supabase/schema.sql en " +
+        "Supabase (SQL Editor → New query → Run). El script es idempotente: " +
+        "agrega lo nuevo sin tocar lo que ya tenés.\n\nError original: " + msg
+      );
+    }
+    return fallback + msg;
+  };
+
   const guardarCategoriaPersonal = async (categoria) => {
     try {
       await upsertCategoriaPersonal(categoria);
       await recargarCategoriasPersonal();
     } catch (e) {
       console.error(e);
-      alert("No se pudo guardar la categoría: " + e.message);
+      alert(explicarErrorSchema(e, "No se pudo guardar la categoría: "));
     }
   };
 
@@ -253,7 +272,22 @@ export default function PanelEventos() {
       await Promise.all([recargarCategoriasPersonal(), recargarPersonas()]);
     } catch (e) {
       console.error(e);
-      alert("No se pudo borrar la categoría: " + e.message);
+      alert(explicarErrorSchema(e, "No se pudo borrar la categoría: "));
+    }
+  };
+
+  const liberarPersonaDeEvento = async (eventoId, personaId) => {
+    const ev = eventos.find((x) => x.id === eventoId);
+    if (!ev) return;
+    const integrantes = (ev.integrantes || []).filter(
+      (i) => i.personaId !== personaId
+    );
+    try {
+      await upsertEvento({ ...ev, integrantes });
+      await recargar();
+    } catch (e) {
+      console.error(e);
+      alert("No se pudo liberar la persona del otro evento: " + e.message);
     }
   };
 
@@ -285,9 +319,22 @@ export default function PanelEventos() {
   };
 
   /* filtrado */
+  const hoyISO = useMemo(() => new Date().toISOString().slice(0, 10), []);
+
+  const conteosTiempo = useMemo(() => {
+    let prox = 0, fin = 0;
+    for (const e of eventos) {
+      if (!e.fecha) continue;
+      if (e.fecha >= hoyISO) prox += 1; else fin += 1;
+    }
+    return { proximos: prox, finalizados: fin, todos: eventos.length };
+  }, [eventos, hoyISO]);
+
   const filtrados = useMemo(() => {
     const q = busqueda.trim().toLowerCase();
     return eventos.filter((e) => {
+      if (filtroTiempo === "proximos" && (!e.fecha || e.fecha < hoyISO)) return false;
+      if (filtroTiempo === "finalizados" && (!e.fecha || e.fecha >= hoyISO)) return false;
       if (filtroCat && e.categoria !== filtroCat) return false;
       if (filtroEmp && (e.distribucion || "M1") !== filtroEmp) return false;
       if (!q) return true;
@@ -300,7 +347,7 @@ export default function PanelEventos() {
         )
       );
     });
-  }, [eventos, busqueda, filtroCat, filtroEmp]);
+  }, [eventos, busqueda, filtroCat, filtroEmp, filtroTiempo, hoyISO]);
 
   const pendFact = eventos.filter((e) => e.nombre && !e.facturado);
   const pendComp = eventos.filter(
@@ -401,6 +448,8 @@ export default function PanelEventos() {
             onSave={guardarEvento}
             guardando={guardando}
             personas={personas}
+            eventos={eventos}
+            onLiberarPersona={liberarPersonaDeEvento}
             onIrAPersonal={() => setVista("personal")}
           />
         ) : vista === "detalle" && eventoVer ? (
@@ -433,6 +482,8 @@ export default function PanelEventos() {
             busqueda={busqueda} setBusqueda={setBusqueda}
             filtroCat={filtroCat} setFiltroCat={setFiltroCat}
             filtroEmp={filtroEmp} setFiltroEmp={setFiltroEmp}
+            filtroTiempo={filtroTiempo} setFiltroTiempo={setFiltroTiempo}
+            conteosTiempo={conteosTiempo}
             onVer={(id) => { setVerId(id); setVista("detalle"); }}
             onEdit={(id) => { setEditId(id); setVista("form"); }}
             onDelete={borrarEvento}
@@ -478,9 +529,41 @@ function Badge({ color, children, solid }) {
 }
 
 /* ====================== LISTA ====================== */
-function Lista({ eventos, total, busqueda, setBusqueda, filtroCat, setFiltroCat, filtroEmp, setFiltroEmp, onVer, onEdit, onDelete, onNuevo }) {
+function Lista({ eventos, total, busqueda, setBusqueda, filtroCat, setFiltroCat, filtroEmp, setFiltroEmp, filtroTiempo, setFiltroTiempo, conteosTiempo, onVer, onEdit, onDelete, onNuevo }) {
+  const hoyISO = new Date().toISOString().slice(0, 10);
+  const tabs = [
+    { value: "proximos", label: "Próximos", count: conteosTiempo.proximos },
+    { value: "finalizados", label: "Finalizados", count: conteosTiempo.finalizados },
+    { value: "todos", label: "Todos", count: conteosTiempo.todos },
+  ];
   return (
     <div className="fade">
+      {/* pestañas por fecha */}
+      <div className="flex flex-wrap gap-1.5 mb-3">
+        {tabs.map((t) => {
+          const active = filtroTiempo === t.value;
+          return (
+            <button
+              key={t.value}
+              onClick={() => setFiltroTiempo(t.value)}
+              className="flex items-center gap-1.5 text-sm px-3 py-1.5 rounded-md transition-colors"
+              style={{
+                background: active ? C.panel2 : "transparent",
+                color: active ? C.text : C.dim,
+                border: `1px solid ${active ? C.gold : C.border}`,
+              }}
+            >
+              <Calendar size={13} />
+              {t.label}
+              <span className="font-mono text-[10px] px-1.5 rounded-full"
+                style={{ background: active ? C.gold : C.panel2, color: active ? C.onGold : C.dim }}>
+                {t.count}
+              </span>
+            </button>
+          );
+        })}
+      </div>
+
       {/* filtros */}
       <div className="flex flex-wrap gap-2 mb-4 items-center">
         <div className="relative flex-1 min-w-[180px]">
@@ -511,14 +594,20 @@ function Lista({ eventos, total, busqueda, setBusqueda, filtroCat, setFiltroCat,
         </div>
       ) : (
         <div className="grid gap-2.5">
-          {eventos.map((e) => (
+          {eventos.map((e) => {
+            const finalizado = e.fecha && e.fecha < hoyISO;
+            return (
             <div key={e.id} onClick={() => onVer(e.id)}
               className="group rounded-xl p-3.5 cursor-pointer transition-colors flex flex-col sm:flex-row sm:items-center gap-3"
-              style={{ background: C.panel, border: `1px solid ${C.border}` }}
+              style={{
+                background: C.panel,
+                border: `1px solid ${C.border}`,
+                opacity: finalizado ? 0.78 : 1,
+              }}
               onMouseEnter={(ev) => ev.currentTarget.style.borderColor = C.gold + "80"}
               onMouseLeave={(ev) => ev.currentTarget.style.borderColor = C.border}
             >
-              <div className="font-mono text-xs w-20 shrink-0 flex items-center gap-1.5" style={{ color: C.dim }}>
+              <div className="font-mono text-xs w-20 shrink-0 flex items-center gap-1.5" style={{ color: finalizado ? C.dim : C.gold }}>
                 <Calendar size={13} /> {fmtFecha(e.fecha)}
               </div>
               <div className="flex-1 min-w-0">
@@ -534,6 +623,7 @@ function Lista({ eventos, total, busqueda, setBusqueda, filtroCat, setFiltroCat,
                 <div className="text-right">
                   <div className="font-mono text-sm">{fmtMoneda(totalFacturable(e), e.moneda)}</div>
                   <div className="flex gap-1 justify-end mt-1 flex-wrap">
+                    {finalizado && <Badge color={C.dim}>Finalizado</Badge>}
                     {e.facturado ? <Badge solid color={C.green}>Facturado</Badge> : <Badge color={C.amber}>S/ facturar</Badge>}
                     {e.facturado && !e.comprobantePago && <Badge color={C.rose}>S/ comprob.</Badge>}
                   </div>
@@ -544,7 +634,8 @@ function Lista({ eventos, total, busqueda, setBusqueda, filtroCat, setFiltroCat,
                 </div>
               </div>
             </div>
-          ))}
+            );
+          })}
         </div>
       )}
     </div>
@@ -996,6 +1087,9 @@ function Detalle({ ev, onBack, onEdit, onDelete, onUpdate }) {
           <Dato k="Email" v={ev.director?.email || "—"} mono />
         </Card>
 
+        <EquipoExterno ev={ev} />
+
+
         {ev.observaciones && (
           <Card titulo="Observaciones" icon={<FileText size={15} color={C.dim} />} full>
             <p className="text-sm whitespace-pre-wrap leading-relaxed" style={{ color: C.text }}>{ev.observaciones}</p>
@@ -1003,6 +1097,64 @@ function Detalle({ ev, onBack, onEdit, onDelete, onUpdate }) {
         )}
       </div>
     </div>
+  );
+}
+
+/* ====================== EQUIPO EXTERNO (de otra productora) ====================== */
+function EquipoExterno({ ev }) {
+  const lista = ev.equipoExterno || [];
+  const [copiado, setCopiado] = useState(false);
+
+  const textoCreditos = useMemo(() => {
+    if (lista.length === 0) return "";
+    const fecha = ev.fecha ? fmtFecha(ev.fecha) : "";
+    const head = `${ev.nombre || "Evento"}${fecha ? " · " + fecha : ""}\nEquipo técnico:`;
+    const cuerpo = lista
+      .map((p) => `· ${p.nombre}${p.rol ? " — " + p.rol : ""}`)
+      .join("\n");
+    return `${head}\n${cuerpo}`;
+  }, [lista, ev.nombre, ev.fecha]);
+
+  const copiar = async () => {
+    try {
+      await navigator.clipboard.writeText(textoCreditos);
+      setCopiado(true);
+      setTimeout(() => setCopiado(false), 2000);
+    } catch (e) {
+      alert("No se pudo copiar: " + e.message);
+    }
+  };
+
+  if (lista.length === 0) {
+    return (
+      <Card titulo="Equipo técnico externo" icon={<Users size={15} color="#9b8cff" />}>
+        <p className="text-sm" style={{ color: C.dim }}>
+          Sin equipo externo cargado.
+        </p>
+      </Card>
+    );
+  }
+
+  return (
+    <Card titulo="Equipo técnico externo" icon={<Users size={15} color="#9b8cff" />}>
+      <div className="grid gap-1.5">
+        {lista.map((p, idx) => (
+          <div key={idx} className="flex items-center justify-between text-sm py-1" style={{ borderBottom: idx < lista.length - 1 ? `1px solid ${C.border}` : "none" }}>
+            <span>{p.nombre || <span style={{ color: C.dim }}>Sin nombre</span>}</span>
+            <span className="font-mono text-xs px-2 py-0.5 rounded" style={{ background: C.panel2, color: C.dim }}>{p.rol || "—"}</span>
+          </div>
+        ))}
+      </div>
+      <button
+        type="button"
+        onClick={copiar}
+        className="mt-3 text-xs font-medium px-3 py-1.5 rounded-md inline-flex items-center gap-1.5 self-start"
+        style={{ background: C.panel2, border: `1px solid ${C.border}`, color: copiado ? C.green : C.gold }}
+      >
+        {copiado ? <Check size={13} /> : <FileText size={13} />}
+        {copiado ? "Copiado" : "Copiar créditos para redes"}
+      </button>
+    </Card>
   );
 }
 
@@ -1213,7 +1365,7 @@ function Dato({ k, v, mono, accent }) {
 }
 
 /* ====================== FORMULARIO ====================== */
-function FormEvento({ base, onCancel, onSave, guardando, personas = [], onIrAPersonal }) {
+function FormEvento({ base, onCancel, onSave, guardando, personas = [], eventos = [], onLiberarPersona, onIrAPersonal }) {
   const [f, setF] = useState(base);
   const set = (k, v) => setF((p) => ({ ...p, [k]: v }));
   const setDir = (k, v) => setF((p) => ({ ...p, director: { ...p.director, [k]: v } }));
@@ -1229,8 +1381,46 @@ function FormEvento({ base, onCancel, onSave, guardando, personas = [], onIrAPer
   };
   const delIntegrante = (i) => set("integrantes", f.integrantes.filter((_, idx) => idx !== i));
 
+  /* Equipo técnico externo (de otra productora). Inputs libres. */
+  const equipoExterno = f.equipoExterno || [];
+  const addExterno = () => set("equipoExterno", [...equipoExterno, { nombre: "", rol: "" }]);
+  const setExterno = (i, k, v) =>
+    set("equipoExterno", equipoExterno.map((x, idx) => (idx === i ? { ...x, [k]: v } : x)));
+  const delExterno = (i) => set("equipoExterno", equipoExterno.filter((_, idx) => idx !== i));
+
+  /* Conflicto de personal: misma fecha, otra ocupación. */
+  const conflictosPorPersona = (personaId) => {
+    if (!personaId || !f.fecha) return [];
+    return eventos.filter(
+      (ev) =>
+        ev.id !== f.id &&
+        ev.fecha === f.fecha &&
+        (ev.integrantes || []).some((i) => i.personaId === personaId)
+    );
+  };
+  const liberarYReintentar = async (eventoId, personaId) => {
+    if (!onLiberarPersona) return;
+    const ev = eventos.find((x) => x.id === eventoId);
+    if (!ev) return;
+    if (!confirm(`Quitar a esta persona del evento "${ev.nombre || "sin nombre"}" para asignarla acá?`)) return;
+    await onLiberarPersona(eventoId, personaId);
+  };
+
   const submit = () => {
     if (!f.nombre.trim()) { alert("Poné al menos el nombre del evento."); return; }
+    // Bloqueo: si hay personas en conflicto que no fueron liberadas, frenamos.
+    const choques = f.integrantes
+      .filter((i) => i.personaId)
+      .flatMap((i) => conflictosPorPersona(i.personaId).map((c) => ({ p: i, c })));
+    if (choques.length > 0) {
+      const lista = choques
+        .map((x) => `• ${personas.find((p) => p.id === x.p.personaId)?.nombre || "?"} ya está en "${x.c.nombre}"`)
+        .join("\n");
+      alert(
+        `No podés guardar el evento porque hay personas con doble asignación el ${fmtFecha(f.fecha)}:\n\n${lista}\n\nLiberalas del otro evento o quitalas de acá.`
+      );
+      return;
+    }
     onSave(f);
   };
 
@@ -1283,21 +1473,75 @@ function FormEvento({ base, onCancel, onSave, guardando, personas = [], onIrAPer
                 )}
               </p>
             )}
-            {f.integrantes.map((i, idx) => (
-              <div key={idx} className="flex flex-col sm:flex-row gap-2 sm:items-center">
-                <select value={i.personaId || ""} onChange={(e) => elegirPersona(idx, e.target.value)}
-                  className="text-sm px-3 py-2 rounded-md sm:flex-1"
-                  style={{ background: C.panel2, border: `1px solid ${C.border}`, color: i.personaId ? C.text : C.dim, colorScheme: "dark" }}>
-                  <option value="" style={{ background: C.panel2, color: C.dim }}>Elegir persona…</option>
-                  {personas.map((p) => <option key={p.id} value={p.id} style={{ background: C.panel2, color: C.text }}>{p.nombre}</option>)}
-                </select>
-                <Input value={i.rol} onChange={(v) => setIntegrante(idx, "rol", v)} placeholder="Rol en este evento (DF, gaffer…)" />
-                <IconBtn onClick={() => delIntegrante(idx)} title="Quitar" danger><X size={16} /></IconBtn>
-              </div>
-            ))}
+            {f.integrantes.map((i, idx) => {
+              const choques = conflictosPorPersona(i.personaId);
+              return (
+                <div key={idx} className="grid gap-1.5">
+                  <div className="flex flex-col sm:flex-row gap-2 sm:items-center">
+                    <select value={i.personaId || ""} onChange={(e) => elegirPersona(idx, e.target.value)}
+                      className="text-sm px-3 py-2 rounded-md sm:flex-1"
+                      style={{
+                        background: C.panel2,
+                        border: `1px solid ${choques.length > 0 ? C.rose : C.border}`,
+                        color: i.personaId ? C.text : C.dim,
+                        colorScheme: "dark",
+                      }}>
+                      <option value="" style={{ background: C.panel2, color: C.dim }}>Elegir persona…</option>
+                      {personas.map((p) => <option key={p.id} value={p.id} style={{ background: C.panel2, color: C.text }}>{p.nombre}</option>)}
+                    </select>
+                    <Input value={i.rol} onChange={(v) => setIntegrante(idx, "rol", v)} placeholder="Rol en este evento (DF, gaffer…)" />
+                    <IconBtn onClick={() => delIntegrante(idx)} title="Quitar" danger><X size={16} /></IconBtn>
+                  </div>
+                  {choques.length > 0 && (
+                    <div className="text-xs px-3 py-2 rounded-md" style={{ background: `${C.rose}1a`, border: `1px solid ${C.rose}55`, color: C.rose }}>
+                      <div className="flex items-center gap-1.5 font-medium">
+                        <AlertTriangle size={13} />
+                        Esta persona ya está asignada el {fmtFecha(f.fecha)}:
+                      </div>
+                      <div className="grid gap-1 mt-1.5">
+                        {choques.map((c) => (
+                          <div key={c.id} className="flex items-center justify-between gap-2">
+                            <span style={{ color: C.text }}>· {c.nombre || "Sin nombre"}</span>
+                            <button
+                              type="button"
+                              onClick={() => liberarYReintentar(c.id, i.personaId)}
+                              className="text-[11px] font-medium px-2 py-1 rounded"
+                              style={{ background: C.rose, color: "#1a0008" }}
+                            >
+                              Liberar de ese evento
+                            </button>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              );
+            })}
             <button onClick={addIntegrante} className="self-start text-sm flex items-center gap-1.5 px-3 py-1.5 rounded-md mt-1"
               style={{ background: C.panel2, border: `1px solid ${C.border}`, color: C.gold }}>
               <Plus size={14} /> Agregar integrante
+            </button>
+          </div>
+        </Seccion>
+
+        {/* Equipo técnico externo */}
+        <Seccion titulo="Equipo técnico externo" icon={<Users size={15} color="#9b8cff" />}>
+          <div className="sm:col-span-2 grid gap-2">
+            <p className="text-xs" style={{ color: C.dim }}>
+              Equipo aportado por otra productora. Útil para los créditos en
+              redes sociales. No usa el listado interno de personal.
+            </p>
+            {equipoExterno.map((i, idx) => (
+              <div key={idx} className="flex flex-col sm:flex-row gap-2 sm:items-center">
+                <Input value={i.nombre} onChange={(v) => setExterno(idx, "nombre", v)} placeholder="Nombre y apellido" />
+                <Input value={i.rol} onChange={(v) => setExterno(idx, "rol", v)} placeholder="Rol en el evento" />
+                <IconBtn onClick={() => delExterno(idx)} title="Quitar" danger><X size={16} /></IconBtn>
+              </div>
+            ))}
+            <button onClick={addExterno} className="self-start text-sm flex items-center gap-1.5 px-3 py-1.5 rounded-md mt-1"
+              style={{ background: C.panel2, border: `1px solid ${C.border}`, color: C.gold }}>
+              <Plus size={14} /> Agregar técnico externo
             </button>
           </div>
         </Seccion>
