@@ -485,25 +485,6 @@ export default function PanelEventos() {
               Usuarios
             </Tab>
           )}
-          {p.importarExportar && (
-            <button
-              onClick={exportarJSON}
-              title="Exportar respaldo (JSON)"
-              className="flex items-center gap-1.5 text-sm px-3 py-1.5 rounded-md"
-              style={{ background: C.panel2, border: `1px solid ${C.border}`, color: C.dim }}
-            >
-              <Download size={15} /> <span className="hidden sm:inline">Descargar eventos</span>
-            </button>
-          )}
-          {p.eventoCrear && (
-            <button
-              onClick={() => { setEditId(null); setVista("form"); }}
-              className="ml-1 flex items-center gap-1.5 text-sm font-medium px-3 py-1.5 rounded-md transition-colors"
-              style={{ background: C.gold, color: C.onGold }}
-            >
-              <Plus size={16} /> <span className="hidden sm:inline">Nuevo evento</span>
-            </button>
-          )}
           <div className="ml-2 flex items-center gap-2 pl-2" style={{ borderLeft: `1px solid ${C.border}` }}>
             <div className="hidden sm:flex flex-col leading-tight items-end">
               <span className="text-xs font-medium">{usuario.nombre}</span>
@@ -592,6 +573,7 @@ export default function PanelEventos() {
             onEdit={(id) => { setEditId(id); setVista("form"); }}
             onDelete={borrarEvento}
             onNuevo={() => { setEditId(null); setVista("form"); }}
+            onExportar={exportarJSON}
             perms={p}
           />
         )}
@@ -634,7 +616,7 @@ function Badge({ color, children, solid }) {
 }
 
 /* ====================== LISTA ====================== */
-function Lista({ eventos, total, busqueda, setBusqueda, filtroCat, setFiltroCat, filtroEmp, setFiltroEmp, filtroTiempo, setFiltroTiempo, conteosTiempo, onVer, onEdit, onDelete, onNuevo, perms = {} }) {
+function Lista({ eventos, total, busqueda, setBusqueda, filtroCat, setFiltroCat, filtroEmp, setFiltroEmp, filtroTiempo, setFiltroTiempo, conteosTiempo, onVer, onEdit, onDelete, onNuevo, onExportar, perms = {} }) {
   const hoyISO = new Date().toISOString().slice(0, 10);
   const tabs = [
     { value: "proximos", label: "Próximos", count: conteosTiempo.proximos },
@@ -643,8 +625,8 @@ function Lista({ eventos, total, busqueda, setBusqueda, filtroCat, setFiltroCat,
   ];
   return (
     <div className="fade">
-      {/* pestañas por fecha */}
-      <div className="flex flex-wrap gap-1.5 mb-3">
+      {/* pestañas por fecha + acciones */}
+      <div className="flex flex-wrap gap-1.5 mb-3 items-center">
         {tabs.map((t) => {
           const active = filtroTiempo === t.value;
           return (
@@ -667,6 +649,27 @@ function Lista({ eventos, total, busqueda, setBusqueda, filtroCat, setFiltroCat,
             </button>
           );
         })}
+        <div className="ml-auto flex items-center gap-1.5">
+          {perms.importarExportar && (
+            <button
+              onClick={onExportar}
+              title="Exportar respaldo (JSON)"
+              className="flex items-center gap-1.5 text-sm px-3 py-1.5 rounded-md"
+              style={{ background: C.panel2, border: `1px solid ${C.border}`, color: C.dim }}
+            >
+              <Download size={15} /> <span className="hidden sm:inline">Descargar eventos</span>
+            </button>
+          )}
+          {perms.eventoCrear && (
+            <button
+              onClick={onNuevo}
+              className="flex items-center gap-1.5 text-sm font-medium px-3 py-1.5 rounded-md transition-colors"
+              style={{ background: C.gold, color: C.onGold }}
+            >
+              <Plus size={16} /> <span className="hidden sm:inline">Nuevo evento</span>
+            </button>
+          )}
+        </div>
       </div>
 
       {/* filtros */}
