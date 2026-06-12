@@ -882,7 +882,7 @@ function Personal({ personas, categorias, onSave, onDelete, onSaveCategoria, onD
   }, [filtradas, categorias]);
 
   return (
-    <div className="fade max-w-3xl">
+    <div className="fade max-w-3xl mx-auto">
       <div className="flex items-center gap-2 mb-4">
         <h1 className="text-lg font-semibold flex-1">Personal</h1>
         {editando === null && (
@@ -1591,7 +1591,7 @@ function FormEvento({ base, onCancel, onSave, guardando, personas = [], eventos 
   };
 
   return (
-    <div className="fade max-w-3xl">
+    <div className="fade max-w-3xl mx-auto">
       <div className="flex items-center gap-2 mb-5">
         <IconBtn onClick={onCancel} title="Volver"><ChevronLeft size={18} /></IconBtn>
         <h1 className="text-lg font-semibold">{base.nombre ? "Editar evento" : "Nuevo evento"}</h1>
@@ -2053,7 +2053,7 @@ function Usuarios({ usuarios, actual, onCrear, onActualizar, onCambiarPassword, 
   };
 
   return (
-    <div className="fade max-w-3xl">
+    <div className="fade max-w-3xl mx-auto">
       <div className="flex items-center gap-2 mb-4">
         <h1 className="text-lg font-semibold flex-1">Usuarios</h1>
         {!creando && (
