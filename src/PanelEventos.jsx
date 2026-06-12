@@ -1963,7 +1963,7 @@ function Login({ onLogin, bootError, seedInfo, hayUsuarios }) {
           </h1>
 
           <label className="text-xs block mb-1" style={{ color: C.dim }}>Usuario</label>
-          <Input value={nombre} onChange={setNombre} placeholder="admin / nacho / pablo" />
+          <Input value={nombre} onChange={setNombre} placeholder="Usuario" />
 
           <label className="text-xs block mb-1 mt-3" style={{ color: C.dim }}>Contraseña</label>
           <input
