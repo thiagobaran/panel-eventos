@@ -720,6 +720,7 @@ function Personal({ personas, categorias, onSave, onDelete, onSaveCategoria, onD
   const [editando, setEditando] = useState(null); // null | "new" | persona id
   const [f, setF] = useState(vacio);
   const [filtroCatId, setFiltroCatId] = useState(""); // "" todas, "__sin" sin categoría, o id
+  const [catAbierto, setCatAbierto] = useState(false);
 
   const empezarNuevo = () => { setF(vacio); setEditando("new"); };
   const empezarEditar = (p) => { setF({ ...vacio, ...p }); setEditando(p.id); };
@@ -755,18 +756,23 @@ function Personal({ personas, categorias, onSave, onDelete, onSaveCategoria, onD
       <div className="flex items-center gap-2 mb-4">
         <h1 className="text-lg font-semibold flex-1">Personal</h1>
         {editando === null && (
-          <button onClick={empezarNuevo} className="text-sm font-medium px-3 py-1.5 rounded-md flex items-center gap-1.5"
-            style={{ background: C.gold, color: C.onGold }}>
-            <Plus size={15} /> Agregar persona
-          </button>
+          <>
+            <button onClick={() => setCatAbierto(true)} className="text-sm font-medium px-3 py-1.5 rounded-md flex items-center gap-1.5"
+              style={{ background: C.gold, color: C.onGold }}>
+              <Plus size={15} /> Agregar categoría
+            </button>
+            <button onClick={empezarNuevo} className="text-sm font-medium px-3 py-1.5 rounded-md flex items-center gap-1.5"
+              style={{ background: C.gold, color: C.onGold }}>
+              <Plus size={15} /> Agregar persona
+            </button>
+          </>
         )}
       </div>
 
       <p className="text-xs mb-4" style={{ color: C.dim }}>
-        Cargá acá a todo el personal de la productora, agrupado por categoría
-        (Cámara, Iluminación, Producción, etc.). Las categorías las creás vos
-        en el bloque de abajo. Después, al armar un evento, elegís a las personas
-        de esta lista y les asignás el rol puntual.
+        Cargá acá a todo el personal, agrupado por categoría
+        (Cámara, Estudio, Deposito, etc.). Después, al armar un evento,
+        elegís a las personas de esta lista y les asignás el rol puntual.
       </p>
 
       <CategoriasPersonal
@@ -774,6 +780,8 @@ function Personal({ personas, categorias, onSave, onDelete, onSaveCategoria, onD
         personas={personas}
         onSave={onSaveCategoria}
         onDelete={onDeleteCategoria}
+        abierto={catAbierto}
+        setAbierto={setCatAbierto}
       />
 
       {editando !== null && (
@@ -902,8 +910,7 @@ function Personal({ personas, categorias, onSave, onDelete, onSaveCategoria, onD
 }
 
 /* Bloque para gestionar las categorías del personal (crear / renombrar / borrar). */
-function CategoriasPersonal({ categorias, personas, onSave, onDelete }) {
-  const [abierto, setAbierto] = useState(false);
+function CategoriasPersonal({ categorias, personas, onSave, onDelete, abierto, setAbierto }) {
   const [nuevo, setNuevo] = useState("");
   const [editId, setEditId] = useState(null);
   const [editNombre, setEditNombre] = useState("");
