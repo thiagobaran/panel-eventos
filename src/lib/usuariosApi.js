@@ -240,7 +240,7 @@ export function perms(rol) {
         eventoFacturar: false, archivos: false,
         personalAgregar: false, personalEditar: false, personalBorrar: false,
         categoriaAgregar: false, categoriaEditar: false, categoriaBorrar: false,
-        importarExportar: false,
+        importarExportar: true,
         usuarios: false,
       };
     default:
