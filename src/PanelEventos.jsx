@@ -188,7 +188,6 @@ export default function PanelEventos() {
   const [filtroCat, setFiltroCat] = useState("");
   const [filtroEmp, setFiltroEmp] = useState("");
   const [filtroTiempo, setFiltroTiempo] = useState("proximos"); // proximos | finalizados | todos
-  const fileInputRef = useRef(null);
 
   const recargar = useCallback(async () => {
     try {
@@ -367,22 +366,6 @@ export default function PanelEventos() {
     URL.revokeObjectURL(url);
   };
 
-  const importarJSON = async (file) => {
-    try {
-      const texto = await file.text();
-      const data = JSON.parse(texto);
-      if (!Array.isArray(data)) throw new Error("El archivo debe contener una lista de eventos.");
-      for (const ev of data) {
-        await upsertEvento({ ...nuevoEvento(), ...ev, id: ev.id || crypto.randomUUID() });
-      }
-      await recargar();
-      alert(`Se importaron ${data.length} evento(s) correctamente.`);
-    } catch (e) {
-      console.error(e);
-      alert("No se pudo importar el archivo: " + e.message);
-    }
-  };
-
   /* filtrado */
   const hoyISO = useMemo(() => new Date().toISOString().slice(0, 10), []);
 
@@ -503,18 +486,14 @@ export default function PanelEventos() {
             </Tab>
           )}
           {p.importarExportar && (
-            <>
-              <IconBtn onClick={exportarJSON} title="Exportar respaldo (JSON)">
-                <Download size={15} />
-              </IconBtn>
-              <input
-                ref={fileInputRef} type="file" accept="application/json" className="hidden"
-                onChange={(e) => { const f = e.target.files?.[0]; if (f) importarJSON(f); e.target.value = ""; }}
-              />
-              <IconBtn onClick={() => fileInputRef.current?.click()} title="Importar respaldo (JSON)">
-                <Upload size={15} />
-              </IconBtn>
-            </>
+            <button
+              onClick={exportarJSON}
+              title="Exportar respaldo (JSON)"
+              className="flex items-center gap-1.5 text-sm px-3 py-1.5 rounded-md"
+              style={{ background: C.panel2, border: `1px solid ${C.border}`, color: C.dim }}
+            >
+              <Download size={15} /> <span className="hidden sm:inline">Descargar eventos</span>
+            </button>
           )}
           {p.eventoCrear && (
             <button
