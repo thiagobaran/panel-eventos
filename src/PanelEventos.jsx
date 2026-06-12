@@ -479,10 +479,10 @@ export default function PanelEventos() {
       >
         <div className="flex items-center gap-2.5">
           <div
-            className="led grid place-items-center rounded-md"
+            className="led grid place-items-center rounded-md overflow-hidden"
             style={{ width: 34, height: 34, background: C.panel2 }}
           >
-            <Camera size={18} color={C.gold} />
+            <img src="/logo.png" alt="Cacodelphia" className="w-full h-full object-cover" />
           </div>
           <div className="leading-tight">
             <div className="font-semibold tracking-tight text-sm sm:text-base">Sistema eventos Cacodelphia</div>
@@ -1938,13 +1938,13 @@ function Login({ onLogin, bootError, seedInfo, hayUsuarios }) {
     >
       <div className="w-full max-w-sm">
         <div className="flex items-center gap-3 mb-6 justify-center">
-          <div className="led grid place-items-center rounded-md"
+          <div className="led grid place-items-center rounded-md overflow-hidden"
                style={{ width: 44, height: 44, background: C.panel2 }}>
-            <Camera size={22} color={C.gold} />
+            <img src="/logo.png" alt="Cacodelphia" className="w-full h-full object-cover" />
           </div>
           <div className="leading-tight">
-            <div className="font-semibold tracking-tight">Panel de Eventos</div>
-            <div style={{ color: C.dim }} className="text-[11px] font-mono">PRODUCCIÓN · VIRTUAL STUDIO</div>
+            <div className="font-semibold tracking-tight">Sistema eventos Cacodelphia</div>
+            <div style={{ color: C.dim }} className="text-[11px] font-mono">Estudios</div>
           </div>
         </div>
 
