@@ -1956,23 +1956,6 @@ function Login({ onLogin, bootError, seedInfo, hayUsuarios }) {
           </div>
         )}
 
-        {seedInfo?.sembrados && (
-          <div className="mb-4 p-3 rounded-md text-xs"
-               style={{ background: `${C.amber}1a`, border: `1px solid ${C.amber}40`, color: C.amber }}>
-            <div className="flex items-center gap-2 font-medium mb-1.5">
-              <ShieldCheck size={14} /> Usuarios iniciales creados
-            </div>
-            <div style={{ color: C.text }} className="grid gap-0.5 font-mono">
-              {seedInfo.defaults.map((u) => (
-                <div key={u.nombre}>· <b>{u.nombre}</b> / {u.password} · <span style={{ color: C.dim }}>{u.rol}</span></div>
-              ))}
-            </div>
-            <div className="mt-2" style={{ color: C.dim }}>
-              Cambiá las contraseñas desde el panel de Usuarios después de entrar como admin.
-            </div>
-          </div>
-        )}
-
         <form onSubmit={submit} className="rounded-xl p-5"
               style={{ background: C.panel, border: `1px solid ${C.border}` }}>
           <h1 className="text-base font-semibold mb-4 flex items-center gap-2">
