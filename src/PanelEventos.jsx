@@ -485,8 +485,8 @@ export default function PanelEventos() {
             <Camera size={18} color={C.gold} />
           </div>
           <div className="leading-tight">
-            <div className="font-semibold tracking-tight text-sm sm:text-base">Panel de Eventos</div>
-            <div style={{ color: C.dim }} className="text-[11px] font-mono">PRODUCCIÓN · VIRTUAL STUDIO</div>
+            <div className="font-semibold tracking-tight text-sm sm:text-base">Sistema eventos Cacodelphia</div>
+            <div style={{ color: C.dim }} className="text-[11px] font-mono">Estudios</div>
           </div>
         </div>
 
