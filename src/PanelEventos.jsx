@@ -880,9 +880,19 @@ function Home({ eventos }) {
   const [mes, setMes] = useState(hoy.getMonth());
   const [scope, setScope] = useState("mes");
 
-  const esMesActual = mes === hoy.getMonth() && anio === hoy.getFullYear();
+  // Max month that has any event (to cap the "next" button)
+  const maxEvento = useMemo(() => {
+    const fechas = eventos.map((e) => e.fecha).filter(Boolean);
+    if (!fechas.length) return { mes: hoy.getMonth(), anio: hoy.getFullYear() };
+    const max = fechas.sort().at(-1);
+    const [ay, am] = max.split("-").map(Number);
+    return { mes: am - 1, anio: ay };
+  }, [eventos]);
+
+  const esTope = anio > maxEvento.anio || (anio === maxEvento.anio && mes >= maxEvento.mes);
 
   const navMes = (dir) => {
+    if (dir > 0 && esTope) return;
     let m = mes + dir, a = anio;
     if (m < 0) { m = 11; a--; }
     if (m > 11) { m = 0; a++; }
@@ -896,12 +906,12 @@ function Home({ eventos }) {
     [eventos, prefixMes]
   );
 
-  // Last 6 months for bar chart
+  // 6 months ending at selected month
   const mesesChart = useMemo(() => {
     const result = [];
     for (let i = 5; i >= 0; i--) {
-      let m2 = hoy.getMonth() - i;
-      let a2 = hoy.getFullYear();
+      let m2 = mes - i;
+      let a2 = anio;
       while (m2 < 0) { m2 += 12; a2--; }
       const prefix = `${a2}-${String(m2 + 1).padStart(2, "0")}`;
       const evs = eventos.filter((e) => e.fecha?.startsWith(prefix));
@@ -980,11 +990,11 @@ function Home({ eventos }) {
             {MESES_ES[mes]} {anio}
           </span>
           <button
-            onClick={() => !esMesActual && navMes(1)}
+            onClick={() => navMes(1)}
             className="p-1 rounded transition-colors"
-            style={{ color: esMesActual ? C.border : C.dim, cursor: esMesActual ? "default" : "pointer" }}
-            onMouseEnter={(e) => { if (!esMesActual) e.currentTarget.style.color = C.text; }}
-            onMouseLeave={(e) => { e.currentTarget.style.color = esMesActual ? C.border : C.dim; }}
+            style={{ color: esTope ? C.border : C.dim, cursor: esTope ? "default" : "pointer" }}
+            onMouseEnter={(e) => { if (!esTope) e.currentTarget.style.color = C.text; }}
+            onMouseLeave={(e) => { e.currentTarget.style.color = esTope ? C.border : C.dim; }}
           >
             <ChevronRight size={16} />
           </button>
