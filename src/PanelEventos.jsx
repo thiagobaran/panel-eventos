@@ -4,7 +4,8 @@ import {
   Wrench, Users, Building2, Phone, FileText, Check, X,
   Trash2, Pencil, AlertTriangle, Clock, DollarSign, ChevronLeft,
   Download, Upload, WifiOff, RefreshCw, Paperclip, Receipt, Eye,
-  LogOut, KeyRound, UserCog, ShieldCheck, Lock
+  LogOut, KeyRound, UserCog, ShieldCheck, Lock,
+  BarChart2, ChevronRight,
 } from "lucide-react";
 import { listEventos, upsertEvento, deleteEvento, subscribeEventos } from "./lib/eventosApi";
 import { listPersonas, upsertPersona, deletePersona, subscribePersonas } from "./lib/personasApi";
@@ -39,6 +40,10 @@ const DISTRIBUCION_FILTRO = [
   { value: "M2", label: "MG M2" },
   { value: "MIXTO", label: "Mixto" },
 ];
+
+const MESES_ES = ["Enero","Febrero","Marzo","Abril","Mayo","Junio",
+                  "Julio","Agosto","Septiembre","Octubre","Noviembre","Diciembre"];
+const EST_COLORS = { "1": "#D4AF37", "2": "#9b8cff", "3": "#4FD18B" };
 
 const C = {
   bg: "#000000",
@@ -181,7 +186,7 @@ export default function PanelEventos() {
   const [cargando, setCargando] = useState(true);
   const [error, setError] = useState("");
   const [guardando, setGuardando] = useState(false);
-  const [vista, setVista] = useState("lista"); // lista | form | detalle | dashboard | personal | usuarios
+  const [vista, setVista] = useState("home"); // home | lista | form | detalle | dashboard | personal | usuarios
   const [editId, setEditId] = useState(null);
   const [verId, setVerId] = useState(null);
   const [busqueda, setBusqueda] = useState("");
@@ -469,6 +474,7 @@ export default function PanelEventos() {
         </div>
 
         <nav className="flex items-center gap-1 ml-auto">
+          <Tab active={vista === "home"} onClick={() => setVista("home")} icon={<BarChart2 size={15} />}>Resumen</Tab>
           <Tab active={vista === "lista"} onClick={() => setVista("lista")} icon={<Layers size={15} />}>Eventos</Tab>
           <Tab active={vista === "personal"} onClick={() => setVista("personal")} icon={<Users size={15} />}>Personal</Tab>
           <Tab active={vista === "dashboard"} onClick={() => setVista("dashboard")} icon={<AlertTriangle size={15} />}>
@@ -560,6 +566,8 @@ export default function PanelEventos() {
             onDeleteCategoria={borrarCategoriaPersonal}
             perms={p}
           />
+        ) : vista === "home" ? (
+          <Home eventos={eventos} personas={personas} />
         ) : (
           <Lista
             eventos={filtrados}
@@ -823,6 +831,433 @@ function TablaPend({ titulo, icon, color, rows, onVer, vacio }) {
         </div>
       )}
     </section>
+  );
+}
+
+/* ====================== HOME / RESUMEN ====================== */
+function AnimNum({ value }) {
+  const [display, setDisplay] = useState(value);
+  const prevRef = useRef(value);
+  useEffect(() => {
+    const from = prevRef.current;
+    const to = value;
+    prevRef.current = value;
+    if (from === to) return;
+    let start = null;
+    const duration = 550;
+    const step = (ts) => {
+      if (!start) start = ts;
+      const progress = Math.min((ts - start) / duration, 1);
+      const eased = 1 - Math.pow(1 - progress, 3);
+      setDisplay(Math.round(from + (to - from) * eased));
+      if (progress < 1) requestAnimationFrame(step);
+    };
+    requestAnimationFrame(step);
+  }, [value]);
+  return <>{display}</>;
+}
+
+function StatCard({ label, value, color, icon, fullRow }) {
+  return (
+    <div
+      className={`rounded-xl p-4 flex flex-col gap-2${fullRow ? " col-span-2 sm:col-span-1" : ""}`}
+      style={{ background: C.panel, border: `1px solid ${C.border}` }}
+    >
+      <div className="flex items-center gap-1.5" style={{ color }}>
+        {icon}
+        <span className="text-[11px] font-semibold uppercase tracking-wide">{label}</span>
+      </div>
+      <div className="text-4xl font-bold font-mono leading-none" style={{ color }}>
+        <AnimNum value={value} />
+      </div>
+    </div>
+  );
+}
+
+function Home({ eventos }) {
+  const hoy = new Date();
+  const [anio, setAnio] = useState(hoy.getFullYear());
+  const [mes, setMes] = useState(hoy.getMonth());
+  const [scope, setScope] = useState("mes");
+
+  const esMesActual = mes === hoy.getMonth() && anio === hoy.getFullYear();
+
+  const navMes = (dir) => {
+    let m = mes + dir, a = anio;
+    if (m < 0) { m = 11; a--; }
+    if (m > 11) { m = 0; a++; }
+    setMes(m); setAnio(a);
+  };
+
+  const prefixMes = `${anio}-${String(mes + 1).padStart(2, "0")}`;
+
+  const eventosMes = useMemo(
+    () => eventos.filter((e) => e.fecha?.startsWith(prefixMes)),
+    [eventos, prefixMes]
+  );
+
+  // Last 6 months for bar chart
+  const mesesChart = useMemo(() => {
+    const result = [];
+    for (let i = 5; i >= 0; i--) {
+      let m2 = hoy.getMonth() - i;
+      let a2 = hoy.getFullYear();
+      while (m2 < 0) { m2 += 12; a2--; }
+      const prefix = `${a2}-${String(m2 + 1).padStart(2, "0")}`;
+      const evs = eventos.filter((e) => e.fecha?.startsWith(prefix));
+      result.push({
+        label: MESES_ES[m2].slice(0, 3),
+        mes: m2, anio: a2,
+        total: evs.length,
+        est: Object.fromEntries(ESTUDIOS.map((s) => [s, evs.filter((e) => e.estudio === s).length])),
+        sinEst: evs.filter((e) => !e.estudio).length,
+      });
+    }
+    return result;
+  }, [eventos]);
+
+  const maxChart = Math.max(...mesesChart.map((m) => m.total), 1);
+
+  const estStats = ESTUDIOS.map((s) => ({
+    estudio: s,
+    count: eventosMes.filter((e) => e.estudio === s).length,
+    color: EST_COLORS[s],
+  }));
+
+  const categoriaStats = useMemo(() => {
+    const map = {};
+    eventosMes.forEach((e) => { if (e.categoria) map[e.categoria] = (map[e.categoria] || 0) + 1; });
+    return Object.entries(map).sort((a, b) => b[1] - a[1]);
+  }, [eventosMes]);
+
+  const teamStats = useMemo(() => {
+    const evs = scope === "mes" ? eventosMes : eventos;
+    const map = new Map();
+    evs.forEach((ev) => {
+      (ev.integrantes || []).forEach((i) => {
+        if (!i.nombre) return;
+        const key = i.personaId || i.nombre;
+        if (!map.has(key)) map.set(key, { nombre: i.nombre, count: 0, roles: {} });
+        const s = map.get(key);
+        s.count++;
+        if (i.rol) s.roles[i.rol] = (s.roles[i.rol] || 0) + 1;
+      });
+    });
+    return [...map.values()]
+      .sort((a, b) => b.count - a.count)
+      .map((s) => {
+        const sorted = Object.entries(s.roles).sort((a, b) => b[1] - a[1]);
+        return { ...s, rolPrincipal: sorted[0]?.[0] || "—", secundarios: sorted.slice(1).map((r) => r[0]) };
+      });
+  }, [scope, eventosMes, eventos]);
+
+  const maxTeam = teamStats[0]?.count || 1;
+
+  const rankColors = ["#D4AF37", "#A8A8A8", "#cd7f32"];
+
+  return (
+    <div className="fade">
+      {/* Header + month nav */}
+      <div className="flex flex-wrap items-center gap-3 mb-6">
+        <div>
+          <h1 className="text-xl font-bold tracking-tight">Resumen</h1>
+          <p className="text-xs mt-0.5" style={{ color: C.dim }}>Vista general de proyectos e integrantes</p>
+        </div>
+        <div
+          className="ml-auto flex items-center gap-1 rounded-xl px-3 py-1.5"
+          style={{ background: C.panel, border: `1px solid ${C.border}` }}
+        >
+          <button
+            onClick={() => navMes(-1)}
+            className="p-1 rounded transition-colors"
+            style={{ color: C.dim }}
+            onMouseEnter={(e) => e.currentTarget.style.color = C.text}
+            onMouseLeave={(e) => e.currentTarget.style.color = C.dim}
+          >
+            <ChevronLeft size={16} />
+          </button>
+          <span className="font-semibold text-sm w-40 text-center select-none">
+            {MESES_ES[mes]} {anio}
+          </span>
+          <button
+            onClick={() => !esMesActual && navMes(1)}
+            className="p-1 rounded transition-colors"
+            style={{ color: esMesActual ? C.border : C.dim, cursor: esMesActual ? "default" : "pointer" }}
+            onMouseEnter={(e) => { if (!esMesActual) e.currentTarget.style.color = C.text; }}
+            onMouseLeave={(e) => { e.currentTarget.style.color = esMesActual ? C.border : C.dim; }}
+          >
+            <ChevronRight size={16} />
+          </button>
+        </div>
+      </div>
+
+      {/* Stat cards */}
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-6">
+        <StatCard
+          label="Proyectos en el mes"
+          value={eventosMes.length}
+          color={C.gold}
+          icon={<Film size={15} />}
+          fullRow
+        />
+        {estStats.map((s) => (
+          <StatCard
+            key={s.estudio}
+            label={`Estudio ${s.estudio}`}
+            value={s.count}
+            color={s.color}
+            icon={<Building2 size={15} />}
+          />
+        ))}
+      </div>
+
+      {/* Bar chart — últimos 6 meses */}
+      <div className="rounded-xl p-4 mb-6" style={{ background: C.panel, border: `1px solid ${C.border}` }}>
+        <div className="flex items-center gap-2 mb-5">
+          <BarChart2 size={15} color={C.gold} />
+          <h2 className="text-sm font-semibold">Proyectos por mes</h2>
+          <div className="ml-auto flex items-center gap-3">
+            {ESTUDIOS.map((s) => (
+              <span key={s} className="flex items-center gap-1.5 text-[11px]" style={{ color: C.dim }}>
+                <span className="inline-block w-2.5 h-2.5 rounded-sm" style={{ background: EST_COLORS[s] }} />
+                Est. {s}
+              </span>
+            ))}
+            <span className="flex items-center gap-1.5 text-[11px]" style={{ color: C.dim }}>
+              <span className="inline-block w-2.5 h-2.5 rounded-sm" style={{ background: C.border }} />
+              S/est.
+            </span>
+          </div>
+        </div>
+
+        <div className="flex items-end gap-2" style={{ height: 128 }}>
+          {mesesChart.map((mc, idx) => {
+            const isSel = mc.mes === mes && mc.anio === anio;
+            const heightPct = mc.total === 0 ? 0 : Math.max((mc.total / maxChart) * 100, 5);
+            return (
+              <div
+                key={idx}
+                className="flex-1 flex flex-col items-center gap-1 cursor-pointer"
+                onClick={() => { setMes(mc.mes); setAnio(mc.anio); }}
+              >
+                <div className="relative w-full" style={{ height: 96 }}>
+                  {/* Track */}
+                  <div
+                    className="absolute inset-0 rounded-md"
+                    style={{ background: isSel ? `${C.gold}15` : `${C.border}30` }}
+                  />
+                  {/* Stacked bar */}
+                  <div
+                    className="absolute bottom-0 left-0 right-0 flex flex-col-reverse rounded-md overflow-hidden"
+                    style={{
+                      height: `${heightPct}%`,
+                      transition: "height 0.6s cubic-bezier(0.34,1.56,0.64,1)",
+                    }}
+                  >
+                    {ESTUDIOS.map((s) => {
+                      const pct = mc.total > 0 ? (mc.est[s] / mc.total) * 100 : 0;
+                      return pct > 0 ? (
+                        <div
+                          key={s}
+                          style={{
+                            height: `${pct}%`,
+                            background: EST_COLORS[s],
+                            opacity: isSel ? 1 : 0.65,
+                            transition: "opacity 0.2s",
+                          }}
+                        />
+                      ) : null;
+                    })}
+                    {mc.sinEst > 0 && (
+                      <div
+                        style={{
+                          height: `${(mc.sinEst / mc.total) * 100}%`,
+                          background: C.dim,
+                          opacity: isSel ? 0.8 : 0.4,
+                        }}
+                      />
+                    )}
+                  </div>
+                  {/* Selected border */}
+                  {isSel && (
+                    <div
+                      className="absolute inset-0 rounded-md pointer-events-none"
+                      style={{ border: `2px solid ${C.gold}`, boxShadow: `0 0 12px ${C.gold}30` }}
+                    />
+                  )}
+                </div>
+                {mc.total > 0 && (
+                  <span className="text-[10px] font-mono" style={{ color: isSel ? C.gold : C.dim }}>
+                    {mc.total}
+                  </span>
+                )}
+                <span
+                  className="text-[10px] font-medium"
+                  style={{ color: isSel ? C.text : C.dim }}
+                >
+                  {mc.label}
+                </span>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+
+      {/* Categorías del mes */}
+      {categoriaStats.length > 0 && (
+        <div className="rounded-xl p-4 mb-6" style={{ background: C.panel, border: `1px solid ${C.border}` }}>
+          <div className="flex items-center gap-2 mb-3">
+            <Film size={15} color={C.amber} />
+            <h2 className="text-sm font-semibold">Categorías</h2>
+            <span className="text-xs" style={{ color: C.dim }}>— {MESES_ES[mes]} {anio}</span>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            {categoriaStats.map(([cat, count]) => {
+              const pct = eventosMes.length > 0 ? (count / eventosMes.length) * 100 : 0;
+              return (
+                <div
+                  key={cat}
+                  className="flex items-center gap-2.5 px-3 py-2 rounded-lg"
+                  style={{ background: C.panel2, border: `1px solid ${C.border}` }}
+                >
+                  <span className="text-sm">{cat}</span>
+                  <span className="font-mono font-bold text-sm" style={{ color: C.amber }}>{count}</span>
+                  <div className="w-16 h-1.5 rounded-full overflow-hidden" style={{ background: C.border }}>
+                    <div
+                      className="h-full rounded-full"
+                      style={{
+                        width: `${pct}%`,
+                        background: C.amber,
+                        transition: "width 0.5s ease",
+                      }}
+                    />
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
+      {/* Integrantes */}
+      <div className="rounded-xl p-4" style={{ background: C.panel, border: `1px solid ${C.border}` }}>
+        <div className="flex flex-wrap items-center gap-2 mb-4">
+          <Users size={15} color={C.gold} />
+          <h2 className="text-sm font-semibold">Integrantes</h2>
+          {/* Toggle scope */}
+          <div
+            className="ml-auto flex items-center gap-0.5 p-0.5 rounded-lg"
+            style={{ background: C.panel2, border: `1px solid ${C.border}` }}
+          >
+            {[
+              { value: "mes", label: MESES_ES[mes] },
+              { value: "todo", label: "Todo el tiempo" },
+            ].map((opt) => (
+              <button
+                key={opt.value}
+                onClick={() => setScope(opt.value)}
+                className="text-xs font-medium px-3 py-1.5 rounded-md transition-all"
+                style={{
+                  background: scope === opt.value ? C.panel : "transparent",
+                  color: scope === opt.value ? C.text : C.dim,
+                  border: scope === opt.value ? `1px solid ${C.border}` : "1px solid transparent",
+                }}
+              >
+                {opt.label}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {teamStats.length === 0 ? (
+          <div className="text-center py-12" style={{ color: C.dim }}>
+            <Users size={28} className="mx-auto mb-3 opacity-30" />
+            <p className="text-sm">
+              {scope === "mes"
+                ? `Sin proyectos con integrantes en ${MESES_ES[mes]} ${anio}.`
+                : "Sin datos de integrantes."}
+            </p>
+          </div>
+        ) : (
+          <div className="grid gap-2">
+            {teamStats.map((persona, idx) => (
+              <div
+                key={persona.nombre}
+                className="flex items-center gap-3 rounded-xl p-3 transition-colors"
+                style={{
+                  background: C.panel2,
+                  border: `1px solid ${idx === 0 ? `${C.gold}40` : C.border}`,
+                  boxShadow: idx === 0 ? `0 0 16px ${C.gold}10` : "none",
+                }}
+              >
+                {/* Rank */}
+                <span
+                  className="font-mono text-lg w-7 text-center shrink-0 select-none"
+                  style={{ color: rankColors[idx] || C.border }}
+                >
+                  {idx < 3 ? ["❶","❷","❸"][idx] : idx + 1}
+                </span>
+
+                {/* Info */}
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-1.5 flex-wrap">
+                    <span className="font-medium text-sm">{persona.nombre}</span>
+                    {persona.rolPrincipal !== "—" && (
+                      <span
+                        className="text-[11px] px-2 py-0.5 rounded-full font-medium"
+                        style={{
+                          background: `${C.gold}18`,
+                          color: C.gold,
+                          border: `1px solid ${C.gold}35`,
+                        }}
+                      >
+                        {persona.rolPrincipal}
+                      </span>
+                    )}
+                    {persona.secundarios.slice(0, 3).map((r) => (
+                      <span
+                        key={r}
+                        className="text-[11px] px-2 py-0.5 rounded-full"
+                        style={{ background: C.panel, color: C.dim, border: `1px solid ${C.border}` }}
+                      >
+                        {r}
+                      </span>
+                    ))}
+                  </div>
+                  {/* Progress bar */}
+                  <div
+                    className="mt-2 rounded-full overflow-hidden"
+                    style={{ height: 3, background: `${C.border}80` }}
+                  >
+                    <div
+                      className="h-full rounded-full"
+                      style={{
+                        width: `${(persona.count / maxTeam) * 100}%`,
+                        background: idx === 0 ? C.gold : idx === 1 ? "#A8A8A8" : idx === 2 ? "#cd7f32" : `${C.gold}45`,
+                        transition: "width 0.7s cubic-bezier(0.34,1.56,0.64,1)",
+                      }}
+                    />
+                  </div>
+                </div>
+
+                {/* Count */}
+                <div className="text-right shrink-0">
+                  <div
+                    className="text-2xl font-bold font-mono leading-none"
+                    style={{ color: idx === 0 ? C.gold : C.text }}
+                  >
+                    <AnimNum value={persona.count} />
+                  </div>
+                  <div className="text-[10px] mt-0.5" style={{ color: C.dim }}>
+                    {persona.count === 1 ? "proyecto" : "proyectos"}
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    </div>
   );
 }
 
