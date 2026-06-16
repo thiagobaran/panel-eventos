@@ -44,6 +44,7 @@ const DISTRIBUCION_FILTRO = [
 const MESES_ES = ["Enero","Febrero","Marzo","Abril","Mayo","Junio",
                   "Julio","Agosto","Septiembre","Octubre","Noviembre","Diciembre"];
 const EST_COLORS = { "1": "#D4AF37", "2": "#9b8cff", "3": "#4FD18B" };
+const PARTES_PROD = ["Armado", "Armado + Prelight", "Prelighting", "Rodaje", "Desarme"];
 
 const C = {
   bg: "#000000",
@@ -84,6 +85,7 @@ const nuevoEvento = () => ({
   formaPago: "",
   facturas: [],
   comprobantes: [],
+  partes: PARTES_PROD.map((tipo) => ({ tipo, fechas: [] })),
   facturado: false,
   comprobantePago: false,
   facturadoTotal: false,
@@ -91,6 +93,9 @@ const nuevoEvento = () => ({
 });
 
 /* ---------- helpers ---------- */
+const totalDias = (partes) =>
+  new Set((partes || []).flatMap((p) => p.fechas || [])).size;
+
 const fmtMoneda = (n, m) => {
   const v = Number(n) || 0;
   return new Intl.NumberFormat("es-AR", {
@@ -737,6 +742,7 @@ function Lista({ eventos, total, busqueda, setBusqueda, filtroCat, setFiltroCat,
                   {e.tipoProd && <Badge color="#9b8cff">{e.tipoProd}</Badge>}
                   {e.trackeo && <Badge color={e.trackeo === "Con trackeo" ? C.green : C.dim}><Crosshair size={11} />{e.trackeo.replace(" trackeo", "")}</Badge>}
                   <Badge color={C.dim}><Building2 size={11} />{empresaLabel(e.distribucion)}</Badge>
+                  {totalDias(e.partes) > 0 && <Badge color={C.amber}><Clock size={11} />{totalDias(e.partes)}d</Badge>}
                 </div>
               </div>
               <div className="flex items-center gap-3 shrink-0">
@@ -1760,6 +1766,33 @@ function Detalle({ ev, onBack, onEdit, onDelete, onUpdate, perms = {} }) {
 
         <EquipoExterno ev={ev} />
 
+        {totalDias(ev.partes) > 0 && (
+          <Card titulo="Partes del proyecto" icon={<Clock size={15} color={C.amber} />} full>
+            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-2">
+              {(ev.partes || []).filter((p) => (p.fechas || []).length > 0).map((parte) => (
+                <div key={parte.tipo} className="rounded-lg p-2.5" style={{ background: C.panel2, border: `1px solid ${C.border}` }}>
+                  <div className="text-[11px] font-semibold mb-2 leading-tight" style={{ color: C.amber }}>{parte.tipo}</div>
+                  <div className="flex flex-wrap gap-1">
+                    {parte.fechas.map((fecha) => (
+                      <span key={fecha} className="text-[10px] font-mono px-1.5 py-0.5 rounded" style={{ background: `${C.amber}18`, color: C.text }}>
+                        {fmtFecha(fecha)}
+                      </span>
+                    ))}
+                  </div>
+                  <div className="mt-2 text-[11px] font-mono" style={{ color: C.dim }}>
+                    {parte.fechas.length} {parte.fechas.length === 1 ? "día" : "días"}
+                  </div>
+                </div>
+              ))}
+            </div>
+            <div className="flex items-center gap-2 pt-2 mt-1" style={{ borderTop: `1px solid ${C.border}` }}>
+              <Clock size={13} color={C.amber} />
+              <span className="text-sm font-semibold" style={{ color: C.amber }}>
+                Total: {totalDias(ev.partes)} {totalDias(ev.partes) === 1 ? "día" : "días"} de producción
+              </span>
+            </div>
+          </Card>
+        )}
 
         {ev.observaciones && (
           <Card titulo="Observaciones" icon={<FileText size={15} color={C.dim} />} full>
@@ -2037,9 +2070,50 @@ function Dato({ k, v, mono, accent }) {
 
 /* ====================== FORMULARIO ====================== */
 function FormEvento({ base, onCancel, onSave, guardando, personas = [], eventos = [], onLiberarPersona, onIrAPersonal }) {
-  const [f, setF] = useState(base);
+  const [f, setF] = useState(() => {
+    // Garantiza que partes siempre tiene los 5 tipos, incluso en eventos viejos
+    const partesExistentes = Array.isArray(base.partes) ? base.partes : [];
+    const partes = PARTES_PROD.map((tipo) => {
+      const existente = partesExistentes.find((p) => p.tipo === tipo);
+      return existente || { tipo, fechas: [] };
+    });
+    return { ...base, partes };
+  });
   const set = (k, v) => setF((p) => ({ ...p, [k]: v }));
   const setDir = (k, v) => setF((p) => ({ ...p, director: { ...p.director, [k]: v } }));
+
+  // Estado para el input de fecha pendiente por parte (indexado)
+  const [fechaInputs, setFechaInputs] = useState(() => Array(PARTES_PROD.length).fill(""));
+
+  const addFecha = (tipoIdx, fecha) => {
+    if (!fecha) return;
+    const nuevasPartes = f.partes.map((p, i) => {
+      if (i !== tipoIdx) return p;
+      if ((p.fechas || []).includes(fecha)) return p;
+      return { ...p, fechas: [...(p.fechas || []), fecha].sort() };
+    });
+    const allFechas = nuevasPartes.flatMap((p) => p.fechas || []).filter(Boolean).sort();
+    setF((prev) => ({
+      ...prev,
+      partes: nuevasPartes,
+      ...(allFechas.length > 0 && !prev.fecha ? { fecha: allFechas[0] } : {}),
+    }));
+    setFechaInputs((prev) => { const n = [...prev]; n[tipoIdx] = ""; return n; });
+  };
+
+  const delFecha = (tipoIdx, fecha) => {
+    const nuevasPartes = f.partes.map((p, i) => {
+      if (i !== tipoIdx) return p;
+      return { ...p, fechas: (p.fechas || []).filter((d) => d !== fecha) };
+    });
+    const allFechas = nuevasPartes.flatMap((p) => p.fechas || []).filter(Boolean).sort();
+    setF((prev) => ({
+      ...prev,
+      partes: nuevasPartes,
+      // Si se quedó sin fechas en partes, limpiar fecha del evento también
+      ...(allFechas.length === 0 ? { fecha: "" } : { fecha: allFechas[0] }),
+    }));
+  };
 
   const addIntegrante = () => set("integrantes", [...f.integrantes, { personaId: "", nombre: "", rol: "" }]);
   const setIntegrante = (i, k, v) =>
@@ -2108,7 +2182,7 @@ function FormEvento({ base, onCancel, onSave, guardando, personas = [], eventos 
           <Field label="Nombre del evento" full>
             <Input value={f.nombre} onChange={(v) => set("nombre", v)} placeholder="Ej: Videoclip — Artista X" />
           </Field>
-          <Field label="Fecha">
+          <Field label={totalDias(f.partes) > 0 ? "Fecha (auto desde partes)" : "Fecha"}>
             <Input type="date" value={f.fecha} onChange={(v) => set("fecha", v)} />
           </Field>
           <Field label="Categoría">
@@ -2127,6 +2201,76 @@ function FormEvento({ base, onCancel, onSave, guardando, personas = [], eventos 
             <Toggle checked={f.equipamiento} onChange={(v) => set("equipamiento", v)} label="Equipamiento" />
             {f.equipamiento && (
               <Input value={f.equipamientoDetalle} onChange={(v) => set("equipamientoDetalle", v)} placeholder="Detalle (cámaras, LED wall, grip…)" />
+            )}
+          </div>
+        </Seccion>
+
+        {/* Partes del proyecto */}
+        <Seccion titulo="Partes del proyecto" icon={<Clock size={15} color={C.amber} />}>
+          <div className="sm:col-span-2 grid gap-2.5">
+            <p className="text-xs" style={{ color: C.dim }}>
+              Agregá las fechas de cada etapa. El total se calcula sumando días únicos entre todas las partes. La fecha del evento se auto-completa con el día más temprano.
+            </p>
+            {f.partes.map((parte, idx) => {
+              const fechaInput = fechaInputs[idx] || "";
+              const agregar = () => {
+                if (!fechaInput) return;
+                addFecha(idx, fechaInput);
+              };
+              return (
+                <div key={parte.tipo} className="rounded-lg p-3" style={{ background: C.panel2, border: `1px solid ${C.border}` }}>
+                  <div className="flex items-center justify-between mb-2">
+                    <span className="text-sm font-medium">{parte.tipo}</span>
+                    {parte.fechas.length > 0 && (
+                      <span className="text-[11px] font-mono px-2 py-0.5 rounded-full" style={{ background: `${C.amber}1a`, color: C.amber, border: `1px solid ${C.amber}40` }}>
+                        {parte.fechas.length} {parte.fechas.length === 1 ? "día" : "días"}
+                      </span>
+                    )}
+                  </div>
+                  {parte.fechas.length > 0 && (
+                    <div className="flex flex-wrap gap-1.5 mb-2">
+                      {parte.fechas.map((fecha) => (
+                        <button
+                          key={fecha}
+                          type="button"
+                          onClick={() => delFecha(idx, fecha)}
+                          className="inline-flex items-center gap-1 text-[11px] font-mono px-2 py-0.5 rounded-md"
+                          style={{ background: `${C.amber}22`, border: `1px solid ${C.amber}55`, color: C.amber }}
+                          title="Click para quitar"
+                        >
+                          {fmtFecha(fecha)} <X size={9} />
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                  <div className="flex gap-2 items-center">
+                    <input
+                      type="date"
+                      value={fechaInput}
+                      onChange={(e) => setFechaInputs((prev) => { const n = [...prev]; n[idx] = e.target.value; return n; })}
+                      onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); agregar(); } }}
+                      className="text-sm px-2 py-1.5 rounded-md flex-1"
+                      style={{ background: C.panel, border: `1px solid ${C.border}`, color: C.text, colorScheme: "dark" }}
+                    />
+                    <button
+                      type="button"
+                      onClick={agregar}
+                      className="text-sm px-3 py-1.5 rounded-md flex items-center gap-1 shrink-0 font-medium"
+                      style={{ background: C.gold, color: C.onGold, opacity: fechaInput ? 1 : 0.4, cursor: fechaInput ? "pointer" : "default" }}
+                    >
+                      <Plus size={14} /> Agregar
+                    </button>
+                  </div>
+                </div>
+              );
+            })}
+            {totalDias(f.partes) > 0 && (
+              <div className="flex items-center justify-end gap-2 px-1 pt-1">
+                <Clock size={13} color={C.amber} />
+                <span className="text-sm font-semibold" style={{ color: C.amber }}>
+                  Total: {totalDias(f.partes)} {totalDias(f.partes) === 1 ? "día" : "días"} de producción
+                </span>
+              </div>
             )}
           </div>
         </Seccion>
