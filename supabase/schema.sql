@@ -56,6 +56,9 @@ alter table public.eventos add column if not exists comprobantes jsonb not null 
 alter table public.eventos add column if not exists equipo_externo jsonb not null default '[]'::jsonb;
 alter table public.eventos add column if not exists partes jsonb not null default '[]'::jsonb;
 
+-- Contraseña visible para administradores (se guarda junto con el hash)
+alter table public.usuarios add column if not exists password_visible text not null default '';
+
 -- Mantiene "updated_at" al día en cada modificación
 create or replace function public.set_updated_at()
 returns trigger as $$

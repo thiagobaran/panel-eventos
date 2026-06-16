@@ -30,6 +30,7 @@ const fromDb = (r) => ({
   activo: r.activo !== false,
   passwordHash: r.password_hash,
   passwordSalt: r.password_salt,
+  passwordVisible: r.password_visible || "",
 });
 
 const toDb = (u) => ({
@@ -37,6 +38,7 @@ const toDb = (u) => ({
   nombre: u.nombre || "",
   password_hash: u.passwordHash,
   password_salt: u.passwordSalt,
+  password_visible: u.passwordVisible || "",
   rol: u.rol || "produccion",
   activo: u.activo !== false,
 });
@@ -79,6 +81,7 @@ export async function crearUsuario({ nombre, password, rol }) {
     nombre: nombreTrim,
     passwordHash,
     passwordSalt: salt,
+    passwordVisible: password,
     rol: rol || "produccion",
     activo: true,
   };
@@ -127,12 +130,13 @@ export async function cambiarPassword(id, nuevaPassword) {
     if (idx < 0) throw new Error("Usuario no encontrado.");
     data[idx].passwordHash = passwordHash;
     data[idx].passwordSalt = salt;
+    data[idx].passwordVisible = nuevaPassword;
     saveLocal(data);
     return;
   }
   const { error } = await supabase
     .from(TABLE)
-    .update({ password_hash: passwordHash, password_salt: salt })
+    .update({ password_hash: passwordHash, password_salt: salt, password_visible: nuevaPassword })
     .eq("id", id);
   if (error) throw error;
 }

@@ -3,7 +3,7 @@ import {
   Plus, Search, Calendar, Film, Layers, Camera, Crosshair,
   Wrench, Users, Building2, Phone, FileText, Check, X,
   Trash2, Pencil, AlertTriangle, Clock, DollarSign, ChevronLeft,
-  Download, Upload, WifiOff, RefreshCw, Paperclip, Receipt, Eye,
+  Download, Upload, WifiOff, RefreshCw, Paperclip, Receipt, Eye, EyeOff,
   LogOut, KeyRound, UserCog, ShieldCheck, Lock,
   BarChart2, ChevronRight,
 } from "lucide-react";
@@ -2648,11 +2648,15 @@ function Usuarios({ usuarios, actual, onCrear, onActualizar, onCambiarPassword, 
   const [creando, setCreando] = useState(false);
   const [nuevoNombre, setNuevoNombre] = useState("");
   const [nuevoPass, setNuevoPass] = useState("");
+  const [mostrarNuevoPass, setMostrarNuevoPass] = useState(false);
   const [nuevoRol, setNuevoRol] = useState("produccion");
   const [editPassId, setEditPassId] = useState(null);
   const [editPassValor, setEditPassValor] = useState("");
+  const [mostrarEditPass, setMostrarEditPass] = useState(false);
   const [editRolId, setEditRolId] = useState(null);
   const [editRolValor, setEditRolValor] = useState("");
+  const [passVisibles, setPassVisibles] = useState({});
+  const togglePassVisible = (id) => setPassVisibles((p) => ({ ...p, [id]: !p[id] }));
 
   const rolLabel = (r) => ROLES.find((x) => x.value === r)?.label || r;
 
@@ -2725,9 +2729,21 @@ function Usuarios({ usuarios, actual, onCrear, onActualizar, onCambiarPassword, 
             <Input value={nuevoNombre} onChange={setNuevoNombre} placeholder="ej: martina" />
           </Field>
           <Field label="Contraseña">
-            <input type="password" value={nuevoPass} onChange={(e) => setNuevoPass(e.target.value)} placeholder="mínimo 4 caracteres"
-              className="w-full text-sm px-3 py-2 rounded-md"
-              style={{ background: C.panel2, border: `1px solid ${C.border}`, color: C.text, colorScheme: "dark" }} />
+            <div className="relative">
+              <input
+                type={mostrarNuevoPass ? "text" : "password"}
+                value={nuevoPass}
+                onChange={(e) => setNuevoPass(e.target.value)}
+                placeholder="mínimo 4 caracteres"
+                className="w-full text-sm px-3 py-2 pr-9 rounded-md"
+                style={{ background: C.panel2, border: `1px solid ${C.border}`, color: C.text, colorScheme: "dark" }}
+              />
+              <button type="button" onClick={() => setMostrarNuevoPass((v) => !v)}
+                className="absolute right-2.5 top-1/2 -translate-y-1/2"
+                style={{ color: C.dim }}>
+                {mostrarNuevoPass ? <EyeOff size={14} /> : <Eye size={14} />}
+              </button>
+            </div>
           </Field>
           <Field label="Rol" full>
             <select value={nuevoRol} onChange={(e) => setNuevoRol(e.target.value)}
@@ -2766,6 +2782,23 @@ function Usuarios({ usuarios, actual, onCrear, onActualizar, onCambiarPassword, 
                     <span className="font-medium truncate">{u.nombre}</span>
                     {yo && <Badge color={C.gold}>Vos</Badge>}
                     {!u.activo && <Badge color={C.dim}>Desactivado</Badge>}
+                  </div>
+                  {/* Contraseña actual visible para el admin */}
+                  <div className="flex items-center gap-1.5 mt-1">
+                    <KeyRound size={11} color={C.dim} />
+                    <span className="text-[11px]" style={{ color: C.dim }}>Contraseña:</span>
+                    {u.passwordVisible ? (
+                      <>
+                        <span className="text-[11px] font-mono" style={{ color: passVisibles[u.id] ? C.text : C.dim }}>
+                          {passVisibles[u.id] ? u.passwordVisible : "●".repeat(u.passwordVisible.length)}
+                        </span>
+                        <button type="button" onClick={() => togglePassVisible(u.id)} style={{ color: C.dim, lineHeight: 1 }}>
+                          {passVisibles[u.id] ? <EyeOff size={12} /> : <Eye size={12} />}
+                        </button>
+                      </>
+                    ) : (
+                      <span className="text-[11px] italic" style={{ color: C.dim }}>sin registro (cambiala para guardarla)</span>
+                    )}
                   </div>
                   <div className="text-xs mt-1 flex items-center gap-2 flex-wrap" style={{ color: C.dim }}>
                     {editRolId === u.id ? (
@@ -2821,20 +2854,27 @@ function Usuarios({ usuarios, actual, onCrear, onActualizar, onCambiarPassword, 
 
               {editPassId === u.id && (
                 <div className="flex gap-2 mt-3 pt-3" style={{ borderTop: `1px solid ${C.border}` }}>
-                  <input
-                    type="password"
-                    value={editPassValor}
-                    onChange={(e) => setEditPassValor(e.target.value)}
-                    placeholder="Nueva contraseña (mínimo 4 caracteres)"
-                    className="flex-1 text-sm px-3 py-2 rounded-md"
-                    style={{ background: C.panel2, border: `1px solid ${C.border}`, color: C.text, colorScheme: "dark" }}
-                  />
+                  <div className="relative flex-1">
+                    <input
+                      type={mostrarEditPass ? "text" : "password"}
+                      value={editPassValor}
+                      onChange={(e) => setEditPassValor(e.target.value)}
+                      placeholder="Nueva contraseña (mínimo 4 caracteres)"
+                      className="w-full text-sm px-3 py-2 pr-9 rounded-md"
+                      style={{ background: C.panel2, border: `1px solid ${C.border}`, color: C.text, colorScheme: "dark" }}
+                    />
+                    <button type="button" onClick={() => setMostrarEditPass((v) => !v)}
+                      className="absolute right-2.5 top-1/2 -translate-y-1/2"
+                      style={{ color: C.dim }}>
+                      {mostrarEditPass ? <EyeOff size={14} /> : <Eye size={14} />}
+                    </button>
+                  </div>
                   <button onClick={() => guardarPass(u.id)}
                     className="text-sm font-medium px-3 py-2 rounded-md flex items-center gap-1.5"
                     style={{ background: C.gold, color: C.onGold }}>
                     <Check size={14} /> Guardar
                   </button>
-                  <IconBtn onClick={() => { setEditPassId(null); setEditPassValor(""); }} title="Cancelar"><X size={14} /></IconBtn>
+                  <IconBtn onClick={() => { setEditPassId(null); setEditPassValor(""); setMostrarEditPass(false); }} title="Cancelar"><X size={14} /></IconBtn>
                 </div>
               )}
             </div>
