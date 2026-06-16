@@ -912,7 +912,7 @@ function DonutSVG({ segments, size = 130 }) {
         {arcs.map((arc, i) => (
           <circle key={i} cx={cx} cy={cy} r={r} fill="none"
             stroke={arc.color} strokeWidth={thickness}
-            strokeDasharray={`${arc.len} ${circ}`}
+            strokeDasharray={`${arc.len} ${circ - arc.len}`}
             strokeDashoffset={arc.offset}
           />
         ))}
