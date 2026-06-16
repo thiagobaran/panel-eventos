@@ -924,7 +924,7 @@ function Home({ eventos }) {
       });
     }
     return result;
-  }, [eventos]);
+  }, [eventos, mes, anio]);
 
   const maxChart = Math.max(...mesesChart.map((m) => m.total), 1);
 
