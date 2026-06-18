@@ -97,6 +97,36 @@ const nuevoEvento = () => ({
 const totalDias = (partes) =>
   new Set((partes || []).flatMap((p) => p.fechas || [])).size;
 
+// Dado un array de partes de un evento y los tipos asignados a un integrante,
+// devuelve el Set de fechas en las que ese integrante trabajaría.
+// Si el integrante no tiene partes asignadas, se considera que va a todas.
+const getFechasTrabajo = (eventPartes, integrantePartes) => {
+  if (!eventPartes || eventPartes.length === 0) return new Set();
+  const filtro = (integrantePartes || []).length > 0 ? integrantePartes : PARTES_PROD;
+  return new Set(eventPartes.filter((p) => filtro.includes(p.tipo)).flatMap((p) => p.fechas || []));
+};
+
+// Lectura de mensajes: guardamos en localStorage la última vez que cada usuario
+// abrió el detalle de cada evento. Con eso calculamos cuántos mensajes nuevos hay.
+const READS_KEY = "panel-eventos-reads-v1";
+const marcarLeido = (eventoId, userId) => {
+  try {
+    const reads = JSON.parse(localStorage.getItem(READS_KEY) || "{}");
+    if (!reads[eventoId]) reads[eventoId] = {};
+    reads[eventoId][userId] = new Date().toISOString();
+    localStorage.setItem(READS_KEY, JSON.stringify(reads));
+  } catch {}
+};
+const mensajesNoLeidos = (mensajes, eventoId, userId) => {
+  if (!userId || !mensajes?.length) return 0;
+  try {
+    const reads = JSON.parse(localStorage.getItem(READS_KEY) || "{}");
+    const ultima = reads[eventoId]?.[userId];
+    if (!ultima) return mensajes.length;
+    return mensajes.filter((m) => m.fecha > ultima).length;
+  } catch { return 0; }
+};
+
 const fmtMoneda = (n, m) => {
   const v = Number(n) || 0;
   return new Intl.NumberFormat("es-AR", {
@@ -366,6 +396,25 @@ export default function PanelEventos() {
     }
   };
 
+  const reemplazarEnEvento = async (eventoId, personaIdActual, personaIdNuevo) => {
+    const ev = eventos.find((x) => x.id === eventoId);
+    if (!ev) return;
+    const nuevaPersona = personas.find((p) => p.id === personaIdNuevo);
+    if (!nuevaPersona) return;
+    const integrantes = (ev.integrantes || []).map((i) =>
+      i.personaId === personaIdActual
+        ? { ...i, personaId: personaIdNuevo, nombre: nuevaPersona.nombre }
+        : i
+    );
+    try {
+      await upsertEvento({ ...ev, integrantes });
+      await recargar();
+    } catch (e) {
+      console.error(e);
+      alert("No se pudo reemplazar la persona: " + e.message);
+    }
+  };
+
   /* exportar / importar JSON (respaldo manual) */
   const exportarJSON = () => {
     const blob = new Blob([JSON.stringify(eventos, null, 2)], { type: "application/json" });
@@ -540,6 +589,7 @@ export default function PanelEventos() {
             personas={personas}
             eventos={eventos}
             onLiberarPersona={liberarPersonaDeEvento}
+            onReemplazarEnEvento={reemplazarEnEvento}
             onIrAPersonal={() => setVista("personal")}
             perms={p}
           />
@@ -595,6 +645,7 @@ export default function PanelEventos() {
             onNuevo={() => { setEditId(null); setVista("form"); }}
             onExportar={exportarJSON}
             perms={p}
+            usuario={usuario}
           />
         )}
       </main>
@@ -636,7 +687,7 @@ function Badge({ color, children, solid }) {
 }
 
 /* ====================== LISTA ====================== */
-function Lista({ eventos, total, busqueda, setBusqueda, filtroCat, setFiltroCat, filtroEmp, setFiltroEmp, filtroTiempo, setFiltroTiempo, conteosTiempo, onVer, onEdit, onDelete, onNuevo, onExportar, perms = {} }) {
+function Lista({ eventos, total, busqueda, setBusqueda, filtroCat, setFiltroCat, filtroEmp, setFiltroEmp, filtroTiempo, setFiltroTiempo, conteosTiempo, onVer, onEdit, onDelete, onNuevo, onExportar, perms = {}, usuario = {} }) {
   const hoyISO = new Date().toISOString().slice(0, 10);
   const tabs = [
     { value: "proximos", label: "Próximos", count: conteosTiempo.proximos },
@@ -749,6 +800,20 @@ function Lista({ eventos, total, busqueda, setBusqueda, filtroCat, setFiltroCat,
                 </div>
               </div>
               <div className="flex items-center gap-3 shrink-0">
+                {/* Badge de mensajes no leídos */}
+                {(() => {
+                  const noLeidos = mensajesNoLeidos(e.mensajes, e.id, usuario?.id);
+                  return noLeidos > 0 ? (
+                    <button
+                      onClick={(ev) => { ev.stopPropagation(); onVer(e.id); }}
+                      title={`${noLeidos} observación${noLeidos > 1 ? "es" : ""} sin leer`}
+                      className="flex items-center gap-1 text-[10px] font-bold px-2 py-1 rounded-full shrink-0"
+                      style={{ background: C.amber, color: "#1a1200" }}
+                    >
+                      <MessageSquare size={11} /> {noLeidos}
+                    </button>
+                  ) : null;
+                })()}
                 <div className="text-right">
                   <div className="font-mono text-sm">{fmtMoneda(totalFacturable(e), e.moneda)}</div>
                   <div className="flex gap-1 justify-end mt-1 flex-wrap">
@@ -1677,6 +1742,10 @@ function CategoriasPersonal({ categorias, personas, onSave, onDelete, abierto, s
 
 /* ====================== DETALLE ====================== */
 function Detalle({ ev, onBack, onEdit, onDelete, onUpdate, perms = {}, usuario = {} }) {
+  useEffect(() => {
+    if (usuario?.id && ev?.id) marcarLeido(ev.id, usuario.id);
+  }, [ev?.id, ev?.mensajes?.length, usuario?.id]);
+
   return (
     <div className="fade">
       <div className="flex items-center gap-2 mb-4">
@@ -1698,6 +1767,8 @@ function Detalle({ ev, onBack, onEdit, onDelete, onUpdate, perms = {}, usuario =
       </div>
 
       <div className="grid sm:grid-cols-2 gap-4">
+        <MensajesEquipo ev={ev} usuario={usuario} onUpdate={onUpdate} />
+
         <Card titulo="Producción" icon={<Camera size={15} color={C.gold} />}>
           <Dato k="Fecha" v={fmtFecha(ev.fecha)} mono />
           <Dato k="Estudio" v={ev.estudio || "—"} />
@@ -1802,8 +1873,6 @@ function Detalle({ ev, onBack, onEdit, onDelete, onUpdate, perms = {}, usuario =
             <p className="text-sm whitespace-pre-wrap leading-relaxed" style={{ color: C.text }}>{ev.observaciones}</p>
           </Card>
         )}
-
-        <MensajesEquipo ev={ev} usuario={usuario} onUpdate={onUpdate} />
       </div>
     </div>
   );
@@ -2167,7 +2236,7 @@ function Dato({ k, v, mono, accent }) {
 }
 
 /* ====================== FORMULARIO ====================== */
-function FormEvento({ base, onCancel, onSave, guardando, personas = [], eventos = [], onLiberarPersona, onIrAPersonal, perms = {} }) {
+function FormEvento({ base, onCancel, onSave, guardando, personas = [], eventos = [], onLiberarPersona, onReemplazarEnEvento, onIrAPersonal, perms = {} }) {
   const [f, setF] = useState(() => {
     // Garantiza que partes siempre tiene los 5 tipos, incluso en eventos viejos
     const partesExistentes = Array.isArray(base.partes) ? base.partes : [];
@@ -2182,6 +2251,8 @@ function FormEvento({ base, onCancel, onSave, guardando, personas = [], eventos 
 
   // Estado para el input de fecha pendiente por parte (indexado)
   const [fechaInputs, setFechaInputs] = useState(() => Array(PARTES_PROD.length).fill(""));
+  // Reemplazo de integrante en otro evento: { eventoId, personaId, nuevoId }
+  const [reemplazando, setReemplazando] = useState(null);
 
   const addFecha = (tipoIdx, fecha) => {
     if (!fecha) return;
@@ -2213,7 +2284,13 @@ function FormEvento({ base, onCancel, onSave, guardando, personas = [], eventos 
     }));
   };
 
-  const addIntegrante = () => set("integrantes", [...f.integrantes, { personaId: "", nombre: "", rol: "" }]);
+  const addIntegrante = () => set("integrantes", [...f.integrantes, { personaId: "", nombre: "", rol: "", partes: [] }]);
+
+  const toggleIntegranteParte = (idx, tipo) => {
+    const partes = f.integrantes[idx]?.partes || [];
+    const nuevasPartes = partes.includes(tipo) ? partes.filter((p) => p !== tipo) : [...partes, tipo];
+    setIntegrante(idx, "partes", nuevasPartes);
+  };
   const setIntegrante = (i, k, v) =>
     set("integrantes", f.integrantes.map((x, idx) => (idx === i ? { ...x, [k]: v } : x)));
   const elegirPersona = (i, personaId) => {
@@ -2231,15 +2308,39 @@ function FormEvento({ base, onCancel, onSave, guardando, personas = [], eventos 
     set("equipoExterno", equipoExterno.map((x, idx) => (idx === i ? { ...x, [k]: v } : x)));
   const delExterno = (i) => set("equipoExterno", equipoExterno.filter((_, idx) => idx !== i));
 
-  /* Conflicto de personal: misma fecha, otra ocupación. */
+  /* Conflicto de personal: superposición de fechas de trabajo (partes o fecha principal). */
   const conflictosPorPersona = (personaId) => {
-    if (!personaId || !f.fecha) return [];
-    return eventos.filter(
-      (ev) =>
-        ev.id !== f.id &&
-        ev.fecha === f.fecha &&
-        (ev.integrantes || []).some((i) => i.personaId === personaId)
-    );
+    if (!personaId) return [];
+    const integranteActual = f.integrantes.find((x) => x.personaId === personaId);
+    const fechasTrabajo = getFechasTrabajo(f.partes, integranteActual?.partes || []);
+    const usarFechaSimple = fechasTrabajo.size === 0;
+
+    return eventos.filter((ev) => {
+      if (ev.id === f.id) return false;
+      const integranteEnOtro = (ev.integrantes || []).find((x) => x.personaId === personaId);
+      if (!integranteEnOtro) return false;
+      const fechasOtro = getFechasTrabajo(ev.partes || [], integranteEnOtro.partes || []);
+      const otroSimple = fechasOtro.size === 0;
+
+      if (usarFechaSimple && otroSimple) return f.fecha && ev.fecha && f.fecha === ev.fecha;
+      if (usarFechaSimple) return f.fecha ? fechasOtro.has(f.fecha) : false;
+      if (otroSimple) return ev.fecha ? fechasTrabajo.has(ev.fecha) : false;
+      for (const d of fechasTrabajo) { if (fechasOtro.has(d)) return true; }
+      return false;
+    });
+  };
+
+  // Fechas en las que se superpone la persona entre dos eventos (para mostrar en el warning)
+  const fechasConflicto = (ev, personaId) => {
+    const integranteActual = f.integrantes.find((x) => x.personaId === personaId);
+    const fechasTrabajo = getFechasTrabajo(f.partes, integranteActual?.partes || []);
+    const integranteEnOtro = (ev.integrantes || []).find((x) => x.personaId === personaId);
+    const fechasOtro = getFechasTrabajo(ev.partes || [], integranteEnOtro?.partes || []);
+    if (fechasTrabajo.size > 0 && fechasOtro.size > 0) {
+      return [...fechasTrabajo].filter((d) => fechasOtro.has(d));
+    }
+    if (f.fecha && ev.fecha && f.fecha === ev.fecha) return [f.fecha];
+    return [];
   };
   const liberarYReintentar = async (eventoId, personaId) => {
     if (!onLiberarPersona) return;
@@ -2386,51 +2487,128 @@ function FormEvento({ base, onCancel, onSave, guardando, personas = [], eventos 
                 )}
               </p>
             )}
-            {f.integrantes.map((i, idx) => {
-              const choques = conflictosPorPersona(i.personaId);
+            {f.integrantes.map((integrante, idx) => {
+              const choques = conflictosPorPersona(integrante.personaId);
               return (
                 <div key={idx} className="grid gap-1.5">
+                  {/* Fila: persona + rol + quitar */}
                   <div className="flex flex-col sm:flex-row gap-2 sm:items-center">
-                    <select value={i.personaId || ""} onChange={(e) => elegirPersona(idx, e.target.value)}
+                    <select value={integrante.personaId || ""} onChange={(e) => elegirPersona(idx, e.target.value)}
                       className="text-sm px-3 py-2 rounded-md sm:flex-1"
                       style={{
                         background: C.panel2,
                         border: `1px solid ${choques.length > 0 ? C.rose : C.border}`,
-                        color: i.personaId ? C.text : C.dim,
+                        color: integrante.personaId ? C.text : C.dim,
                         colorScheme: "dark",
                       }}>
                       <option value="" style={{ background: C.panel2, color: C.dim }}>Elegir persona…</option>
                       {personas.map((p) => <option key={p.id} value={p.id} style={{ background: C.panel2, color: C.text }}>{p.nombre}</option>)}
                     </select>
-                    <Input value={i.rol} onChange={(v) => setIntegrante(idx, "rol", v)} placeholder="Rol en este evento (DF, gaffer…)" />
+                    <Input value={integrante.rol} onChange={(v) => setIntegrante(idx, "rol", v)} placeholder="Rol en este evento (DF, gaffer…)" />
                     <IconBtn onClick={() => delIntegrante(idx)} title="Quitar" danger><X size={16} /></IconBtn>
                   </div>
+
+                  {/* Chips de partes (visible solo si hay persona elegida) */}
+                  {integrante.personaId && (
+                    <div className="flex flex-wrap items-center gap-1.5 pl-1">
+                      <span className="text-[10px]" style={{ color: C.dim }}>Partes:</span>
+                      {PARTES_PROD.map((tipo) => {
+                        const sel = (integrante.partes || []).includes(tipo);
+                        return (
+                          <button key={tipo} type="button" onClick={() => toggleIntegranteParte(idx, tipo)}
+                            className="text-[10px] px-2 py-0.5 rounded-full transition-colors"
+                            style={{
+                              background: sel ? `${C.amber}22` : C.panel,
+                              color: sel ? C.amber : C.dim,
+                              border: `1px solid ${sel ? C.amber + "60" : C.border}`,
+                            }}>
+                            {tipo}
+                          </button>
+                        );
+                      })}
+                      {(integrante.partes || []).length === 0 && (
+                        <span className="text-[10px] italic" style={{ color: C.dim }}>Todas las partes</span>
+                      )}
+                    </div>
+                  )}
+
+                  {/* Conflicto: persona ya asignada en otro evento */}
                   {choques.length > 0 && (
                     <div className="text-xs px-3 py-2 rounded-md" style={{ background: `${C.rose}1a`, border: `1px solid ${C.rose}55`, color: C.rose }}>
-                      <div className="flex items-center gap-1.5 font-medium">
+                      <div className="flex items-center gap-1.5 font-medium mb-1.5">
                         <AlertTriangle size={13} />
-                        Esta persona ya está asignada el {fmtFecha(f.fecha)}:
+                        Conflicto de fechas:
                       </div>
-                      <div className="grid gap-1 mt-1.5">
-                        {choques.map((c) => (
-                          <div key={c.id} className="flex items-center justify-between gap-2">
-                            <span style={{ color: C.text }}>· {c.nombre || "Sin nombre"}</span>
-                            {perms.liberarPersona ? (
-                              <button
-                                type="button"
-                                onClick={() => liberarYReintentar(c.id, i.personaId)}
-                                className="text-[11px] font-medium px-2 py-1 rounded"
-                                style={{ background: C.rose, color: "#1a0008" }}
-                              >
-                                Liberar de ese evento
-                              </button>
-                            ) : (
-                              <span className="text-[11px]" style={{ color: C.dim }}>
-                                Solo admin o producción puede liberar
-                              </span>
-                            )}
-                          </div>
-                        ))}
+                      <div className="grid gap-2">
+                        {choques.map((c) => {
+                          const integranteEnOtro = (c.integrantes || []).find((x) => x.personaId === integrante.personaId);
+                          const rolEnOtro = integranteEnOtro?.rol;
+                          const overlap = fechasConflicto(c, integrante.personaId);
+                          const esReemplazando = reemplazando?.eventoId === c.id && reemplazando?.personaId === integrante.personaId;
+                          return (
+                            <div key={c.id} className="grid gap-1">
+                              <div className="flex items-start justify-between gap-2">
+                                <div style={{ color: C.text }}>
+                                  <span className="font-medium">· {c.nombre || "Sin nombre"}</span>
+                                  {rolEnOtro && <span style={{ color: C.dim }}> — como {rolEnOtro}</span>}
+                                  {overlap.length > 0 && (
+                                    <div className="text-[10px] mt-0.5" style={{ color: C.dim }}>
+                                      Superposición: {overlap.map(fmtFecha).join(", ")}
+                                    </div>
+                                  )}
+                                </div>
+                                {perms.liberarPersona ? (
+                                  <div className="flex gap-1 shrink-0">
+                                    <button type="button" onClick={() => liberarYReintentar(c.id, integrante.personaId)}
+                                      className="text-[10px] font-medium px-2 py-1 rounded"
+                                      style={{ background: C.rose, color: "#1a0008" }}>
+                                      Liberar
+                                    </button>
+                                    <button type="button"
+                                      onClick={() => setReemplazando({ eventoId: c.id, personaId: integrante.personaId, nuevoId: "" })}
+                                      className="text-[10px] font-medium px-2 py-1 rounded"
+                                      style={{ background: C.panel2, border: `1px solid ${C.border}`, color: C.text }}>
+                                      Reemplazar
+                                    </button>
+                                  </div>
+                                ) : (
+                                  <span className="text-[10px] shrink-0" style={{ color: C.dim }}>
+                                    Solo admin o producción puede liberar
+                                  </span>
+                                )}
+                              </div>
+                              {/* UI de reemplazo inline */}
+                              {esReemplazando && (
+                                <div className="flex gap-1.5 items-center mt-1 flex-wrap">
+                                  <select
+                                    value={reemplazando.nuevoId}
+                                    onChange={(e) => setReemplazando((prev) => ({ ...prev, nuevoId: e.target.value }))}
+                                    className="text-xs px-2 py-1 rounded flex-1 min-w-0"
+                                    style={{ background: C.panel2, border: `1px solid ${C.border}`, color: C.text, colorScheme: "dark" }}>
+                                    <option value="">Elegir reemplazo en "{c.nombre}"…</option>
+                                    {personas
+                                      .filter((p) => p.id !== integrante.personaId && !(c.integrantes || []).some((x) => x.personaId === p.id))
+                                      .map((p) => <option key={p.id} value={p.id}>{p.nombre}</option>)}
+                                  </select>
+                                  <button type="button" disabled={!reemplazando.nuevoId}
+                                    onClick={async () => {
+                                      await onReemplazarEnEvento(c.id, integrante.personaId, reemplazando.nuevoId);
+                                      setReemplazando(null);
+                                    }}
+                                    className="text-[10px] font-medium px-2 py-1 rounded shrink-0"
+                                    style={{ background: reemplazando.nuevoId ? C.gold : C.panel2, color: reemplazando.nuevoId ? C.onGold : C.dim }}>
+                                    Confirmar
+                                  </button>
+                                  <button type="button" onClick={() => setReemplazando(null)}
+                                    className="text-[10px] px-2 py-1 rounded shrink-0"
+                                    style={{ background: C.panel2, border: `1px solid ${C.border}`, color: C.dim }}>
+                                    Cancelar
+                                  </button>
+                                </div>
+                              )}
+                            </div>
+                          );
+                        })}
                       </div>
                     </div>
                   )}
