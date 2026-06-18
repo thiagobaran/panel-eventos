@@ -603,6 +603,7 @@ export default function PanelEventos() {
             perms={p}
             usuario={usuario}
             personas={personas}
+            eventos={eventos}
           />
         ) : vista === "dashboard" ? (
           <Dashboard
@@ -1742,7 +1743,7 @@ function CategoriasPersonal({ categorias, personas, onSave, onDelete, abierto, s
 }
 
 /* ====================== DETALLE ====================== */
-function Detalle({ ev, onBack, onEdit, onDelete, onUpdate, perms = {}, usuario = {}, personas = [] }) {
+function Detalle({ ev, onBack, onEdit, onDelete, onUpdate, perms = {}, usuario = {}, personas = [], eventos = [] }) {
   useEffect(() => {
     if (usuario?.id && ev?.id) marcarLeido(ev.id, usuario.id);
   }, [ev?.id, ev?.mensajes?.length, usuario?.id]);
@@ -1798,7 +1799,7 @@ function Detalle({ ev, onBack, onEdit, onDelete, onUpdate, perms = {}, usuario =
           </div>
         )}
 
-        <EquipoCard ev={ev} onUpdate={onUpdate} perms={perms} personas={personas} />
+        <EquipoCard ev={ev} onUpdate={onUpdate} perms={perms} personas={personas} eventos={eventos} />
 
         <DireccionCard ev={ev} onUpdate={onUpdate} perms={perms} />
 
@@ -2129,15 +2130,57 @@ function DireccionCard({ ev, onUpdate, perms }) {
   );
 }
 
-function EquipoCard({ ev, onUpdate, perms, personas = [] }) {
+function EquipoCard({ ev, onUpdate, perms, personas = [], eventos = [] }) {
   const [editando, setEditando] = useState(false);
   const [integrantes, setIntegrantes] = useState([]);
   const [nuevo, setNuevo] = useState({ personaId: "", rol: "" });
 
   const startEdit = () => {
-    setIntegrantes((ev.integrantes || []).map((i) => ({ ...i })));
+    setIntegrantes((ev.integrantes || []).map((i) => ({ ...i, partes: i.partes || [] })));
     setNuevo({ personaId: "", rol: "" });
     setEditando(true);
+  };
+
+  // Misma lógica de conflictos que en FormEvento
+  const partesSuperpuestas = (a, b) => {
+    const fa = (a || []).length === 0 ? PARTES_PROD : a;
+    const fb = (b || []).length === 0 ? PARTES_PROD : b;
+    return fa.some((p) => fb.includes(p));
+  };
+
+  const conflictosPorPersona = (personaId, idx) => {
+    if (!personaId) return [];
+    const integranteActual = integrantes[idx];
+    const fechasTrabajo = getFechasTrabajo(ev.partes, integranteActual?.partes || []);
+    const usarFechaSimple = fechasTrabajo.size === 0;
+    return eventos.filter((otro) => {
+      if (otro.id === ev.id) return false;
+      const enOtro = (otro.integrantes || []).find((x) => x.personaId === personaId);
+      if (!enOtro) return false;
+      const fechasOtro = getFechasTrabajo(otro.partes || [], enOtro.partes || []);
+      const otroSimple = fechasOtro.size === 0;
+      if (usarFechaSimple && otroSimple) return ev.fecha && otro.fecha && ev.fecha === otro.fecha;
+      if (usarFechaSimple) return ev.fecha ? fechasOtro.has(ev.fecha) : false;
+      if (otroSimple) return otro.fecha ? fechasTrabajo.has(otro.fecha) : false;
+      for (const d of fechasTrabajo) { if (fechasOtro.has(d)) return true; }
+      return false;
+    });
+  };
+
+  const dupInternos = (idx) => {
+    const actual = integrantes[idx];
+    if (!actual?.personaId) return [];
+    return integrantes.filter((x, i) =>
+      i !== idx && x.personaId === actual.personaId && partesSuperpuestas(actual.partes, x.partes)
+    );
+  };
+
+  const toggleParte = (idx, tipo) => {
+    setIntegrantes((prev) => prev.map((x, i) => {
+      if (i !== idx) return x;
+      const p = x.partes || [];
+      return { ...x, partes: p.includes(tipo) ? p.filter((t) => t !== tipo) : [...p, tipo] };
+    }));
   };
 
   const addIntegrante = () => {
@@ -2150,22 +2193,77 @@ function EquipoCard({ ev, onUpdate, perms, personas = [] }) {
   const delIntegrante = (idx) => setIntegrantes((prev) => prev.filter((_, i) => i !== idx));
   const setRol = (idx, rol) => setIntegrantes((prev) => prev.map((x, i) => i === idx ? { ...x, rol } : x));
 
+  const guardar = () => {
+    const dups = integrantes.filter((_, idx) => dupInternos(idx).length > 0);
+    if (dups.length > 0) {
+      const nombres = [...new Set(dups.map((i) => i.nombre || "?"))];
+      alert(`Hay personas con fases superpuestas:\n${nombres.map((n) => `• ${n}`).join("\n")}\nCambiá las fases o quitá una entrada.`);
+      return;
+    }
+    onUpdate({ integrantes });
+    setEditando(false);
+  };
+
   return (
     <Card titulo="Equipo" icon={<Users size={15} color={C.gold} />}
       action={perms?.eventoEditar && !editando ? <EditCardBtn onClick={startEdit} /> : null}>
       {editando ? (
-        <div className="grid gap-2">
-          {integrantes.map((i, idx) => (
-            <div key={idx} className="flex items-center gap-2">
-              <span className="flex-1 text-sm truncate" style={{ color: C.text }}>{i.nombre}</span>
-              <input value={i.rol} onChange={(e) => setRol(idx, e.target.value)} placeholder="Rol"
-                className="text-sm px-2 py-1 rounded w-32 outline-none"
-                style={{ background: C.panel2, border: `1px solid ${C.border}`, color: C.text }} />
-              <button type="button" onClick={() => delIntegrante(idx)}
-                className="p-1 rounded" style={{ color: C.rose }} title="Quitar"><X size={14} /></button>
-            </div>
-          ))}
-          <div className="flex gap-2 pt-1" style={{ borderTop: `1px solid ${C.border}` }}>
+        <div className="grid gap-3">
+          {integrantes.map((integ, idx) => {
+            const choques = conflictosPorPersona(integ.personaId, idx);
+            const dups = dupInternos(idx);
+            const hayError = choques.length > 0 || dups.length > 0;
+            const todasSel = (integ.partes || []).length === PARTES_PROD.length;
+            return (
+              <div key={idx} className="grid gap-1.5 pb-2.5" style={{ borderBottom: `1px solid ${C.border}` }}>
+                <div className="flex items-center gap-2">
+                  <span className="flex-1 text-sm font-medium truncate" style={{ color: hayError ? C.rose : C.text }}>{integ.nombre}</span>
+                  <input value={integ.rol} onChange={(e) => setRol(idx, e.target.value)} placeholder="Rol"
+                    className="text-sm px-2 py-1 rounded w-32 outline-none"
+                    style={{ background: C.panel2, border: `1px solid ${hayError ? C.rose : C.border}`, color: C.text }} />
+                  <button type="button" onClick={() => delIntegrante(idx)}
+                    className="p-1 rounded" style={{ color: C.rose }} title="Quitar"><X size={14} /></button>
+                </div>
+                {/* Chips de partes */}
+                <div className="flex flex-wrap items-center gap-1.5 pl-1">
+                  <span className="text-[10px]" style={{ color: C.dim }}>Fases:</span>
+                  <button type="button"
+                    onClick={() => setIntegrantes((prev) => prev.map((x, i) => i === idx ? { ...x, partes: todasSel ? [] : [...PARTES_PROD] } : x))}
+                    className="text-[10px] px-2 py-0.5 rounded-full transition-colors"
+                    style={{ background: todasSel ? `${C.gold}22` : C.panel, color: todasSel ? C.gold : C.dim, border: `1px solid ${todasSel ? C.gold + "60" : C.border}` }}>
+                    {todasSel ? "✓ Todas" : "Todas"}
+                  </button>
+                  {PARTES_PROD.map((tipo) => {
+                    const sel = (integ.partes || []).includes(tipo);
+                    return (
+                      <button key={tipo} type="button" onClick={() => toggleParte(idx, tipo)}
+                        className="text-[10px] px-2 py-0.5 rounded-full transition-colors"
+                        style={{ background: sel ? `${C.amber}22` : C.panel, color: sel ? C.amber : C.dim, border: `1px solid ${sel ? C.amber + "60" : C.border}` }}>
+                        {tipo}
+                      </button>
+                    );
+                  })}
+                  {(integ.partes || []).length === 0 && (
+                    <span className="text-[10px] italic" style={{ color: C.dim }}>Sin especificar (se añade en todas)</span>
+                  )}
+                </div>
+                {dups.length > 0 && (
+                  <div className="text-[11px] px-2 py-1.5 rounded flex items-center gap-1.5"
+                    style={{ background: `${C.rose}1a`, border: `1px solid ${C.rose}55`, color: C.rose }}>
+                    <AlertTriangle size={11} /> Misma persona con fases superpuestas en este evento.
+                  </div>
+                )}
+                {choques.length > 0 && (
+                  <div className="text-[11px] px-2 py-1.5 rounded" style={{ background: `${C.rose}1a`, border: `1px solid ${C.rose}55`, color: C.rose }}>
+                    <div className="flex items-center gap-1.5 font-medium mb-0.5"><AlertTriangle size={11} /> Conflicto con otro evento:</div>
+                    {choques.map((c) => <div key={c.id}>· {c.nombre || "Sin nombre"}</div>)}
+                  </div>
+                )}
+              </div>
+            );
+          })}
+          {/* Fila para agregar nuevo integrante */}
+          <div className="flex gap-2">
             <select value={nuevo.personaId} onChange={(e) => setNuevo((p) => ({ ...p, personaId: e.target.value }))}
               className="flex-1 text-sm px-2 py-1.5 rounded"
               style={{ background: C.panel2, border: `1px solid ${C.border}`, color: nuevo.personaId ? C.text : C.dim, colorScheme: "dark" }}>
@@ -2180,16 +2278,25 @@ function EquipoCard({ ev, onUpdate, perms, personas = [] }) {
               <Plus size={14} />
             </button>
           </div>
-          <EditCardFooter onSave={() => { onUpdate({ integrantes }); setEditando(false); }} onCancel={() => setEditando(false)} />
+          <EditCardFooter onSave={guardar} onCancel={() => setEditando(false)} />
         </div>
       ) : (
         ev.integrantes?.length ? (
-          <div className="grid gap-1.5">
+          <div className="grid gap-2">
             {ev.integrantes.map((i, idx) => (
-              <div key={idx} className="flex items-center justify-between text-sm py-1"
-                style={{ borderBottom: idx < ev.integrantes.length - 1 ? `1px solid ${C.border}` : "none" }}>
-                <span>{i.nombre}</span>
-                <span className="font-mono text-xs px-2 py-0.5 rounded" style={{ background: C.panel2, color: C.dim }}>{i.rol}</span>
+              <div key={idx} className="py-1" style={{ borderBottom: idx < ev.integrantes.length - 1 ? `1px solid ${C.border}` : "none" }}>
+                <div className="flex items-center justify-between text-sm">
+                  <span>{i.nombre}</span>
+                  <span className="font-mono text-xs px-2 py-0.5 rounded" style={{ background: C.panel2, color: C.dim }}>{i.rol}</span>
+                </div>
+                {(i.partes || []).length > 0 && (
+                  <div className="flex flex-wrap gap-1 mt-1">
+                    {i.partes.map((p) => (
+                      <span key={p} className="text-[9px] px-1.5 py-0.5 rounded-full"
+                        style={{ background: `${C.amber}18`, color: C.amber, border: `1px solid ${C.amber}40` }}>{p}</span>
+                    ))}
+                  </div>
+                )}
               </div>
             ))}
           </div>
