@@ -2460,8 +2460,32 @@ function FormEvento({ base, onCancel, onSave, guardando, personas = [], eventos 
     await onLiberarPersona(eventoId, personaId);
   };
 
+  // Verifica si dos listas de partes se superponen (vacío = todas las fases)
+  const partesSuperpuestas = (a, b) => {
+    const fa = (a || []).length === 0 ? PARTES_PROD : a;
+    const fb = (b || []).length === 0 ? PARTES_PROD : b;
+    return fa.some((p) => fb.includes(p));
+  };
+  // Devuelve los otros integrantes del mismo evento que sean la misma persona con partes superpuestas
+  const dupInternos = (idx) => {
+    const actual = f.integrantes[idx];
+    if (!actual?.personaId) return [];
+    return f.integrantes.filter((x, i) =>
+      i !== idx && x.personaId === actual.personaId && partesSuperpuestas(actual.partes, x.partes)
+    );
+  };
+
   const submit = () => {
     if (!f.nombre.trim()) { alert("Poné al menos el nombre del evento."); return; }
+    // Bloqueo: misma persona con fases superpuestas dentro del mismo evento
+    const conDups = f.integrantes.filter((int, idx) =>
+      int.personaId && dupInternos(idx).length > 0
+    );
+    if (conDups.length > 0) {
+      const nombres = [...new Set(conDups.map((i) => personas.find((p) => p.id === i.personaId)?.nombre || "?"))];
+      alert(`Las siguientes personas están cargadas dos veces con fases superpuestas:\n\n${nombres.map((n) => `• ${n}`).join("\n")}\n\nCambiá las fases para que no se repitan, o quitá una de las entradas.`);
+      return;
+    }
     // Bloqueo: si hay personas en conflicto que no fueron liberadas, frenamos.
     const choques = f.integrantes
       .filter((i) => i.personaId)
@@ -2599,6 +2623,8 @@ function FormEvento({ base, onCancel, onSave, guardando, personas = [], eventos 
             )}
             {f.integrantes.map((integrante, idx) => {
               const choques = conflictosPorPersona(integrante.personaId);
+              const dups = dupInternos(idx);
+              const hayError = choques.length > 0 || dups.length > 0;
               return (
                 <div key={idx} className="grid gap-1.5">
                   {/* Fila: persona + rol + quitar */}
@@ -2607,7 +2633,7 @@ function FormEvento({ base, onCancel, onSave, guardando, personas = [], eventos 
                       className="text-sm px-3 py-2 rounded-md sm:flex-1"
                       style={{
                         background: C.panel2,
-                        border: `1px solid ${choques.length > 0 ? C.rose : C.border}`,
+                        border: `1px solid ${hayError ? C.rose : C.border}`,
                         color: integrante.personaId ? C.text : C.dim,
                         colorScheme: "dark",
                       }}>
@@ -2655,6 +2681,16 @@ function FormEvento({ base, onCancel, onSave, guardando, personas = [], eventos 
                       {(integrante.partes || []).length === 0 && (
                         <span className="text-[10px] italic" style={{ color: C.dim }}>Sin especificar (se añade en todas)</span>
                       )}
+                    </div>
+                  )}
+
+                  {/* Duplicado interno: misma persona con fases superpuestas en este mismo evento */}
+                  {dups.length > 0 && (
+                    <div className="text-xs px-3 py-2 rounded-md" style={{ background: `${C.rose}1a`, border: `1px solid ${C.rose}55`, color: C.rose }}>
+                      <div className="flex items-center gap-1.5 font-medium">
+                        <AlertTriangle size={13} />
+                        Esta persona ya está cargada en este evento con fases superpuestas. Cambiá las fases para que no se repitan, o quitá una de las entradas.
+                      </div>
                     </div>
                   )}
 
