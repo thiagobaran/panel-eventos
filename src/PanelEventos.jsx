@@ -1840,33 +1840,7 @@ function Detalle({ ev, onBack, onEdit, onDelete, onUpdate, perms = {}, usuario =
 
         <EquipoExterno ev={ev} />
 
-        {totalDias(ev.partes) > 0 && (
-          <Card titulo="Partes del proyecto" icon={<Clock size={15} color={C.amber} />} full>
-            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-2">
-              {(ev.partes || []).filter((p) => (p.fechas || []).length > 0).map((parte) => (
-                <div key={parte.tipo} className="rounded-lg p-2.5" style={{ background: C.panel2, border: `1px solid ${C.border}` }}>
-                  <div className="text-[11px] font-semibold mb-2 leading-tight" style={{ color: C.amber }}>{parte.tipo}</div>
-                  <div className="flex flex-wrap gap-1">
-                    {parte.fechas.map((fecha) => (
-                      <span key={fecha} className="text-[10px] font-mono px-1.5 py-0.5 rounded" style={{ background: `${C.amber}18`, color: C.text }}>
-                        {fmtFecha(fecha)}
-                      </span>
-                    ))}
-                  </div>
-                  <div className="mt-2 text-[11px] font-mono" style={{ color: C.dim }}>
-                    {parte.fechas.length} {parte.fechas.length === 1 ? "día" : "días"}
-                  </div>
-                </div>
-              ))}
-            </div>
-            <div className="flex items-center gap-2 pt-2 mt-1" style={{ borderTop: `1px solid ${C.border}` }}>
-              <Clock size={13} color={C.amber} />
-              <span className="text-sm font-semibold" style={{ color: C.amber }}>
-                Total: {totalDias(ev.partes)} {totalDias(ev.partes) === 1 ? "día" : "días"} de producción
-              </span>
-            </div>
-          </Card>
-        )}
+        <PartesDetalle ev={ev} onUpdate={onUpdate} perms={perms} />
 
         {ev.observaciones && (
           <Card titulo="Observaciones" icon={<FileText size={15} color={C.dim} />} full>
@@ -1875,6 +1849,142 @@ function Detalle({ ev, onBack, onEdit, onDelete, onUpdate, perms = {}, usuario =
         )}
       </div>
     </div>
+  );
+}
+
+/* ====================== PARTES DEL PROYECTO (edición inline desde detalle) ====================== */
+function PartesDetalle({ ev, onUpdate, perms }) {
+  const [editandoIdx, setEditandoIdx] = useState(null);
+  const [fechaInput, setFechaInput] = useState("");
+  const [partesTmp, setPartesTmp] = useState(null);
+
+  const partes = useMemo(() => {
+    const existentes = Array.isArray(ev.partes) ? ev.partes : [];
+    return PARTES_PROD.map((tipo) => {
+      const ex = existentes.find((p) => p.tipo === tipo);
+      return ex || { tipo, fechas: [] };
+    });
+  }, [ev.partes]);
+
+  const display = partesTmp || partes;
+  const total = totalDias(display);
+  const canEdit = perms?.eventoEditar;
+
+  const startEdit = (idx) => {
+    setEditandoIdx(idx);
+    setPartesTmp(partes.map((p) => ({ ...p, fechas: [...(p.fechas || [])] })));
+    setFechaInput("");
+  };
+  const cancelEdit = () => { setEditandoIdx(null); setPartesTmp(null); setFechaInput(""); };
+
+  const addFecha = () => {
+    if (!fechaInput || editandoIdx === null) return;
+    setPartesTmp((prev) => prev.map((p, i) => {
+      if (i !== editandoIdx) return p;
+      if ((p.fechas || []).includes(fechaInput)) return p;
+      return { ...p, fechas: [...(p.fechas || []), fechaInput].sort() };
+    }));
+    setFechaInput("");
+  };
+  const delFecha = (fecha) => {
+    setPartesTmp((prev) => prev.map((p, i) => {
+      if (i !== editandoIdx) return p;
+      return { ...p, fechas: (p.fechas || []).filter((d) => d !== fecha) };
+    }));
+  };
+  const guardar = () => {
+    const allFechas = partesTmp.flatMap((p) => p.fechas || []).filter(Boolean).sort();
+    onUpdate({ partes: partesTmp, fecha: allFechas.length > 0 ? allFechas[0] : "" });
+    setEditandoIdx(null); setPartesTmp(null); setFechaInput("");
+  };
+
+  if (total === 0 && !canEdit) return null;
+
+  return (
+    <Card titulo="Partes del proyecto" icon={<Clock size={15} color={C.amber} />} full>
+      <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-2">
+        {display.map((parte, idx) => {
+          const isEditing = editandoIdx === idx;
+          const fechas = parte.fechas || [];
+          return (
+            <div key={parte.tipo} className="rounded-lg p-2.5 flex flex-col gap-1.5"
+              style={{ background: isEditing ? `${C.amber}0d` : C.panel2, border: `1px solid ${isEditing ? C.amber + "55" : C.border}`, transition: "border-color 0.15s" }}>
+              {/* Header */}
+              <div className="flex items-center justify-between">
+                <div className="text-[11px] font-semibold leading-tight" style={{ color: C.amber }}>{parte.tipo}</div>
+                {canEdit && editandoIdx === null && (
+                  <button type="button" onClick={() => startEdit(idx)} title="Editar fechas"
+                    className="p-0.5 rounded hover:opacity-70" style={{ color: C.dim }}>
+                    <Pencil size={11} />
+                  </button>
+                )}
+              </div>
+              {/* Chips */}
+              <div className="flex flex-wrap gap-1 flex-1">
+                {fechas.length === 0 && !isEditing && (
+                  <span className="text-[10px]" style={{ color: C.dim }}>Sin fechas</span>
+                )}
+                {fechas.map((fecha) =>
+                  isEditing ? (
+                    <button key={fecha} type="button" onClick={() => delFecha(fecha)}
+                      className="inline-flex items-center gap-0.5 text-[10px] font-mono px-1.5 py-0.5 rounded"
+                      style={{ background: `${C.rose}22`, border: `1px solid ${C.rose}55`, color: C.rose }} title="Quitar">
+                      {fmtFecha(fecha)} <X size={8} />
+                    </button>
+                  ) : (
+                    <span key={fecha} className="text-[10px] font-mono px-1.5 py-0.5 rounded"
+                      style={{ background: `${C.amber}18`, color: C.text }}>
+                      {fmtFecha(fecha)}
+                    </span>
+                  )
+                )}
+              </div>
+              {/* Input agregar (solo editando) */}
+              {isEditing && (
+                <div className="flex gap-1">
+                  <input type="date" value={fechaInput} onChange={(e) => setFechaInput(e.target.value)}
+                    onKeyDown={(e) => e.key === "Enter" && addFecha()}
+                    className="flex-1 min-w-0 text-[11px] rounded px-1.5 py-1 outline-none"
+                    style={{ background: C.bg, border: `1px solid ${C.border}`, color: C.text }} />
+                  <button type="button" onClick={addFecha}
+                    className="px-2 py-1 rounded" style={{ background: C.amber, color: C.onGold }} title="Agregar">
+                    <Plus size={12} />
+                  </button>
+                </div>
+              )}
+              {/* Footer */}
+              {isEditing ? (
+                <div className="flex gap-1">
+                  <button type="button" onClick={guardar}
+                    className="flex-1 text-[11px] font-semibold px-2 py-1 rounded flex items-center justify-center gap-1"
+                    style={{ background: C.green, color: "#000" }}>
+                    <Check size={11} /> Guardar
+                  </button>
+                  <button type="button" onClick={cancelEdit}
+                    className="px-2 py-1 rounded" style={{ background: C.panel2, border: `1px solid ${C.border}`, color: C.dim }}>
+                    <X size={11} />
+                  </button>
+                </div>
+              ) : (
+                fechas.length > 0 && (
+                  <div className="text-[11px] font-mono" style={{ color: C.dim }}>
+                    {fechas.length} {fechas.length === 1 ? "día" : "días"}
+                  </div>
+                )
+              )}
+            </div>
+          );
+        })}
+      </div>
+      {total > 0 && (
+        <div className="flex items-center gap-2 pt-2 mt-1" style={{ borderTop: `1px solid ${C.border}` }}>
+          <Clock size={13} color={C.amber} />
+          <span className="text-sm font-semibold" style={{ color: C.amber }}>
+            Total: {total} {total === 1 ? "día" : "días"} de producción
+          </span>
+        </div>
+      )}
+    </Card>
   );
 }
 
