@@ -2512,6 +2512,22 @@ function FormEvento({ base, onCancel, onSave, guardando, personas = [], eventos 
                   {integrante.personaId && (
                     <div className="flex flex-wrap items-center gap-1.5 pl-1">
                       <span className="text-[10px]" style={{ color: C.dim }}>Partes:</span>
+                      {/* Botón toggle todas */}
+                      {(() => {
+                        const todasSel = (integrante.partes || []).length === PARTES_PROD.length;
+                        return (
+                          <button type="button"
+                            onClick={() => setIntegrante(idx, "partes", todasSel ? [] : [...PARTES_PROD])}
+                            className="text-[10px] px-2 py-0.5 rounded-full transition-colors"
+                            style={{
+                              background: todasSel ? `${C.gold}22` : C.panel,
+                              color: todasSel ? C.gold : C.dim,
+                              border: `1px solid ${todasSel ? C.gold + "60" : C.border}`,
+                            }}>
+                            {todasSel ? "✓ Todas" : "Todas"}
+                          </button>
+                        );
+                      })()}
                       {PARTES_PROD.map((tipo) => {
                         const sel = (integrante.partes || []).includes(tipo);
                         return (
@@ -2527,7 +2543,7 @@ function FormEvento({ base, onCancel, onSave, guardando, personas = [], eventos 
                         );
                       })}
                       {(integrante.partes || []).length === 0 && (
-                        <span className="text-[10px] italic" style={{ color: C.dim }}>Todas las partes</span>
+                        <span className="text-[10px] italic" style={{ color: C.dim }}>Sin especificar (todas)</span>
                       )}
                     </div>
                   )}
