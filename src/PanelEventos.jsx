@@ -602,6 +602,7 @@ export default function PanelEventos() {
             onUpdate={(patch) => actualizarEvento(eventoVer.id, patch)}
             perms={p}
             usuario={usuario}
+            personas={personas}
           />
         ) : vista === "dashboard" ? (
           <Dashboard
@@ -1741,7 +1742,7 @@ function CategoriasPersonal({ categorias, personas, onSave, onDelete, abierto, s
 }
 
 /* ====================== DETALLE ====================== */
-function Detalle({ ev, onBack, onEdit, onDelete, onUpdate, perms = {}, usuario = {} }) {
+function Detalle({ ev, onBack, onEdit, onDelete, onUpdate, perms = {}, usuario = {}, personas = [] }) {
   useEffect(() => {
     if (usuario?.id && ev?.id) marcarLeido(ev.id, usuario.id);
   }, [ev?.id, ev?.mensajes?.length, usuario?.id]);
@@ -1769,31 +1770,9 @@ function Detalle({ ev, onBack, onEdit, onDelete, onUpdate, perms = {}, usuario =
       <div className="grid sm:grid-cols-2 gap-4">
         <MensajesEquipo ev={ev} usuario={usuario} onUpdate={onUpdate} />
 
-        <Card titulo="Producción" icon={<Camera size={15} color={C.gold} />}>
-          <Dato k="Fecha" v={fmtFecha(ev.fecha)} mono />
-          <Dato k="Estudio" v={ev.estudio || "—"} />
-          <Dato k="Tipo" v={ev.tipoProd || "—"} />
-          <Dato k="Trackeo" v={ev.trackeo || "—"} />
-          {ev.equipamiento && ev.equipamientoDetalle && <Dato k="Equipamiento" v={ev.equipamientoDetalle} />}
-        </Card>
+        <ProduccionCard ev={ev} onUpdate={onUpdate} perms={perms} />
 
-        <Card titulo="Facturación" icon={<DollarSign size={15} color={C.green} />}>
-          <Dato k="Distribución" v={empresaLabel(ev.distribucion)} />
-          <Dato k="Razón social" v={ev.razonSocial || "—"} />
-          {(ev.distribucion === "M1" || ev.distribucion === "MIXTO") && (
-            <>
-              <Dato k="Monto M1 (neto)" v={fmtMoneda(montoM1(ev), ev.moneda)} mono />
-              <Dato k="Monto M1 + IVA" v={fmtMoneda(montoM1(ev) * 1.21, ev.moneda)} mono accent />
-            </>
-          )}
-          {(ev.distribucion === "M2" || ev.distribucion === "MIXTO") && (
-            <Dato k="Monto M2 (efectivo)" v={fmtMoneda(montoM2(ev), ev.moneda)} mono />
-          )}
-          <Dato k="Total facturable" v={fmtMoneda(totalFacturable(ev), ev.moneda)} mono accent />
-          <Dato k="Cant. facturas" v={ev.cantFacturas || "—"} />
-          <Dato k="Medio de pago" v={ev.medioPago || "—"} />
-          <Dato k="Forma de pago" v={ev.formaPago || "—"} />
-        </Card>
+        <FacturacionCard ev={ev} onUpdate={onUpdate} perms={perms} />
 
         <Card titulo="Estado administrativo" icon={<DollarSign size={15} color={C.gold} />}>
           <p className="text-xs mb-1" style={{ color: C.dim }}>
@@ -1819,26 +1798,11 @@ function Detalle({ ev, onBack, onEdit, onDelete, onUpdate, perms = {}, usuario =
           </div>
         )}
 
-        <Card titulo="Equipo" icon={<Users size={15} color={C.gold} />}>
-          {ev.integrantes?.length ? (
-            <div className="grid gap-1.5">
-              {ev.integrantes.map((i, idx) => (
-                <div key={idx} className="flex items-center justify-between text-sm py-1" style={{ borderBottom: idx < ev.integrantes.length - 1 ? `1px solid ${C.border}` : "none" }}>
-                  <span>{i.nombre}</span>
-                  <span className="font-mono text-xs px-2 py-0.5 rounded" style={{ background: C.panel2, color: C.dim }}>{i.rol}</span>
-                </div>
-              ))}
-            </div>
-          ) : <p className="text-sm" style={{ color: C.dim }}>Sin integrantes cargados.</p>}
-        </Card>
+        <EquipoCard ev={ev} onUpdate={onUpdate} perms={perms} personas={personas} />
 
-        <Card titulo="Dirección" icon={<Phone size={15} color={C.amber} />}>
-          <Dato k="Director" v={ev.director?.nombre || "—"} />
-          <Dato k="Teléfono" v={ev.director?.telefono || "—"} mono />
-          <Dato k="Email" v={ev.director?.email || "—"} mono />
-        </Card>
+        <DireccionCard ev={ev} onUpdate={onUpdate} perms={perms} />
 
-        <EquipoExterno ev={ev} />
+        <EquipoExternoCard ev={ev} onUpdate={onUpdate} perms={perms} />
 
         <PartesDetalle ev={ev} onUpdate={onUpdate} perms={perms} />
 
@@ -1989,60 +1953,324 @@ function PartesDetalle({ ev, onUpdate, perms }) {
   );
 }
 
-/* ====================== EQUIPO EXTERNO (de otra productora) ====================== */
-function EquipoExterno({ ev }) {
+/* ====================== CARDS EDITABLES DEL DETALLE ====================== */
+
+function EditCardBtn({ onClick }) {
+  return (
+    <button type="button" onClick={onClick} title="Editar"
+      className="p-1 rounded flex items-center gap-1 text-[11px] hover:opacity-80"
+      style={{ background: `${C.amber}22`, border: `1px solid ${C.amber}50`, color: C.amber }}>
+      <Pencil size={11} /> Editar
+    </button>
+  );
+}
+
+function EditCardFooter({ onSave, onCancel }) {
+  return (
+    <div className="flex gap-2 pt-1" style={{ borderTop: `1px solid ${C.border}` }}>
+      <button type="button" onClick={onSave}
+        className="flex-1 text-sm font-semibold px-3 py-1.5 rounded flex items-center justify-center gap-1.5"
+        style={{ background: C.green, color: "#000" }}>
+        <Check size={13} /> Guardar
+      </button>
+      <button type="button" onClick={onCancel}
+        className="px-3 py-1.5 rounded text-sm"
+        style={{ background: C.panel2, border: `1px solid ${C.border}`, color: C.dim }}>
+        Cancelar
+      </button>
+    </div>
+  );
+}
+
+function ProduccionCard({ ev, onUpdate, perms }) {
+  const [editando, setEditando] = useState(false);
+  const [f, setF] = useState({});
+  const set = (k, v) => setF((p) => ({ ...p, [k]: v }));
+
+  const startEdit = () => {
+    setF({
+      fecha: ev.fecha || "", categoria: ev.categoria || "",
+      estudio: ev.estudio || "", tipoProd: ev.tipoProd || "",
+      trackeo: ev.trackeo || "", equipamiento: !!ev.equipamiento,
+      equipamientoDetalle: ev.equipamientoDetalle || "",
+    });
+    setEditando(true);
+  };
+
+  return (
+    <Card titulo="Producción" icon={<Camera size={15} color={C.gold} />}
+      action={perms?.eventoEditar && !editando ? <EditCardBtn onClick={startEdit} /> : null}>
+      {editando ? (
+        <div className="grid gap-2">
+          <div><label className="text-[11px] block mb-1" style={{ color: C.dim }}>Fecha</label>
+            <Input type="date" value={f.fecha} onChange={(v) => set("fecha", v)} /></div>
+          <div><label className="text-[11px] block mb-1" style={{ color: C.dim }}>Categoría</label>
+            <Select value={f.categoria} onChange={(v) => set("categoria", v)} options={CATEGORIAS} placeholder="Elegir" /></div>
+          <div><label className="text-[11px] block mb-1" style={{ color: C.dim }}>Estudio</label>
+            <Select value={f.estudio} onChange={(v) => set("estudio", v)} options={ESTUDIOS} placeholder="Elegir" /></div>
+          <div><label className="text-[11px] block mb-1" style={{ color: C.dim }}>Tipo de producción</label>
+            <Select value={f.tipoProd} onChange={(v) => set("tipoProd", v)} options={TIPO_PROD} placeholder="Elegir" /></div>
+          <div><label className="text-[11px] block mb-1" style={{ color: C.dim }}>Trackeo</label>
+            <Select value={f.trackeo} onChange={(v) => set("trackeo", v)} options={TRACKEO} placeholder="Elegir" /></div>
+          <Toggle checked={f.equipamiento} onChange={(v) => set("equipamiento", v)} label="Equipamiento" />
+          {f.equipamiento && (
+            <div><label className="text-[11px] block mb-1" style={{ color: C.dim }}>Detalle equipamiento</label>
+              <Input value={f.equipamientoDetalle} onChange={(v) => set("equipamientoDetalle", v)} placeholder="Cámaras, LED wall…" /></div>
+          )}
+          <EditCardFooter onSave={() => { onUpdate(f); setEditando(false); }} onCancel={() => setEditando(false)} />
+        </div>
+      ) : (
+        <>
+          <Dato k="Fecha" v={fmtFecha(ev.fecha)} mono />
+          <Dato k="Categoría" v={ev.categoria || "—"} />
+          <Dato k="Estudio" v={ev.estudio || "—"} />
+          <Dato k="Tipo" v={ev.tipoProd || "—"} />
+          <Dato k="Trackeo" v={ev.trackeo || "—"} />
+          {ev.equipamiento && ev.equipamientoDetalle && <Dato k="Equipamiento" v={ev.equipamientoDetalle} />}
+        </>
+      )}
+    </Card>
+  );
+}
+
+function FacturacionCard({ ev, onUpdate, perms }) {
+  const [editando, setEditando] = useState(false);
+  const [f, setF] = useState({});
+  const set = (k, v) => setF((p) => ({ ...p, [k]: v }));
+
+  const startEdit = () => {
+    setF({
+      distribucion: ev.distribucion || "M1", moneda: ev.moneda || "ARS",
+      razonSocial: ev.razonSocial || "", montoM1: ev.montoM1 ?? "",
+      montoM2: ev.montoM2 ?? "", cantFacturas: ev.cantFacturas ?? "",
+      medioPago: ev.medioPago || "", formaPago: ev.formaPago || "",
+    });
+    setEditando(true);
+  };
+
+  return (
+    <Card titulo="Facturación" icon={<DollarSign size={15} color={C.green} />}
+      action={perms?.eventoFacturar && !editando ? <EditCardBtn onClick={startEdit} /> : null}>
+      {editando ? (
+        <div className="grid gap-2">
+          <div><label className="text-[11px] block mb-1" style={{ color: C.dim }}>Distribución</label>
+            <SelectKV value={f.distribucion} onChange={(v) => set("distribucion", v)} options={DISTRIBUCION_OPCIONES} /></div>
+          <div><label className="text-[11px] block mb-1" style={{ color: C.dim }}>Moneda</label>
+            <Select value={f.moneda} onChange={(v) => set("moneda", v)} options={MONEDAS} /></div>
+          <div><label className="text-[11px] block mb-1" style={{ color: C.dim }}>Razón social</label>
+            <Input value={f.razonSocial} onChange={(v) => set("razonSocial", v)} placeholder="Razón social…" /></div>
+          {(f.distribucion === "M1" || f.distribucion === "MIXTO") && (
+            <div><label className="text-[11px] block mb-1" style={{ color: C.dim }}>Monto M1 (neto)</label>
+              <Input type="number" value={f.montoM1} onChange={(v) => set("montoM1", v)} placeholder="0" /></div>
+          )}
+          {(f.distribucion === "M2" || f.distribucion === "MIXTO") && (
+            <div><label className="text-[11px] block mb-1" style={{ color: C.dim }}>Monto M2 (efectivo)</label>
+              <Input type="number" value={f.montoM2} onChange={(v) => set("montoM2", v)} placeholder="0" /></div>
+          )}
+          <div><label className="text-[11px] block mb-1" style={{ color: C.dim }}>Cant. facturas</label>
+            <Input type="number" value={f.cantFacturas} onChange={(v) => set("cantFacturas", v)} placeholder="0" /></div>
+          <div><label className="text-[11px] block mb-1" style={{ color: C.dim }}>Medio de pago</label>
+            <Input value={f.medioPago} onChange={(v) => set("medioPago", v)} placeholder="Transferencia, efectivo…" /></div>
+          <div><label className="text-[11px] block mb-1" style={{ color: C.dim }}>Forma de pago</label>
+            <Input value={f.formaPago} onChange={(v) => set("formaPago", v)} placeholder="Contado, cuotas…" /></div>
+          <EditCardFooter onSave={() => { onUpdate(f); setEditando(false); }} onCancel={() => setEditando(false)} />
+        </div>
+      ) : (
+        <>
+          <Dato k="Distribución" v={empresaLabel(ev.distribucion)} />
+          <Dato k="Razón social" v={ev.razonSocial || "—"} />
+          {(ev.distribucion === "M1" || ev.distribucion === "MIXTO") && (
+            <><Dato k="Monto M1 (neto)" v={fmtMoneda(montoM1(ev), ev.moneda)} mono />
+              <Dato k="Monto M1 + IVA" v={fmtMoneda(montoM1(ev) * 1.21, ev.moneda)} mono accent /></>
+          )}
+          {(ev.distribucion === "M2" || ev.distribucion === "MIXTO") && (
+            <Dato k="Monto M2 (efectivo)" v={fmtMoneda(montoM2(ev), ev.moneda)} mono />
+          )}
+          <Dato k="Total facturable" v={fmtMoneda(totalFacturable(ev), ev.moneda)} mono accent />
+          <Dato k="Cant. facturas" v={ev.cantFacturas || "—"} />
+          <Dato k="Medio de pago" v={ev.medioPago || "—"} />
+          <Dato k="Forma de pago" v={ev.formaPago || "—"} />
+        </>
+      )}
+    </Card>
+  );
+}
+
+function DireccionCard({ ev, onUpdate, perms }) {
+  const [editando, setEditando] = useState(false);
+  const [f, setF] = useState({ nombre: "", telefono: "", email: "" });
+
+  const startEdit = () => {
+    setF({ nombre: ev.director?.nombre || "", telefono: ev.director?.telefono || "", email: ev.director?.email || "" });
+    setEditando(true);
+  };
+
+  return (
+    <Card titulo="Dirección" icon={<Phone size={15} color={C.amber} />}
+      action={perms?.eventoEditar && !editando ? <EditCardBtn onClick={startEdit} /> : null}>
+      {editando ? (
+        <div className="grid gap-2">
+          <div><label className="text-[11px] block mb-1" style={{ color: C.dim }}>Director</label>
+            <Input value={f.nombre} onChange={(v) => setF((p) => ({ ...p, nombre: v }))} placeholder="Nombre del director" /></div>
+          <div><label className="text-[11px] block mb-1" style={{ color: C.dim }}>Teléfono</label>
+            <Input value={f.telefono} onChange={(v) => setF((p) => ({ ...p, telefono: v }))} placeholder="+54 9 11…" /></div>
+          <div><label className="text-[11px] block mb-1" style={{ color: C.dim }}>Email</label>
+            <Input value={f.email} onChange={(v) => setF((p) => ({ ...p, email: v }))} placeholder="director@…" /></div>
+          <EditCardFooter onSave={() => { onUpdate({ director: f }); setEditando(false); }} onCancel={() => setEditando(false)} />
+        </div>
+      ) : (
+        <>
+          <Dato k="Director" v={ev.director?.nombre || "—"} />
+          <Dato k="Teléfono" v={ev.director?.telefono || "—"} mono />
+          <Dato k="Email" v={ev.director?.email || "—"} mono />
+        </>
+      )}
+    </Card>
+  );
+}
+
+function EquipoCard({ ev, onUpdate, perms, personas = [] }) {
+  const [editando, setEditando] = useState(false);
+  const [integrantes, setIntegrantes] = useState([]);
+  const [nuevo, setNuevo] = useState({ personaId: "", rol: "" });
+
+  const startEdit = () => {
+    setIntegrantes((ev.integrantes || []).map((i) => ({ ...i })));
+    setNuevo({ personaId: "", rol: "" });
+    setEditando(true);
+  };
+
+  const addIntegrante = () => {
+    if (!nuevo.personaId) return;
+    const persona = personas.find((p) => p.id === nuevo.personaId);
+    setIntegrantes((prev) => [...prev, { personaId: nuevo.personaId, nombre: persona?.nombre || "", rol: nuevo.rol, partes: [] }]);
+    setNuevo({ personaId: "", rol: "" });
+  };
+
+  const delIntegrante = (idx) => setIntegrantes((prev) => prev.filter((_, i) => i !== idx));
+  const setRol = (idx, rol) => setIntegrantes((prev) => prev.map((x, i) => i === idx ? { ...x, rol } : x));
+
+  return (
+    <Card titulo="Equipo" icon={<Users size={15} color={C.gold} />}
+      action={perms?.eventoEditar && !editando ? <EditCardBtn onClick={startEdit} /> : null}>
+      {editando ? (
+        <div className="grid gap-2">
+          {integrantes.map((i, idx) => (
+            <div key={idx} className="flex items-center gap-2">
+              <span className="flex-1 text-sm truncate" style={{ color: C.text }}>{i.nombre}</span>
+              <input value={i.rol} onChange={(e) => setRol(idx, e.target.value)} placeholder="Rol"
+                className="text-sm px-2 py-1 rounded w-32 outline-none"
+                style={{ background: C.panel2, border: `1px solid ${C.border}`, color: C.text }} />
+              <button type="button" onClick={() => delIntegrante(idx)}
+                className="p-1 rounded" style={{ color: C.rose }} title="Quitar"><X size={14} /></button>
+            </div>
+          ))}
+          <div className="flex gap-2 pt-1" style={{ borderTop: `1px solid ${C.border}` }}>
+            <select value={nuevo.personaId} onChange={(e) => setNuevo((p) => ({ ...p, personaId: e.target.value }))}
+              className="flex-1 text-sm px-2 py-1.5 rounded"
+              style={{ background: C.panel2, border: `1px solid ${C.border}`, color: nuevo.personaId ? C.text : C.dim, colorScheme: "dark" }}>
+              <option value="" style={{ color: C.dim }}>Agregar persona…</option>
+              {personas.map((p) => <option key={p.id} value={p.id} style={{ background: C.panel2, color: C.text }}>{p.nombre}</option>)}
+            </select>
+            <input value={nuevo.rol} onChange={(e) => setNuevo((p) => ({ ...p, rol: e.target.value }))} placeholder="Rol"
+              className="text-sm px-2 py-1 rounded w-24 outline-none"
+              style={{ background: C.panel2, border: `1px solid ${C.border}`, color: C.text }} />
+            <button type="button" onClick={addIntegrante}
+              className="px-2 py-1 rounded" style={{ background: C.amber, color: C.onGold }} title="Agregar">
+              <Plus size={14} />
+            </button>
+          </div>
+          <EditCardFooter onSave={() => { onUpdate({ integrantes }); setEditando(false); }} onCancel={() => setEditando(false)} />
+        </div>
+      ) : (
+        ev.integrantes?.length ? (
+          <div className="grid gap-1.5">
+            {ev.integrantes.map((i, idx) => (
+              <div key={idx} className="flex items-center justify-between text-sm py-1"
+                style={{ borderBottom: idx < ev.integrantes.length - 1 ? `1px solid ${C.border}` : "none" }}>
+                <span>{i.nombre}</span>
+                <span className="font-mono text-xs px-2 py-0.5 rounded" style={{ background: C.panel2, color: C.dim }}>{i.rol}</span>
+              </div>
+            ))}
+          </div>
+        ) : <p className="text-sm" style={{ color: C.dim }}>Sin integrantes cargados.</p>
+      )}
+    </Card>
+  );
+}
+
+function EquipoExternoCard({ ev, onUpdate, perms }) {
   const lista = ev.equipoExterno || [];
+  const [editando, setEditando] = useState(false);
+  const [items, setItems] = useState([]);
   const [copiado, setCopiado] = useState(false);
 
   const textoCreditos = useMemo(() => {
     if (lista.length === 0) return "";
     const fecha = ev.fecha ? fmtFecha(ev.fecha) : "";
     const head = `${ev.nombre || "Evento"}${fecha ? " · " + fecha : ""}\nEquipo técnico:`;
-    const cuerpo = lista
-      .map((p) => `· ${p.nombre}${p.rol ? " — " + p.rol : ""}`)
-      .join("\n");
-    return `${head}\n${cuerpo}`;
+    return `${head}\n${lista.map((p) => `· ${p.nombre}${p.rol ? " — " + p.rol : ""}`).join("\n")}`;
   }, [lista, ev.nombre, ev.fecha]);
 
   const copiar = async () => {
-    try {
-      await navigator.clipboard.writeText(textoCreditos);
-      setCopiado(true);
-      setTimeout(() => setCopiado(false), 2000);
-    } catch (e) {
-      alert("No se pudo copiar: " + e.message);
-    }
+    try { await navigator.clipboard.writeText(textoCreditos); setCopiado(true); setTimeout(() => setCopiado(false), 2000); }
+    catch (e) { alert("No se pudo copiar: " + e.message); }
   };
 
-  if (lista.length === 0) {
-    return (
-      <Card titulo="Equipo técnico externo" icon={<Users size={15} color="#9b8cff" />}>
-        <p className="text-sm" style={{ color: C.dim }}>
-          Sin equipo externo cargado.
-        </p>
-      </Card>
-    );
-  }
+  const startEdit = () => { setItems(lista.map((i) => ({ ...i }))); setEditando(true); };
+  const addItem = () => setItems((prev) => [...prev, { nombre: "", rol: "" }]);
+  const setItem = (idx, k, v) => setItems((prev) => prev.map((x, i) => i === idx ? { ...x, [k]: v } : x));
+  const delItem = (idx) => setItems((prev) => prev.filter((_, i) => i !== idx));
 
   return (
-    <Card titulo="Equipo técnico externo" icon={<Users size={15} color="#9b8cff" />}>
-      <div className="grid gap-1.5">
-        {lista.map((p, idx) => (
-          <div key={idx} className="flex items-center justify-between text-sm py-1" style={{ borderBottom: idx < lista.length - 1 ? `1px solid ${C.border}` : "none" }}>
-            <span>{p.nombre || <span style={{ color: C.dim }}>Sin nombre</span>}</span>
-            <span className="font-mono text-xs px-2 py-0.5 rounded" style={{ background: C.panel2, color: C.dim }}>{p.rol || "—"}</span>
-          </div>
-        ))}
-      </div>
-      <button
-        type="button"
-        onClick={copiar}
-        className="mt-3 text-xs font-medium px-3 py-1.5 rounded-md inline-flex items-center gap-1.5 self-start"
-        style={{ background: C.panel2, border: `1px solid ${C.border}`, color: copiado ? C.green : C.gold }}
-      >
-        {copiado ? <Check size={13} /> : <FileText size={13} />}
-        {copiado ? "Copiado" : "Copiar créditos para redes"}
-      </button>
+    <Card titulo="Equipo técnico externo" icon={<Users size={15} color="#9b8cff" />}
+      action={perms?.eventoEditar && !editando ? <EditCardBtn onClick={startEdit} /> : null}>
+      {editando ? (
+        <div className="grid gap-2">
+          {items.map((item, idx) => (
+            <div key={idx} className="flex items-center gap-2">
+              <input value={item.nombre} onChange={(e) => setItem(idx, "nombre", e.target.value)} placeholder="Nombre"
+                className="flex-1 text-sm px-2 py-1 rounded outline-none"
+                style={{ background: C.panel2, border: `1px solid ${C.border}`, color: C.text }} />
+              <input value={item.rol} onChange={(e) => setItem(idx, "rol", e.target.value)} placeholder="Rol"
+                className="text-sm px-2 py-1 rounded w-28 outline-none"
+                style={{ background: C.panel2, border: `1px solid ${C.border}`, color: C.text }} />
+              <button type="button" onClick={() => delItem(idx)}
+                className="p-1 rounded" style={{ color: C.rose }} title="Quitar"><X size={14} /></button>
+            </div>
+          ))}
+          <button type="button" onClick={addItem}
+            className="text-sm flex items-center gap-1.5 px-3 py-1.5 rounded self-start"
+            style={{ background: C.panel2, border: `1px solid ${C.border}`, color: C.dim }}>
+            <Plus size={13} /> Agregar persona externa
+          </button>
+          <EditCardFooter onSave={() => { onUpdate({ equipoExterno: items }); setEditando(false); }} onCancel={() => setEditando(false)} />
+        </div>
+      ) : (
+        <>
+          {lista.length === 0 ? (
+            <p className="text-sm" style={{ color: C.dim }}>Sin equipo externo cargado.</p>
+          ) : (
+            <>
+              <div className="grid gap-1.5">
+                {lista.map((p, idx) => (
+                  <div key={idx} className="flex items-center justify-between text-sm py-1"
+                    style={{ borderBottom: idx < lista.length - 1 ? `1px solid ${C.border}` : "none" }}>
+                    <span>{p.nombre || <span style={{ color: C.dim }}>Sin nombre</span>}</span>
+                    <span className="font-mono text-xs px-2 py-0.5 rounded" style={{ background: C.panel2, color: C.dim }}>{p.rol || "—"}</span>
+                  </div>
+                ))}
+              </div>
+              <button type="button" onClick={copiar}
+                className="mt-1 text-xs font-medium px-3 py-1.5 rounded-md inline-flex items-center gap-1.5 self-start"
+                style={{ background: C.panel2, border: `1px solid ${C.border}`, color: copiado ? C.green : C.gold }}>
+                {copiado ? <Check size={13} /> : <FileText size={13} />}
+                {copiado ? "Copiado" : "Copiar créditos para redes"}
+              </button>
+            </>
+          )}
+        </>
+      )}
     </Card>
   );
 }
@@ -2329,10 +2557,10 @@ function ArchivoLista({ ev, tipo, titulo, icono, archivos, max, textoVacio, onUp
   );
 }
 
-function Card({ titulo, icon, children, full }) {
+function Card({ titulo, icon, children, full, action }) {
   return (
     <div className={`rounded-xl p-4 ${full ? "sm:col-span-2" : ""}`} style={{ background: C.panel, border: `1px solid ${C.border}` }}>
-      <div className="flex items-center gap-2 mb-3">{icon}<h3 className="text-sm font-semibold">{titulo}</h3></div>
+      <div className="flex items-center gap-2 mb-3">{icon}<h3 className="text-sm font-semibold flex-1">{titulo}</h3>{action}</div>
       <div className="grid gap-2">{children}</div>
     </div>
   );
