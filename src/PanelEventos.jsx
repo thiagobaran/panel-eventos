@@ -5,7 +5,7 @@ import {
   Trash2, Pencil, AlertTriangle, Clock, DollarSign, ChevronLeft,
   Download, Upload, WifiOff, RefreshCw, Paperclip, Receipt, Eye, EyeOff,
   LogOut, KeyRound, UserCog, ShieldCheck, Lock,
-  BarChart2, ChevronRight,
+  BarChart2, ChevronRight, MessageSquare, Send,
 } from "lucide-react";
 import { listEventos, upsertEvento, deleteEvento, subscribeEventos } from "./lib/eventosApi";
 import { listPersonas, upsertPersona, deletePersona, subscribePersonas } from "./lib/personasApi";
@@ -86,6 +86,7 @@ const nuevoEvento = () => ({
   facturas: [],
   comprobantes: [],
   partes: PARTES_PROD.map((tipo) => ({ tipo, fechas: [] })),
+  mensajes: [],
   facturado: false,
   comprobantePago: false,
   facturadoTotal: false,
@@ -540,6 +541,7 @@ export default function PanelEventos() {
             eventos={eventos}
             onLiberarPersona={liberarPersonaDeEvento}
             onIrAPersonal={() => setVista("personal")}
+            perms={p}
           />
         ) : vista === "detalle" && eventoVer ? (
           <Detalle
@@ -549,6 +551,7 @@ export default function PanelEventos() {
             onDelete={() => borrarEvento(eventoVer.id)}
             onUpdate={(patch) => actualizarEvento(eventoVer.id, patch)}
             perms={p}
+            usuario={usuario}
           />
         ) : vista === "dashboard" ? (
           <Dashboard
@@ -1673,7 +1676,7 @@ function CategoriasPersonal({ categorias, personas, onSave, onDelete, abierto, s
 }
 
 /* ====================== DETALLE ====================== */
-function Detalle({ ev, onBack, onEdit, onDelete, onUpdate, perms = {} }) {
+function Detalle({ ev, onBack, onEdit, onDelete, onUpdate, perms = {}, usuario = {} }) {
   return (
     <div className="fade">
       <div className="flex items-center gap-2 mb-4">
@@ -1799,6 +1802,8 @@ function Detalle({ ev, onBack, onEdit, onDelete, onUpdate, perms = {} }) {
             <p className="text-sm whitespace-pre-wrap leading-relaxed" style={{ color: C.text }}>{ev.observaciones}</p>
           </Card>
         )}
+
+        <MensajesEquipo ev={ev} usuario={usuario} onUpdate={onUpdate} />
       </div>
     </div>
   );
@@ -1859,6 +1864,99 @@ function EquipoExterno({ ev }) {
         {copiado ? "Copiado" : "Copiar créditos para redes"}
       </button>
     </Card>
+  );
+}
+
+/* ====================== MENSAJES DEL EQUIPO (observaciones por evento) ====================== */
+function MensajesEquipo({ ev, usuario, onUpdate }) {
+  const [texto, setTexto] = useState("");
+  const mensajes = ev.mensajes || [];
+
+  const fmtMsgFecha = (iso) => {
+    const d = new Date(iso);
+    return d.toLocaleDateString("es-AR", { day: "2-digit", month: "2-digit" }) + " " +
+      d.toLocaleTimeString("es-AR", { hour: "2-digit", minute: "2-digit" });
+  };
+
+  const enviar = () => {
+    const t = texto.trim();
+    if (!t) return;
+    const nuevo = {
+      id: crypto.randomUUID(),
+      texto: t,
+      autorNombre: usuario.nombre || "?",
+      autorId: usuario.id || "",
+      fecha: new Date().toISOString(),
+    };
+    onUpdate({ mensajes: [...mensajes, nuevo] });
+    setTexto("");
+  };
+
+  const borrar = (id) => {
+    onUpdate({ mensajes: mensajes.filter((m) => m.id !== id) });
+  };
+
+  const puedeEliminar = (m) =>
+    usuario.rol === "admin" || m.autorId === usuario.id;
+
+  return (
+    <div className="sm:col-span-2 rounded-xl p-4" style={{ background: C.panel, border: `1px solid ${C.border}` }}>
+      <div className="flex items-center gap-2 mb-3">
+        <MessageSquare size={15} color={C.amber} />
+        <h3 className="text-sm font-semibold">Observaciones del equipo</h3>
+        {mensajes.length > 0 && (
+          <span className="text-[10px] font-mono px-1.5 py-0.5 rounded-full ml-auto"
+            style={{ background: `${C.amber}1a`, color: C.amber, border: `1px solid ${C.amber}40` }}>
+            {mensajes.length}
+          </span>
+        )}
+      </div>
+
+      {/* Lista de mensajes */}
+      {mensajes.length > 0 && (
+        <div className="grid gap-2 mb-3">
+          {mensajes.map((m) => (
+            <div key={m.id} className="rounded-lg px-3 py-2.5 relative"
+              style={{ background: C.panel2, border: `1px solid ${C.border}` }}>
+              <div className="flex items-center justify-between gap-2 mb-1">
+                <div className="flex items-center gap-2">
+                  <span className="text-xs font-semibold" style={{ color: C.gold }}>{m.autorNombre}</span>
+                  <span className="text-[10px] font-mono" style={{ color: C.dim }}>{fmtMsgFecha(m.fecha)}</span>
+                </div>
+                {puedeEliminar(m) && (
+                  <IconBtn onClick={() => borrar(m.id)} title="Eliminar" danger><X size={13} /></IconBtn>
+                )}
+              </div>
+              <p className="text-sm whitespace-pre-wrap leading-relaxed" style={{ color: C.text }}>{m.texto}</p>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* Input para nuevo mensaje */}
+      <div className="flex gap-2">
+        <input
+          value={texto}
+          onChange={(e) => setTexto(e.target.value)}
+          onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); enviar(); } }}
+          placeholder="Escribí una observación… (Enter para enviar)"
+          className="flex-1 text-sm px-3 py-2 rounded-md"
+          style={{ background: C.panel2, border: `1px solid ${C.border}`, color: C.text }}
+        />
+        <button
+          onClick={enviar}
+          disabled={!texto.trim()}
+          className="text-sm font-medium px-3 py-2 rounded-md flex items-center gap-1.5 shrink-0"
+          style={{
+            background: texto.trim() ? C.gold : C.panel2,
+            color: texto.trim() ? C.onGold : C.dim,
+            border: `1px solid ${texto.trim() ? C.gold : C.border}`,
+          }}
+        >
+          <Send size={14} /> Enviar
+        </button>
+      </div>
+    </div>
   );
 }
 
@@ -2069,7 +2167,7 @@ function Dato({ k, v, mono, accent }) {
 }
 
 /* ====================== FORMULARIO ====================== */
-function FormEvento({ base, onCancel, onSave, guardando, personas = [], eventos = [], onLiberarPersona, onIrAPersonal }) {
+function FormEvento({ base, onCancel, onSave, guardando, personas = [], eventos = [], onLiberarPersona, onIrAPersonal, perms = {} }) {
   const [f, setF] = useState(() => {
     // Garantiza que partes siempre tiene los 5 tipos, incluso en eventos viejos
     const partesExistentes = Array.isArray(base.partes) ? base.partes : [];
@@ -2317,14 +2415,20 @@ function FormEvento({ base, onCancel, onSave, guardando, personas = [], eventos 
                         {choques.map((c) => (
                           <div key={c.id} className="flex items-center justify-between gap-2">
                             <span style={{ color: C.text }}>· {c.nombre || "Sin nombre"}</span>
-                            <button
-                              type="button"
-                              onClick={() => liberarYReintentar(c.id, i.personaId)}
-                              className="text-[11px] font-medium px-2 py-1 rounded"
-                              style={{ background: C.rose, color: "#1a0008" }}
-                            >
-                              Liberar de ese evento
-                            </button>
+                            {perms.liberarPersona ? (
+                              <button
+                                type="button"
+                                onClick={() => liberarYReintentar(c.id, i.personaId)}
+                                className="text-[11px] font-medium px-2 py-1 rounded"
+                                style={{ background: C.rose, color: "#1a0008" }}
+                              >
+                                Liberar de ese evento
+                              </button>
+                            ) : (
+                              <span className="text-[11px]" style={{ color: C.dim }}>
+                                Solo admin o producción puede liberar
+                              </span>
+                            )}
                           </div>
                         ))}
                       </div>

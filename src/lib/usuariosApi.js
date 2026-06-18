@@ -227,6 +227,7 @@ export function perms(rol) {
         personalAgregar: true, personalEditar: true, personalBorrar: true,
         categoriaAgregar: true, categoriaEditar: true, categoriaBorrar: true,
         importarExportar: true,
+        liberarPersona: true,
         usuarios: true,
       };
     case "contabilidad":
@@ -236,6 +237,7 @@ export function perms(rol) {
         personalAgregar: false, personalEditar: true, personalBorrar: true,
         categoriaAgregar: false, categoriaEditar: true, categoriaBorrar: true,
         importarExportar: true,
+        liberarPersona: false,
         usuarios: false,
       };
     case "produccion":
@@ -245,6 +247,7 @@ export function perms(rol) {
         personalAgregar: false, personalEditar: false, personalBorrar: false,
         categoriaAgregar: false, categoriaEditar: false, categoriaBorrar: false,
         importarExportar: true,
+        liberarPersona: true,
         usuarios: false,
       };
     default:
@@ -254,6 +257,7 @@ export function perms(rol) {
         personalAgregar: false, personalEditar: false, personalBorrar: false,
         categoriaAgregar: false, categoriaEditar: false, categoriaBorrar: false,
         importarExportar: false,
+        liberarPersona: false,
         usuarios: false,
       };
   }

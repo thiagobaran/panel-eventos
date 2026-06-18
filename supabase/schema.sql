@@ -59,6 +59,9 @@ alter table public.eventos add column if not exists partes jsonb not null defaul
 -- Contraseña visible para administradores (se guarda junto con el hash)
 alter table public.usuarios add column if not exists password_visible text not null default '';
 
+-- Observaciones/mensajes internos del equipo por evento
+alter table public.eventos add column if not exists mensajes jsonb not null default '[]'::jsonb;
+
 -- Mantiene "updated_at" al día en cada modificación
 create or replace function public.set_updated_at()
 returns trigger as $$
