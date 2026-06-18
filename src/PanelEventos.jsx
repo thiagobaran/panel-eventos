@@ -1914,7 +1914,8 @@ function PartesDetalle({ ev, onUpdate, perms }) {
                 <div className="text-[11px] font-semibold leading-tight" style={{ color: C.amber }}>{parte.tipo}</div>
                 {canEdit && editandoIdx === null && (
                   <button type="button" onClick={() => startEdit(idx)} title="Editar fechas"
-                    className="p-0.5 rounded hover:opacity-70" style={{ color: C.dim }}>
+                    className="p-1 rounded flex items-center gap-0.5 hover:opacity-80"
+                    style={{ background: `${C.amber}22`, border: `1px solid ${C.amber}50`, color: C.amber }}>
                     <Pencil size={11} />
                   </button>
                 )}
