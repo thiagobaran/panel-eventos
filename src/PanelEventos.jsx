@@ -2511,7 +2511,7 @@ function FormEvento({ base, onCancel, onSave, guardando, personas = [], eventos 
                   {/* Chips de partes (visible solo si hay persona elegida) */}
                   {integrante.personaId && (
                     <div className="flex flex-wrap items-center gap-1.5 pl-1">
-                      <span className="text-[10px]" style={{ color: C.dim }}>Partes:</span>
+                      <span className="text-[10px]" style={{ color: C.dim }}>Seleccioná las fases donde participa:</span>
                       {/* Botón toggle todas */}
                       {(() => {
                         const todasSel = (integrante.partes || []).length === PARTES_PROD.length;
@@ -2543,7 +2543,7 @@ function FormEvento({ base, onCancel, onSave, guardando, personas = [], eventos 
                         );
                       })}
                       {(integrante.partes || []).length === 0 && (
-                        <span className="text-[10px] italic" style={{ color: C.dim }}>Sin especificar (todas)</span>
+                        <span className="text-[10px] italic" style={{ color: C.dim }}>Sin especificar (se añade en todas)</span>
                       )}
                     </div>
                   )}
