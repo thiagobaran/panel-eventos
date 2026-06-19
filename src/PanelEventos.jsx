@@ -1248,7 +1248,7 @@ function CalendarioMes({ anio, mes, eventos, onVer }) {
                     title={`${ev.nombre || "Sin nombre"}${ev.partesDelDia.length ? ` — ${ev.partesDelDia.join(", ")}` : ""}`}
                     className="text-left rounded px-1 py-0.5 text-[8px] leading-tight truncate transition-opacity hover:opacity-75"
                     style={{ background: getColorPartes(ev.partesDelDia), color: "#fff" }}>
-                    {ev.nombre || "Sin nombre"}
+                    {ev.nombre || "Sin nombre"}{ev.estudio ? ` · Est.${ev.estudio}` : ""}
                   </button>
                 ))}
                 {evsDia.length > 3 && (
