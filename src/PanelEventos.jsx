@@ -3506,7 +3506,7 @@ function Usuarios({ usuarios, actual, onCrear, onActualizar, onCambiarPassword, 
       {creando && (
         <div className="rounded-xl p-4 mb-4 grid sm:grid-cols-2 gap-3" style={{ background: C.panel, border: `1px solid ${C.border}` }}>
           <Field label="Nombre de usuario">
-            <Input value={nuevoNombre} onChange={setNuevoNombre} placeholder="ej: martina" />
+            <Input value={nuevoNombre} onChange={setNuevoNombre} placeholder="username" />
           </Field>
           <Field label="Contraseña">
             <div className="relative">
