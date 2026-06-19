@@ -552,6 +552,8 @@ export default function PanelEventos() {
         input:focus,select:focus,textarea:focus{border-color:${C.gold}!important;box-shadow:0 0 0 1px ${C.gold}}
         .led{box-shadow:0 0 0 1px ${C.border},0 0 24px -8px ${C.gold}40}
         button:focus-visible{outline:2px solid ${C.gold};outline-offset:2px}
+        button:not(:disabled),select,input[type="checkbox"],input[type="radio"],label[for]{cursor:pointer}
+        button:not(:disabled):hover{filter:brightness(1.09)}
         @media (prefers-reduced-motion: no-preference){.fade{animation:f .25s ease both}}
         @keyframes f{from{opacity:0;transform:translateY(4px)}to{opacity:1;transform:none}}
         @keyframes slideR{from{opacity:0;transform:translateX(52px) scale(0.96)}to{opacity:1;transform:none}}
@@ -1211,14 +1213,32 @@ function PdfModal({ ev, onClose }) {
   const [sel, setSel] = useState(() => SECCIONES.reduce((a, s) => ({ ...a, [s.id]: true }), {}));
   const toggle = (id) => setSel((p) => ({ ...p, [id]: !p[id] }));
 
-  const generar = () => {
+  const generar = async () => {
     const html = generarHtmlPdf(ev, sel);
+    const nombreLimpio = (ev.nombre || "evento").replace(/[^a-zA-Z0-9\s-]/g, "").trim().replace(/\s+/g, "-");
+    const defaultName = `${nombreLimpio}${ev.fecha ? "-" + ev.fecha : ""}.html`;
+
+    if (typeof window.showSaveFilePicker === "function") {
+      try {
+        const handle = await window.showSaveFilePicker({
+          suggestedName: defaultName,
+          types: [{ description: "Documento HTML", accept: { "text/html": [".html"] } }],
+        });
+        const writable = await handle.createWritable();
+        await writable.write(html);
+        await writable.close();
+        onClose();
+        return;
+      } catch (e) {
+        if (e.name === "AbortError") return;
+      }
+    }
+
     const blob = new Blob([html], { type: "text/html;charset=utf-8" });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
-    const nombreLimpio = (ev.nombre || "evento").replace(/[^a-zA-Z0-9\s-]/g, "").trim().replace(/\s+/g, "-");
     a.href = url;
-    a.download = `${nombreLimpio}${ev.fecha ? "-" + ev.fecha : ""}.html`;
+    a.download = defaultName;
     document.body.appendChild(a);
     a.click();
     document.body.removeChild(a);
@@ -1896,12 +1916,6 @@ function Personal({ personas, categorias, onSave, onDelete, onSaveCategoria, onD
       )}
 
       {tabPersonal === "lista" && (<>
-      <p className="text-xs mb-4" style={{ color: C.dim }}>
-        Cargá acá a todo el personal, agrupado por categoría
-        (Cámara, Estudio, Deposito, etc.). Después, al armar un evento,
-        elegís a las personas de esta lista y les asignás el rol puntual.
-      </p>
-
       <CategoriasPersonal
         categorias={categorias}
         personas={personas}
