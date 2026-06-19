@@ -786,8 +786,8 @@ function ExportEventosModal({ eventos, onClose }) {
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4"
       style={{ background: "rgba(0,0,0,0.85)" }} onClick={onClose}>
-      <div className="rounded-xl w-full max-w-lg flex flex-col"
-        style={{ background: C.panel, border: `1px solid ${C.border}`, maxHeight: "min(90vh, 640px)" }}
+      <div className="rounded-xl w-full max-w-lg flex flex-col overflow-hidden"
+        style={{ background: C.panel, border: `1px solid ${C.border}`, maxHeight: "90vh" }}
         onClick={(e) => e.stopPropagation()}>
 
         {/* cabecera fija */}
@@ -823,7 +823,7 @@ function ExportEventosModal({ eventos, onClose }) {
         </div>
 
         {/* lista scrolleable — ocupa el espacio que sobra */}
-        <div className="flex-1 overflow-y-auto px-5 pb-1">
+        <div className="flex-1 min-h-0 overflow-y-auto px-5 pb-1">
           <div className="grid gap-1 pr-0.5">
             {filtrados.map((ev) => (
               <label key={ev.id} className="flex items-center gap-2.5 px-3 py-2 rounded-lg"
