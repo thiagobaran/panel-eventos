@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useMemo, useCallback, useRef } from "react";
+import ReactDOM from "react-dom";
 import {
   Plus, Search, Calendar, Film, Layers, Camera, Crosshair,
   Wrench, Users, Building2, Phone, FileText, Check, X,
@@ -783,12 +784,12 @@ function ExportEventosModal({ eventos, onClose }) {
     onClose();
   };
 
-  return (
+  return ReactDOM.createPortal(
     <div onClick={onClose} style={{
-      position: "fixed", top: 0, left: 0, right: 0, bottom: 0, zIndex: 50,
-      background: "rgba(0,0,0,0.85)",
+      position: "fixed", top: 0, left: 0, right: 0, bottom: 0, zIndex: 9999,
+      background: "rgba(0,0,0,0.75)",
       display: "flex", alignItems: "flex-start", justifyContent: "center",
-      paddingTop: "72px", paddingLeft: "16px", paddingRight: "16px", paddingBottom: "16px",
+      paddingTop: "80px", padding: "80px 16px 16px",
     }}>
       <div onClick={(e) => e.stopPropagation()} style={{
         background: C.panel, border: `1px solid ${C.border}`,
@@ -824,8 +825,8 @@ function ExportEventosModal({ eventos, onClose }) {
           </div>
         </div>
 
-        {/* lista con scroll interno, altura fija máxima */}
-        <div style={{ overflowY: "auto", maxHeight: "280px", padding: "0 20px 8px" }}>
+        {/* lista con scroll interno */}
+        <div style={{ overflowY: "auto", maxHeight: "260px", padding: "0 20px 8px" }}>
           <div style={{ display: "grid", gap: "4px" }}>
             {filtrados.map((ev) => (
               <label key={ev.id} style={{ display: "flex", alignItems: "center", gap: "10px", padding: "8px 12px", borderRadius: "8px", background: C.panel2, border: `1px solid ${seleccionados.has(ev.id) ? C.gold + "40" : C.border}`, cursor: "pointer" }}>
@@ -851,7 +852,8 @@ function ExportEventosModal({ eventos, onClose }) {
           </button>
         </div>
       </div>
-    </div>
+    </div>,
+    document.body
   );
 }
 
