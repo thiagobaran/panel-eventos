@@ -784,7 +784,7 @@ function ExportEventosModal({ eventos, onClose }) {
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-start justify-center p-4 pt-6 overflow-y-auto"
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4"
       style={{ background: "rgba(0,0,0,0.85)" }} onClick={onClose}>
       <div className="rounded-xl p-5 w-full max-w-lg"
         style={{ background: C.panel, border: `1px solid ${C.border}` }}
