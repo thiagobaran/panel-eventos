@@ -143,10 +143,15 @@ create table if not exists public.personas (
   activo boolean not null default true
 );
 
--- Categoría asignada a cada persona (Cámara, Iluminación, etc.).
--- Si se borra la categoría, queda en NULL y la persona aparece como "Sin categoría".
+-- Categorías asignadas a cada persona (puede tener varias, separadas por coma).
+-- Tipo TEXT para soportar múltiples IDs: "uuid1,uuid2".
+-- Migración desde UUID: ALTER TABLE personas DROP CONSTRAINT IF EXISTS personas_categoria_id_fkey;
+--                       ALTER TABLE personas ALTER COLUMN categoria_id TYPE TEXT;
 alter table public.personas
-  add column if not exists categoria_id uuid references public.personas_categorias(id) on delete set null;
+  add column if not exists categoria_id text;
+-- Si la columna ya existe como UUID, ejecutar manualmente:
+-- ALTER TABLE personas DROP CONSTRAINT IF EXISTS personas_categoria_id_fkey;
+-- ALTER TABLE personas ALTER COLUMN categoria_id TYPE TEXT;
 
 alter table public.personas enable row level security;
 
