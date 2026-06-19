@@ -786,50 +786,62 @@ function ExportEventosModal({ eventos, onClose }) {
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4"
       style={{ background: "rgba(0,0,0,0.85)" }} onClick={onClose}>
-      <div className="rounded-xl p-5 w-full max-w-lg"
-        style={{ background: C.panel, border: `1px solid ${C.border}` }}
+      <div className="rounded-xl w-full max-w-lg flex flex-col"
+        style={{ background: C.panel, border: `1px solid ${C.border}`, maxHeight: "min(90vh, 640px)" }}
         onClick={(e) => e.stopPropagation()}>
-        <div className="flex items-center gap-2 mb-3">
+
+        {/* cabecera fija */}
+        <div className="flex items-center gap-2 px-5 pt-5 pb-3 shrink-0">
           <Download size={16} color={C.gold} />
           <h2 className="font-semibold text-sm flex-1">Descargar eventos</h2>
           <button onClick={onClose} style={{ color: C.dim }}><X size={16} /></button>
         </div>
-        <div className="flex gap-1 mb-3 flex-wrap">
-          {[{ v: "todos", l: "Todos" }, { v: "proximos", l: "Próximos" }, { v: "finalizados", l: "Finalizados" }].map(({ v, l }) => (
-            <button key={v} onClick={() => setFiltro(v)} className="text-xs px-2.5 py-1 rounded-full"
-              style={{ background: filtro === v ? C.gold : C.panel2, color: filtro === v ? C.onGold : C.dim, border: `1px solid ${filtro === v ? C.gold : C.border}` }}>
-              {l}
+
+        {/* filtros + buscador fijos */}
+        <div className="px-5 shrink-0">
+          <div className="flex gap-1 mb-3 flex-wrap">
+            {[{ v: "todos", l: "Todos" }, { v: "proximos", l: "Próximos" }, { v: "finalizados", l: "Finalizados" }].map(({ v, l }) => (
+              <button key={v} onClick={() => setFiltro(v)} className="text-xs px-2.5 py-1 rounded-full"
+                style={{ background: filtro === v ? C.gold : C.panel2, color: filtro === v ? C.onGold : C.dim, border: `1px solid ${filtro === v ? C.gold : C.border}` }}>
+                {l}
+              </button>
+            ))}
+          </div>
+          <div className="relative mb-3">
+            <Search size={13} color={C.dim} className="absolute left-3 top-1/2 -translate-y-1/2" />
+            <input value={busqueda} onChange={(e) => setBusqueda(e.target.value)} placeholder="Buscar evento…"
+              className="w-full text-sm pl-8 pr-3 py-2 rounded-md"
+              style={{ background: C.panel2, border: `1px solid ${C.border}`, color: C.text, colorScheme: "dark" }} />
+          </div>
+          <div className="flex items-center justify-between mb-2">
+            <span className="text-xs" style={{ color: C.dim }}>{seleccionados.size} de {eventos.length} seleccionados</span>
+            <button onClick={toggleTodos} className="text-xs px-2 py-1 rounded"
+              style={{ color: C.gold, border: `1px solid ${C.gold}30` }}>
+              {todosVisiblesSeleccionados ? "Deseleccionar visibles" : "Seleccionar visibles"}
             </button>
-          ))}
+          </div>
         </div>
-        <div className="relative mb-3">
-          <Search size={13} color={C.dim} className="absolute left-3 top-1/2 -translate-y-1/2" />
-          <input value={busqueda} onChange={(e) => setBusqueda(e.target.value)} placeholder="Buscar evento…"
-            className="w-full text-sm pl-8 pr-3 py-2 rounded-md"
-            style={{ background: C.panel2, border: `1px solid ${C.border}`, color: C.text, colorScheme: "dark" }} />
+
+        {/* lista scrolleable — ocupa el espacio que sobra */}
+        <div className="flex-1 overflow-y-auto px-5 pb-1">
+          <div className="grid gap-1 pr-0.5">
+            {filtrados.map((ev) => (
+              <label key={ev.id} className="flex items-center gap-2.5 px-3 py-2 rounded-lg"
+                style={{ background: C.panel2, border: `1px solid ${seleccionados.has(ev.id) ? C.gold + "40" : C.border}` }}>
+                <input type="checkbox" checked={seleccionados.has(ev.id)} onChange={() => toggle(ev.id)}
+                  className="w-3.5 h-3.5" style={{ accentColor: C.gold }} />
+                <div className="flex-1 min-w-0">
+                  <div className="text-sm truncate">{ev.nombre || "Sin nombre"}</div>
+                  <div className="text-[11px]" style={{ color: C.dim }}>{fmtFecha(ev.fecha)} · {ev.categoria || "Sin categoría"}</div>
+                </div>
+              </label>
+            ))}
+            {filtrados.length === 0 && <p className="text-sm text-center py-4" style={{ color: C.dim }}>Sin resultados.</p>}
+          </div>
         </div>
-        <div className="flex items-center justify-between mb-2">
-          <span className="text-xs" style={{ color: C.dim }}>{seleccionados.size} de {eventos.length} seleccionados</span>
-          <button onClick={toggleTodos} className="text-xs px-2 py-1 rounded"
-            style={{ color: C.gold, border: `1px solid ${C.gold}30` }}>
-            {todosVisiblesSeleccionados ? "Deseleccionar visibles" : "Seleccionar visibles"}
-          </button>
-        </div>
-        <div className="grid gap-1 max-h-60 overflow-y-auto mb-4 pr-1">
-          {filtrados.map((ev) => (
-            <label key={ev.id} className="flex items-center gap-2.5 px-3 py-2 rounded-lg"
-              style={{ background: C.panel2, border: `1px solid ${seleccionados.has(ev.id) ? C.gold + "40" : C.border}` }}>
-              <input type="checkbox" checked={seleccionados.has(ev.id)} onChange={() => toggle(ev.id)}
-                className="w-3.5 h-3.5" style={{ accentColor: C.gold }} />
-              <div className="flex-1 min-w-0">
-                <div className="text-sm truncate">{ev.nombre || "Sin nombre"}</div>
-                <div className="text-[11px]" style={{ color: C.dim }}>{fmtFecha(ev.fecha)} · {ev.categoria || "Sin categoría"}</div>
-              </div>
-            </label>
-          ))}
-          {filtrados.length === 0 && <p className="text-sm text-center py-4" style={{ color: C.dim }}>Sin resultados.</p>}
-        </div>
-        <div className="flex gap-2">
+
+        {/* botones fijos abajo */}
+        <div className="flex gap-2 px-5 py-4 shrink-0" style={{ borderTop: `1px solid ${C.border}` }}>
           <button onClick={onClose} className="flex-1 text-sm px-3 py-2 rounded-md"
             style={{ background: C.panel2, border: `1px solid ${C.border}`, color: C.dim }}>
             Cancelar
