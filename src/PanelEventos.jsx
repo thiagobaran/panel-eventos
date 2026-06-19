@@ -691,6 +691,7 @@ export default function PanelEventos() {
             onDelete={borrarEvento}
             onNuevo={() => { setEditId(null); setVista("form"); }}
             onExportar={exportarJSON}
+            todosEventos={eventos}
             perms={p}
             usuario={usuario}
           />
@@ -733,9 +734,121 @@ function Badge({ color, children, solid }) {
   );
 }
 
+/* ====================== EXPORT EVENTOS MODAL ====================== */
+function ExportEventosModal({ eventos, onClose }) {
+  const hoy = new Date().toISOString().slice(0, 10);
+  const [busqueda, setBusqueda] = useState("");
+  const [filtro, setFiltro] = useState("todos");
+  const [seleccionados, setSeleccionados] = useState(() => new Set(eventos.map((e) => e.id)));
+
+  const filtrados = useMemo(() => eventos.filter((e) => {
+    if (filtro === "proximos" && (!e.fecha || e.fecha < hoy)) return false;
+    if (filtro === "finalizados" && (!e.fecha || e.fecha >= hoy)) return false;
+    if (busqueda && !(e.nombre || "").toLowerCase().includes(busqueda.toLowerCase())) return false;
+    return true;
+  }), [eventos, filtro, busqueda, hoy]);
+
+  const toggle = (id) => setSeleccionados((prev) => { const s = new Set(prev); s.has(id) ? s.delete(id) : s.add(id); return s; });
+  const todosVisiblesSeleccionados = filtrados.length > 0 && filtrados.every((e) => seleccionados.has(e.id));
+  const toggleTodos = () => setSeleccionados((prev) => {
+    const s = new Set(prev);
+    if (todosVisiblesSeleccionados) filtrados.forEach((e) => s.delete(e.id));
+    else filtrados.forEach((e) => s.add(e.id));
+    return s;
+  });
+
+  const exportar = async () => {
+    const evs = eventos.filter((e) => seleccionados.has(e.id));
+    if (!evs.length) { alert("Seleccioná al menos un evento."); return; }
+    const contenido = JSON.stringify(evs, null, 2);
+    const defaultName = `eventos-${new Date().toISOString().slice(0, 10)}.json`;
+    if (typeof window.showSaveFilePicker === "function") {
+      try {
+        const handle = await window.showSaveFilePicker({
+          suggestedName: defaultName,
+          types: [{ description: "Archivo JSON", accept: { "application/json": [".json"] } }],
+        });
+        const writable = await handle.createWritable();
+        await writable.write(contenido);
+        await writable.close();
+        onClose(); return;
+      } catch (e) { if (e.name === "AbortError") return; }
+    }
+    const blob = new Blob([contenido], { type: "application/json" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url; a.download = defaultName;
+    document.body.appendChild(a); a.click();
+    document.body.removeChild(a); URL.revokeObjectURL(url);
+    onClose();
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-start justify-center p-4 pt-6 overflow-y-auto"
+      style={{ background: "rgba(0,0,0,0.85)" }} onClick={onClose}>
+      <div className="rounded-xl p-5 w-full max-w-lg"
+        style={{ background: C.panel, border: `1px solid ${C.border}` }}
+        onClick={(e) => e.stopPropagation()}>
+        <div className="flex items-center gap-2 mb-3">
+          <Download size={16} color={C.gold} />
+          <h2 className="font-semibold text-sm flex-1">Descargar eventos</h2>
+          <button onClick={onClose} style={{ color: C.dim }}><X size={16} /></button>
+        </div>
+        <div className="flex gap-1 mb-3 flex-wrap">
+          {[{ v: "todos", l: "Todos" }, { v: "proximos", l: "Próximos" }, { v: "finalizados", l: "Finalizados" }].map(({ v, l }) => (
+            <button key={v} onClick={() => setFiltro(v)} className="text-xs px-2.5 py-1 rounded-full"
+              style={{ background: filtro === v ? C.gold : C.panel2, color: filtro === v ? C.onGold : C.dim, border: `1px solid ${filtro === v ? C.gold : C.border}` }}>
+              {l}
+            </button>
+          ))}
+        </div>
+        <div className="relative mb-3">
+          <Search size={13} color={C.dim} className="absolute left-3 top-1/2 -translate-y-1/2" />
+          <input value={busqueda} onChange={(e) => setBusqueda(e.target.value)} placeholder="Buscar evento…"
+            className="w-full text-sm pl-8 pr-3 py-2 rounded-md"
+            style={{ background: C.panel2, border: `1px solid ${C.border}`, color: C.text, colorScheme: "dark" }} />
+        </div>
+        <div className="flex items-center justify-between mb-2">
+          <span className="text-xs" style={{ color: C.dim }}>{seleccionados.size} de {eventos.length} seleccionados</span>
+          <button onClick={toggleTodos} className="text-xs px-2 py-1 rounded"
+            style={{ color: C.gold, border: `1px solid ${C.gold}30` }}>
+            {todosVisiblesSeleccionados ? "Deseleccionar visibles" : "Seleccionar visibles"}
+          </button>
+        </div>
+        <div className="grid gap-1 max-h-60 overflow-y-auto mb-4 pr-1">
+          {filtrados.map((ev) => (
+            <label key={ev.id} className="flex items-center gap-2.5 px-3 py-2 rounded-lg"
+              style={{ background: C.panel2, border: `1px solid ${seleccionados.has(ev.id) ? C.gold + "40" : C.border}` }}>
+              <input type="checkbox" checked={seleccionados.has(ev.id)} onChange={() => toggle(ev.id)}
+                className="w-3.5 h-3.5" style={{ accentColor: C.gold }} />
+              <div className="flex-1 min-w-0">
+                <div className="text-sm truncate">{ev.nombre || "Sin nombre"}</div>
+                <div className="text-[11px]" style={{ color: C.dim }}>{fmtFecha(ev.fecha)} · {ev.categoria || "Sin categoría"}</div>
+              </div>
+            </label>
+          ))}
+          {filtrados.length === 0 && <p className="text-sm text-center py-4" style={{ color: C.dim }}>Sin resultados.</p>}
+        </div>
+        <div className="flex gap-2">
+          <button onClick={onClose} className="flex-1 text-sm px-3 py-2 rounded-md"
+            style={{ background: C.panel2, border: `1px solid ${C.border}`, color: C.dim }}>
+            Cancelar
+          </button>
+          <button onClick={exportar}
+            className="flex-1 text-sm font-semibold px-3 py-2 rounded-md flex items-center justify-center gap-1.5"
+            style={{ background: C.gold, color: C.onGold }}>
+            <Download size={13} /> Guardar como…
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 /* ====================== LISTA ====================== */
-function Lista({ eventos, total, busqueda, setBusqueda, filtroCat, setFiltroCat, filtroEmp, setFiltroEmp, filtroTiempo, setFiltroTiempo, conteosTiempo, onVer, onEdit, onDelete, onNuevo, onExportar, perms = {}, usuario = {} }) {
+function Lista({ eventos, total, busqueda, setBusqueda, filtroCat, setFiltroCat, filtroEmp, setFiltroEmp, filtroTiempo, setFiltroTiempo, conteosTiempo, onVer, onEdit, onDelete, onNuevo, onExportar, todosEventos = [], perms = {}, usuario = {} }) {
   const hoyISO = new Date().toISOString().slice(0, 10);
+  const [exportModal, setExportModal] = useState(false);
   const tabs = [
     { value: "proximos", label: "Próximos", count: conteosTiempo.proximos },
     { value: "finalizados", label: "Finalizados", count: conteosTiempo.finalizados },
@@ -743,6 +856,7 @@ function Lista({ eventos, total, busqueda, setBusqueda, filtroCat, setFiltroCat,
   ];
   return (
     <div className="fade">
+      {exportModal && <ExportEventosModal eventos={todosEventos} onClose={() => setExportModal(false)} />}
       {/* pestañas por fecha + acciones */}
       <div className="flex flex-wrap gap-1.5 mb-3 items-center">
         {tabs.map((t) => {
@@ -770,8 +884,8 @@ function Lista({ eventos, total, busqueda, setBusqueda, filtroCat, setFiltroCat,
         <div className="ml-auto flex items-center gap-1.5">
           {perms.importarExportar && (
             <button
-              onClick={onExportar}
-              title="Exportar respaldo (JSON)"
+              onClick={() => setExportModal(true)}
+              title="Descargar eventos (JSON)"
               className="flex items-center gap-1.5 text-sm px-3 py-1.5 rounded-md"
               style={{ background: C.panel2, border: `1px solid ${C.border}`, color: C.dim }}
             >
@@ -1839,20 +1953,28 @@ function Home({ eventos, onVer }) {
 
 /* ====================== PERSONAL ====================== */
 function Personal({ personas, categorias, onSave, onDelete, onSaveCategoria, onDeleteCategoria, perms = {}, eventos = [] }) {
-  const vacio = { nombre: "", rolHabitual: "", telefono: "", email: "", categoriaId: "", activo: true };
+  const vacio = { nombre: "", roles: [], categoriaId: "", activo: true };
   const [editando, setEditando] = useState(null); // null | "new" | persona id
   const [f, setF] = useState(vacio);
+  const [nuevoRol, setNuevoRol] = useState("");
   const [filtroCatId, setFiltroCatId] = useState(""); // "" todas, "__sin" sin categoría, o id
   const [catAbierto, setCatAbierto] = useState(false);
   const [tabPersonal, setTabPersonal] = useState("lista"); // "lista" | "disponibilidad"
 
-  const empezarNuevo = () => { setF(vacio); setEditando("new"); };
-  const empezarEditar = (p) => { setF({ ...vacio, ...p }); setEditando(p.id); };
-  const cancelar = () => { setEditando(null); setF(vacio); };
+  const parseRoles = (p) => p.rolHabitual ? p.rolHabitual.split(",").map((r) => r.trim()).filter(Boolean) : [];
+  const empezarNuevo = () => { setF(vacio); setNuevoRol(""); setEditando("new"); };
+  const empezarEditar = (p) => { setF({ ...vacio, ...p, roles: parseRoles(p) }); setNuevoRol(""); setEditando(p.id); };
+  const cancelar = () => { setEditando(null); setF(vacio); setNuevoRol(""); };
   const guardar = async () => {
     if (!f.nombre.trim()) { alert("Poné el nombre de la persona."); return; }
-    await onSave(f);
+    await onSave({ ...f, rolHabitual: f.roles.join(", ") });
     cancelar();
+  };
+  const agregarRol = () => {
+    const r = nuevoRol.trim();
+    if (!r || f.roles.includes(r)) return;
+    setF((prev) => ({ ...prev, roles: [...prev.roles, r] }));
+    setNuevoRol("");
   };
 
   const nombreCategoria = (id) => categorias.find((c) => c.id === id)?.nombre || "";
@@ -1929,7 +2051,9 @@ function Personal({ personas, categorias, onSave, onDelete, onSaveCategoria, onD
       {editando !== null && (
         <div className="rounded-xl p-4 mb-4 grid sm:grid-cols-2 gap-3.5" style={{ background: C.panel, border: `1px solid ${C.border}` }}>
           <Field label="Nombre" full>
-            <Input value={f.nombre} onChange={(v) => setF({ ...f, nombre: v })} placeholder="Nombre y apellido" />
+            <Input value={f.nombre} onChange={(v) => setF({ ...f, nombre: v })}
+              onKeyDown={(e) => { if (e.key === "Enter") guardar(); }}
+              placeholder="Nombre y apellido" />
           </Field>
           <Field label="Categoría">
             <select value={f.categoriaId || ""} onChange={(e) => setF({ ...f, categoriaId: e.target.value })}
@@ -1941,14 +2065,36 @@ function Personal({ personas, categorias, onSave, onDelete, onSaveCategoria, onD
               ))}
             </select>
           </Field>
-          <Field label="Rol habitual">
-            <Input value={f.rolHabitual} onChange={(v) => setF({ ...f, rolHabitual: v })} placeholder="DF, gaffer, op. LED…" />
-          </Field>
-          <Field label="Teléfono">
-            <Input value={f.telefono} onChange={(v) => setF({ ...f, telefono: v })} placeholder="+54 9 11 ..." />
-          </Field>
-          <Field label="Email" full>
-            <Input type="email" value={f.email} onChange={(v) => setF({ ...f, email: v })} placeholder="nombre@ejemplo.com" />
+          <Field label="Roles" full>
+            <div>
+              {f.roles.length > 0 && (
+                <div className="flex flex-wrap gap-1.5 mb-2">
+                  {f.roles.map((r) => (
+                    <span key={r} className="flex items-center gap-1 text-xs px-2 py-1 rounded-full"
+                      style={{ background: C.panel2, border: `1px solid ${C.border}`, color: C.text }}>
+                      {r}
+                      <button type="button" onClick={() => setF((prev) => ({ ...prev, roles: prev.roles.filter((x) => x !== r) }))}
+                        style={{ color: C.dim }}><X size={11} /></button>
+                    </span>
+                  ))}
+                </div>
+              )}
+              <div className="flex gap-2">
+                <input
+                  value={nuevoRol}
+                  onChange={(e) => setNuevoRol(e.target.value)}
+                  onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); agregarRol(); } }}
+                  placeholder="Agregar rol (ej: DF, gaffer…) — Enter para agregar"
+                  className="flex-1 text-sm px-3 py-2 rounded-md"
+                  style={{ background: C.panel2, border: `1px solid ${C.border}`, color: C.text, colorScheme: "dark" }}
+                />
+                <button type="button" onClick={agregarRol}
+                  className="px-3 py-2 rounded-md flex items-center"
+                  style={{ background: C.panel2, border: `1px solid ${C.border}`, color: C.dim }}>
+                  <Plus size={15} />
+                </button>
+              </div>
+            </div>
           </Field>
           <div className="sm:col-span-2 flex gap-2 justify-end">
             <button onClick={cancelar} className="text-sm px-4 py-2 rounded-md" style={{ background: C.panel2, border: `1px solid ${C.border}`, color: C.dim }}>Cancelar</button>
@@ -2031,9 +2177,9 @@ function Personal({ personas, categorias, onSave, onDelete, onSaveCategoria, onD
                         {p.categoriaId && nombreCategoria(p.categoriaId) && (
                           <Badge color={C.gold}>{nombreCategoria(p.categoriaId)}</Badge>
                         )}
-                        {p.rolHabitual && <span className="font-mono px-2 py-0.5 rounded" style={{ background: C.panel2 }}>{p.rolHabitual}</span>}
-                        {p.telefono && <span>{p.telefono}</span>}
-                        {p.email && <span>{p.email}</span>}
+                        {p.rolHabitual && p.rolHabitual.split(",").map((r) => r.trim()).filter(Boolean).map((r) => (
+                          <span key={r} className="font-mono px-2 py-0.5 rounded text-xs" style={{ background: C.panel2 }}>{r}</span>
+                        ))}
                       </div>
                     </div>
                     <div className="flex gap-1">
@@ -2145,7 +2291,11 @@ function DisponibilidadPersonal({ personas, eventos }) {
                     <div className="min-w-0">
                       <div className="font-medium text-sm truncate">{persona.nombre}</div>
                       {persona.rolHabitual && (
-                        <div className="text-[11px]" style={{ color: C.dim }}>{persona.rolHabitual}</div>
+                        <div className="flex flex-wrap gap-1 mt-0.5">
+                          {persona.rolHabitual.split(",").map((r) => r.trim()).filter(Boolean).map((r) => (
+                            <span key={r} className="text-[10px] px-1.5 py-0.5 rounded" style={{ background: C.panel2, color: C.dim }}>{r}</span>
+                          ))}
+                        </div>
                       )}
                     </div>
                   </div>
@@ -2253,6 +2403,7 @@ function CategoriasPersonal({ categorias, personas, onSave, onDelete, abierto, s
               <Input
                 value={nuevo}
                 onChange={setNuevo}
+                onKeyDown={(e) => { if (e.key === "Enter") agregar(); }}
                 placeholder="Nueva categoría (ej: Cámara, Iluminación, Producción…)"
               />
               <button
@@ -2849,7 +3000,9 @@ function EquipoCard({ ev, onUpdate, perms, personas = [], eventos = [] }) {
               <option value="" style={{ color: C.dim }}>Agregar persona…</option>
               {personas.map((p) => <option key={p.id} value={p.id} style={{ background: C.panel2, color: C.text }}>{p.nombre}</option>)}
             </select>
-            <input value={nuevo.rol} onChange={(e) => setNuevo((p) => ({ ...p, rol: e.target.value }))} placeholder="Rol"
+            <input value={nuevo.rol} onChange={(e) => setNuevo((p) => ({ ...p, rol: e.target.value }))}
+              onKeyDown={(e) => { if (e.key === "Enter") addIntegrante(); }}
+              placeholder="Rol"
               className="text-sm px-2 py-1 rounded w-24 outline-none"
               style={{ background: C.panel2, border: `1px solid ${C.border}`, color: C.text }} />
             <button type="button" onClick={addIntegrante}
@@ -3856,9 +4009,11 @@ function Field({ label, full, children }) {
     </div>
   );
 }
-function Input({ value, onChange, placeholder, type = "text" }) {
+function Input({ value, onChange, onKeyDown, placeholder, type = "text" }) {
   return (
-    <input type={type} value={value} onChange={(e) => onChange(e.target.value)} placeholder={placeholder}
+    <input type={type} value={value} onChange={(e) => onChange(e.target.value)}
+      onKeyDown={onKeyDown}
+      placeholder={placeholder}
       className="w-full text-sm px-3 py-2 rounded-md"
       style={{ background: C.panel2, border: `1px solid ${C.border}`, color: C.text, colorScheme: "dark" }} />
   );
