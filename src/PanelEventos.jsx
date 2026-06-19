@@ -2083,21 +2083,23 @@ function Home({ eventos, onVer }) {
 
 /* ====================== PERSONAL ====================== */
 function Personal({ personas, categorias, onSave, onDelete, onSaveCategoria, onDeleteCategoria, perms = {}, eventos = [] }) {
-  const vacio = { nombre: "", roles: [], categoriaId: "", activo: true };
-  const [editando, setEditando] = useState(null); // null | "new" | persona id
+  const vacio = { nombre: "", roles: [], categoriaIds: [], activo: true };
+  const [editando, setEditando] = useState(null);
   const [f, setF] = useState(vacio);
   const [nuevoRol, setNuevoRol] = useState("");
-  const [filtroCatId, setFiltroCatId] = useState(""); // "" todas, "__sin" sin categoría, o id
+  const [filtroCatId, setFiltroCatId] = useState("");
   const [catAbierto, setCatAbierto] = useState(false);
-  const [tabPersonal, setTabPersonal] = useState("lista"); // "lista" | "disponibilidad"
+  const [tabPersonal, setTabPersonal] = useState("lista");
 
   const parseRoles = (p) => p.rolHabitual ? p.rolHabitual.split(",").map((r) => r.trim()).filter(Boolean) : [];
+  const parseCategorias = (p) => p.categoriaId ? p.categoriaId.split(",").map((s) => s.trim()).filter(Boolean) : [];
+
   const empezarNuevo = () => { setF(vacio); setNuevoRol(""); setEditando("new"); };
-  const empezarEditar = (p) => { setF({ ...vacio, ...p, roles: parseRoles(p) }); setNuevoRol(""); setEditando(p.id); };
+  const empezarEditar = (p) => { setF({ ...vacio, ...p, roles: parseRoles(p), categoriaIds: parseCategorias(p) }); setNuevoRol(""); setEditando(p.id); };
   const cancelar = () => { setEditando(null); setF(vacio); setNuevoRol(""); };
   const guardar = async () => {
     if (!f.nombre.trim()) { alert("Poné el nombre de la persona."); return; }
-    await onSave({ ...f, rolHabitual: f.roles.join(", ") });
+    await onSave({ ...f, rolHabitual: f.roles.join(", "), categoriaId: f.categoriaIds.join(",") });
     cancelar();
   };
   const agregarRol = () => {
@@ -2106,23 +2108,34 @@ function Personal({ personas, categorias, onSave, onDelete, onSaveCategoria, onD
     setF((prev) => ({ ...prev, roles: [...prev.roles, r] }));
     setNuevoRol("");
   };
+  const agregarCategoria = (cid) => {
+    if (!cid || f.categoriaIds.includes(cid)) return;
+    setF((prev) => ({ ...prev, categoriaIds: [...prev.categoriaIds, cid] }));
+  };
+  const quitarCategoria = (cid) => setF((prev) => ({ ...prev, categoriaIds: prev.categoriaIds.filter((x) => x !== cid) }));
 
   const nombreCategoria = (id) => categorias.find((c) => c.id === id)?.nombre || "";
 
   const filtradas = useMemo(() => {
     if (!filtroCatId) return personas;
-    if (filtroCatId === "__sin") return personas.filter((p) => !p.categoriaId);
-    return personas.filter((p) => p.categoriaId === filtroCatId);
+    if (filtroCatId === "__sin") return personas.filter((p) => !p.categoriaId || p.categoriaId === "");
+    return personas.filter((p) => parseCategorias(p).includes(filtroCatId));
   }, [personas, filtroCatId]);
 
-  // Personas agrupadas por categoría (para vista sin filtro)
   const grupos = useMemo(() => {
     const map = new Map();
     categorias.forEach((c) => map.set(c.id, { categoria: c, items: [] }));
     map.set("__sin", { categoria: { id: "__sin", nombre: "Sin categoría" }, items: [] });
     filtradas.forEach((p) => {
-      const key = p.categoriaId && map.has(p.categoriaId) ? p.categoriaId : "__sin";
-      map.get(key).items.push(p);
+      const cats = parseCategorias(p);
+      if (cats.length === 0) {
+        map.get("__sin").items.push(p);
+      } else {
+        cats.forEach((cid) => {
+          if (map.has(cid)) map.get(cid).items.push(p);
+          else map.get("__sin").items.push(p);
+        });
+      }
     });
     return [...map.values()].filter((g) => g.items.length > 0);
   }, [filtradas, categorias]);
@@ -2185,15 +2198,31 @@ function Personal({ personas, categorias, onSave, onDelete, onSaveCategoria, onD
               onKeyDown={(e) => { if (e.key === "Enter") guardar(); }}
               placeholder="Nombre y apellido" />
           </Field>
-          <Field label="Categoría">
-            <select value={f.categoriaId || ""} onChange={(e) => setF({ ...f, categoriaId: e.target.value })}
-              className="w-full text-sm px-3 py-2 rounded-md"
-              style={{ background: C.panel2, border: `1px solid ${C.border}`, color: f.categoriaId ? C.text : C.dim, colorScheme: "dark" }}>
-              <option value="" style={{ background: C.panel2, color: C.dim }}>Sin categoría</option>
-              {categorias.map((c) => (
-                <option key={c.id} value={c.id} style={{ background: C.panel2, color: C.text }}>{c.nombre}</option>
-              ))}
-            </select>
+          <Field label="Categorías">
+            <div>
+              {f.categoriaIds.length > 0 && (
+                <div className="flex flex-wrap gap-1.5 mb-2">
+                  {f.categoriaIds.map((cid) => {
+                    const cat = categorias.find((c) => c.id === cid);
+                    return cat ? (
+                      <span key={cid} className="flex items-center gap-1 text-xs px-2 py-1 rounded-full"
+                        style={{ background: C.panel2, border: `1px solid ${C.gold}50`, color: C.text }}>
+                        {cat.nombre}
+                        <button type="button" onClick={() => quitarCategoria(cid)} style={{ color: C.dim }}><X size={11} /></button>
+                      </span>
+                    ) : null;
+                  })}
+                </div>
+              )}
+              <select value="" onChange={(e) => agregarCategoria(e.target.value)}
+                className="w-full text-sm px-3 py-2 rounded-md"
+                style={{ background: C.panel2, border: `1px solid ${C.border}`, color: C.dim, colorScheme: "dark" }}>
+                <option value="">Agregar categoría…</option>
+                {categorias.filter((c) => !f.categoriaIds.includes(c.id)).map((c) => (
+                  <option key={c.id} value={c.id} style={{ background: C.panel2, color: C.text }}>{c.nombre}</option>
+                ))}
+              </select>
+            </div>
           </Field>
           <Field label="Roles" full>
             <div>
@@ -2304,9 +2333,10 @@ function Personal({ personas, categorias, onSave, onDelete, onSaveCategoria, onD
                     <div className="flex-1 min-w-0">
                       <div className="font-medium truncate">{p.nombre}</div>
                       <div className="flex flex-wrap gap-1.5 mt-1.5 text-xs" style={{ color: C.dim }}>
-                        {p.categoriaId && nombreCategoria(p.categoriaId) && (
-                          <Badge color={C.gold}>{nombreCategoria(p.categoriaId)}</Badge>
-                        )}
+                        {parseCategorias(p).map((cid) => {
+                          const cat = categorias.find((c) => c.id === cid);
+                          return cat ? <Badge key={cid} color={C.gold}>{cat.nombre}</Badge> : null;
+                        })}
                         {p.rolHabitual && p.rolHabitual.split(",").map((r) => r.trim()).filter(Boolean).map((r) => (
                           <span key={r} className="font-mono px-2 py-0.5 rounded text-xs" style={{ background: C.panel2 }}>{r}</span>
                         ))}
