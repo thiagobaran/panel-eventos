@@ -735,6 +735,93 @@ function Badge({ color, children, solid }) {
   );
 }
 
+/* ====================== GENERADOR HTML MULTI-EVENTO ====================== */
+function generarHtmlEventos(evs) {
+  const fmtD = (f) => { if (!f) return "—"; const [y,m,d] = f.split("-"); return `${d}/${m}/${y}`; };
+  const fmtM = (n, mon) => new Intl.NumberFormat("es-AR", { style: "currency", currency: mon === "USD" ? "USD" : "ARS", maximumFractionDigits: 0 }).format(Number(n) || 0);
+  const COLS = { "Armado": "#4FD18B", "Armado + Prelight": "#e6a800", "Prelighting": "#9b8cff", "Rodaje": "#e8335a", "Desarme": "#64B5F6" };
+  const fechaGen = new Date().toLocaleDateString("es-AR", { day: "2-digit", month: "long", year: "numeric" });
+
+  const bloques = evs.map((ev) => {
+    const m1 = Number(ev.montoM1) || 0;
+    const m2 = Number(ev.montoM2) || 0;
+    const total = m1 * 1.21 + m2;
+    const dist = ev.distribucion === "MIXTO" ? "M1 + M2" : ev.distribucion === "M2" ? "MG M2" : "MG M1";
+
+    let filas = `<tr><td class="lbl">Fecha</td><td>${fmtD(ev.fecha)}</td></tr>`;
+    if (ev.categoria) filas += `<tr><td class="lbl">Categoría</td><td>${ev.categoria}</td></tr>`;
+    if (ev.estudio) filas += `<tr><td class="lbl">Estudio</td><td>Estudio ${ev.estudio}</td></tr>`;
+    if (ev.tipoProd) filas += `<tr><td class="lbl">Tipo producción</td><td>${ev.tipoProd}</td></tr>`;
+    if (ev.razonSocial) filas += `<tr><td class="lbl">Razón social</td><td>${ev.razonSocial}</td></tr>`;
+    filas += `<tr><td class="lbl">Empresa</td><td>${dist}</td></tr>`;
+    if (total > 0) filas += `<tr><td class="lbl">Total facturable</td><td><strong>${fmtM(total, ev.moneda)}</strong></td></tr>`;
+    filas += `<tr><td class="lbl">Facturado</td><td>${ev.facturado ? "✓ Sí" : "✗ Pendiente"}</td></tr>`;
+    if (ev.director?.nombre) filas += `<tr><td class="lbl">Director/a</td><td>${ev.director.nombre}</td></tr>`;
+
+    let parteHtml = "";
+    if (ev.partes?.length) {
+      const pts = ev.partes.filter(p => p.fechas?.length);
+      if (pts.length) {
+        parteHtml = `<div class="subsec">Fases: ` + pts.map(p => {
+          const col = COLS[p.tipo] || "#888";
+          return `<span class="fase-tag" style="background:${col}22;border:1px solid ${col};color:${col === "#e6a800" ? "#7a5500" : col}">${p.tipo} (${p.fechas.map(fmtD).join(", ")})</span>`;
+        }).join(" ") + `</div>`;
+      }
+    }
+
+    let equipoHtml = "";
+    if (ev.integrantes?.length) {
+      const rows = ev.integrantes.map(i => `<tr><td>${i.nombre || "—"}</td><td>${i.rol || "—"}</td><td style="color:#888;font-size:11px">${i.partes?.length ? i.partes.join(", ") : "Todas"}</td></tr>`).join("");
+      equipoHtml = `<div class="subsec"><table class="data"><tr><th>Nombre</th><th>Rol</th><th>Fases</th></tr>${rows}</table></div>`;
+    }
+
+    let obsHtml = "";
+    if (ev.observaciones) obsHtml = `<div class="subsec obs">${ev.observaciones}</div>`;
+
+    return `
+      <div class="ev">
+        <div class="ev-hdr">
+          <span class="ev-nombre">${ev.nombre || "Sin nombre"}</span>
+          <span class="ev-cat">${ev.categoria || ""}</span>
+        </div>
+        <div class="ev-body">
+          <table>${filas}</table>
+          ${parteHtml}
+          ${equipoHtml}
+          ${obsHtml}
+        </div>
+      </div>`;
+  }).join("");
+
+  return `<!DOCTYPE html><html lang="es"><head><meta charset="UTF-8"><title>Reporte de proyectos — Cacodelphia Studios</title><style>
+    *{margin:0;padding:0;box-sizing:border-box}
+    body{font-family:Arial,Helvetica,sans-serif;background:#fff;color:#1a1a1a;padding:28px;max-width:820px;margin:0 auto;font-size:13px}
+    .portada{border-bottom:3px solid #D4AF37;margin-bottom:24px;padding-bottom:16px}
+    .portada h1{font-size:24px;font-weight:700;color:#1a1400;margin-bottom:4px}
+    .portada p{color:#888;font-size:12px}
+    .ev{border:1px solid #e0d9cc;border-radius:6px;margin-bottom:18px;overflow:hidden;page-break-inside:avoid}
+    .ev-hdr{background:#f8f5ef;padding:10px 14px;display:flex;align-items:center;gap:10px;border-bottom:1px solid #e0d9cc}
+    .ev-nombre{font-weight:700;font-size:15px;color:#1a1400;flex:1}
+    .ev-cat{font-size:11px;background:#D4AF3722;color:#7a5500;border:1px solid #D4AF37;padding:2px 8px;border-radius:99px}
+    .ev-body{padding:12px 14px;display:flex;flex-direction:column;gap:10px}
+    table{width:100%;border-collapse:collapse}
+    th{text-align:left;font-size:11px;color:#888;padding:4px 8px;border-bottom:1px solid #eee}
+    td{padding:4px 8px;font-size:12px;vertical-align:top}
+    .lbl{color:#999;width:130px;font-size:11px}
+    table.data tr:nth-child(even) td{background:#faf8f4}
+    .subsec{font-size:12px}
+    .fase-tag{display:inline-block;padding:2px 8px;border-radius:99px;font-size:11px;margin:2px 3px 2px 0}
+    .obs{white-space:pre-wrap;line-height:1.6;color:#444;font-size:12px}
+    @media print{body{padding:0}@page{margin:1.5cm}.ev{page-break-inside:avoid}}
+  </style></head><body>
+    <div class="portada">
+      <h1>Reporte de proyectos — Cacodelphia Studios</h1>
+      <p>${evs.length} proyecto${evs.length !== 1 ? "s" : ""} · Generado el ${fechaGen}</p>
+    </div>
+    ${bloques}
+  </body></html>`;
+}
+
 /* ====================== EXPORT EVENTOS MODAL ====================== */
 function ExportEventosModal({ eventos, onClose }) {
   const hoy = new Date().toISOString().slice(0, 10);
@@ -761,21 +848,21 @@ function ExportEventosModal({ eventos, onClose }) {
   const exportar = async () => {
     const evs = eventos.filter((e) => seleccionados.has(e.id));
     if (!evs.length) { alert("Seleccioná al menos un evento."); return; }
-    const contenido = JSON.stringify(evs, null, 2);
-    const defaultName = `eventos-${new Date().toISOString().slice(0, 10)}.json`;
+    const html = generarHtmlEventos(evs);
+    const defaultName = `proyectos-${new Date().toISOString().slice(0, 10)}.html`;
     if (typeof window.showSaveFilePicker === "function") {
       try {
         const handle = await window.showSaveFilePicker({
           suggestedName: defaultName,
-          types: [{ description: "Archivo JSON", accept: { "application/json": [".json"] } }],
+          types: [{ description: "Documento HTML", accept: { "text/html": [".html"] } }],
         });
         const writable = await handle.createWritable();
-        await writable.write(contenido);
+        await writable.write(html);
         await writable.close();
         onClose(); return;
       } catch (e) { if (e.name === "AbortError") return; }
     }
-    const blob = new Blob([contenido], { type: "application/json" });
+    const blob = new Blob([html], { type: "text/html;charset=utf-8" });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url; a.download = defaultName;
