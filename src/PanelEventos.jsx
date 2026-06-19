@@ -17,7 +17,7 @@ import { subirArchivo, urlArchivo, borrarArchivo } from "./lib/storageApi";
 import { isSupabaseConfigured } from "./lib/supabaseClient";
 import {
   listUsuarios, crearUsuario, actualizarUsuario, cambiarPassword, borrarUsuario,
-  loginUsuario, seedUsuariosIniciales, guardarSesion, leerSesion, subscribeUsuarios,
+  loginUsuario, seedUsuariosIniciales, ensurePruebaUser, guardarSesion, leerSesion, subscribeUsuarios,
   ROLES, perms,
 } from "./lib/usuariosApi";
 
@@ -197,6 +197,7 @@ export default function PanelEventos() {
       try {
         const info = await seedUsuariosIniciales();
         if (info.sembrados) setSeedInfo(info);
+        await ensurePruebaUser();
         await recargarUsuarios();
       } catch (e) {
         console.error(e);
@@ -1212,16 +1213,21 @@ function PdfModal({ ev, onClose }) {
 
   const generar = () => {
     const html = generarHtmlPdf(ev, sel);
-    const win = window.open("", "_blank");
-    if (!win) { alert("Habilitá los popups para este sitio."); return; }
-    win.document.write(html);
-    win.document.close();
-    setTimeout(() => win.print(), 400);
+    const blob = new Blob([html], { type: "text/html;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    const nombreLimpio = (ev.nombre || "evento").replace(/[^a-zA-Z0-9\s-]/g, "").trim().replace(/\s+/g, "-");
+    a.href = url;
+    a.download = `${nombreLimpio}${ev.fecha ? "-" + ev.fecha : ""}.html`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
     onClose();
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4"
+    <div className="fixed inset-0 z-50 flex items-start justify-center p-4 pt-6 overflow-y-auto"
       style={{ background: "rgba(0,0,0,0.85)" }}
       onClick={onClose}>
       <div className="rounded-xl p-5 w-full max-w-sm"
@@ -1851,9 +1857,9 @@ function Personal({ personas, categorias, onSave, onDelete, onSaveCategoria, onD
 
   return (
     <div className="fade max-w-3xl mx-auto">
-      <div className="flex items-center gap-2 mb-4 flex-wrap">
+      {/* Header fijo: título + tabs siempre en el mismo lugar */}
+      <div className="flex items-center gap-3 mb-3">
         <h1 className="text-lg font-semibold flex-1">Personal</h1>
-        {/* Tabs */}
         <div className="flex items-center gap-0.5 p-0.5 rounded-lg" style={{ background: C.panel2, border: `1px solid ${C.border}` }}>
           {[{ v: "lista", l: "Listado" }, { v: "disponibilidad", l: "Disponibilidad" }].map(({ v, l }) => (
             <button key={v} onClick={() => { setTabPersonal(v); setEditando(null); }}
@@ -1863,23 +1869,27 @@ function Personal({ personas, categorias, onSave, onDelete, onSaveCategoria, onD
             </button>
           ))}
         </div>
-        {tabPersonal === "lista" && editando === null && (
-          <>
-            {perms.categoriaAgregar && (
-              <button onClick={() => setCatAbierto(true)} className="text-sm font-medium px-3 py-1.5 rounded-md flex items-center gap-1.5"
-                style={{ background: C.gold, color: C.onGold }}>
-                <Plus size={15} /> Agregar categoría
-              </button>
-            )}
-            {perms.personalAgregar && (
-              <button onClick={empezarNuevo} className="text-sm font-medium px-3 py-1.5 rounded-md flex items-center gap-1.5"
-                style={{ background: C.gold, color: C.onGold }}>
-                <Plus size={15} /> Agregar persona
-              </button>
-            )}
-          </>
-        )}
       </div>
+      {/* Botones de acción — solo en lista, en fila separada para no mover los tabs */}
+      {tabPersonal === "lista" && editando === null && (perms.categoriaAgregar || perms.personalAgregar) && (
+        <div className="flex gap-2 justify-end mb-4">
+          {perms.categoriaAgregar && (
+            <button onClick={() => setCatAbierto(true)} className="text-sm font-medium px-3 py-1.5 rounded-md flex items-center gap-1.5"
+              style={{ background: C.gold, color: C.onGold }}>
+              <Plus size={15} /> Agregar categoría
+            </button>
+          )}
+          {perms.personalAgregar && (
+            <button onClick={empezarNuevo} className="text-sm font-medium px-3 py-1.5 rounded-md flex items-center gap-1.5"
+              style={{ background: C.gold, color: C.onGold }}>
+              <Plus size={15} /> Agregar persona
+            </button>
+          )}
+        </div>
+      )}
+      {tabPersonal === "lista" && editando === null && !(perms.categoriaAgregar || perms.personalAgregar) && (
+        <div className="mb-4" />
+      )}
 
       {tabPersonal === "disponibilidad" && (
         <DisponibilidadPersonal personas={personas} eventos={eventos} />

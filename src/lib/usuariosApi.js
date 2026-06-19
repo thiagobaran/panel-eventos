@@ -215,6 +215,7 @@ export const ROLES = [
   { value: "admin",         label: "Admin",         desc: "Acceso total + gestión de usuarios" },
   { value: "contabilidad",  label: "Contabilidad",  desc: "Todo salvo crear eventos, personal y categorías" },
   { value: "produccion",    label: "Producción",    desc: "Crea y edita eventos (sin facturación)" },
+  { value: "espectador",    label: "Espectador",    desc: "Solo visualización, sin permisos de edición" },
 ];
 
 /* ---------- matriz de permisos por rol ---------- */
@@ -250,6 +251,7 @@ export function perms(rol) {
         liberarPersona: true,
         usuarios: false,
       };
+    case "espectador":
     default:
       return {
         eventoCrear: false, eventoEditar: false, eventoBorrar: false,
@@ -260,5 +262,16 @@ export function perms(rol) {
         liberarPersona: false,
         usuarios: false,
       };
+  }
+}
+
+/** Crea el usuario "prueba/prueba" (espectador) si no existe todavía. Idempotente. */
+export async function ensurePruebaUser() {
+  try {
+    const existentes = await listUsuarios();
+    if (existentes.some((u) => u.nombre === "prueba")) return;
+    await crearUsuario({ nombre: "prueba", password: "prueba", rol: "espectador" });
+  } catch (e) {
+    if (!/duplicate|unique/i.test(String(e?.message || ""))) console.warn("ensurePrueba:", e);
   }
 }
