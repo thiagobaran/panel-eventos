@@ -785,26 +785,24 @@ function ExportEventosModal({ eventos, onClose }) {
 
   return (
     <div onClick={onClose} style={{
-      position: "fixed", inset: 0, zIndex: 50,
+      position: "fixed", top: 0, left: 0, right: 0, bottom: 0, zIndex: 50,
       background: "rgba(0,0,0,0.85)",
-      display: "flex", alignItems: "center", justifyContent: "center",
-      padding: "16px",
+      display: "flex", alignItems: "flex-start", justifyContent: "center",
+      paddingTop: "72px", paddingLeft: "16px", paddingRight: "16px", paddingBottom: "16px",
     }}>
       <div onClick={(e) => e.stopPropagation()} style={{
         background: C.panel, border: `1px solid ${C.border}`,
         borderRadius: "12px", width: "100%", maxWidth: "512px",
-        display: "flex", flexDirection: "column",
-        height: "min(90vh, 580px)", overflow: "hidden",
       }}>
         {/* cabecera */}
-        <div style={{ display: "flex", alignItems: "center", gap: "8px", padding: "20px 20px 12px", flexShrink: 0 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: "8px", padding: "20px 20px 12px" }}>
           <Download size={16} color={C.gold} />
           <span style={{ fontWeight: 600, fontSize: "0.875rem", flex: 1 }}>Descargar eventos</span>
           <button onClick={onClose} style={{ color: C.dim, background: "none", border: "none", padding: 0 }}><X size={16} /></button>
         </div>
 
         {/* filtros + buscador */}
-        <div style={{ padding: "0 20px", flexShrink: 0 }}>
+        <div style={{ padding: "0 20px" }}>
           <div style={{ display: "flex", gap: "4px", marginBottom: "12px", flexWrap: "wrap" }}>
             {[{ v: "todos", l: "Todos" }, { v: "proximos", l: "Próximos" }, { v: "finalizados", l: "Finalizados" }].map(({ v, l }) => (
               <button key={v} onClick={() => setFiltro(v)}
@@ -826,8 +824,8 @@ function ExportEventosModal({ eventos, onClose }) {
           </div>
         </div>
 
-        {/* lista — ocupa el espacio restante y scrollea */}
-        <div style={{ flex: 1, minHeight: 0, overflowY: "auto", padding: "0 20px 4px" }}>
+        {/* lista con scroll interno, altura fija máxima */}
+        <div style={{ overflowY: "auto", maxHeight: "280px", padding: "0 20px 8px" }}>
           <div style={{ display: "grid", gap: "4px" }}>
             {filtrados.map((ev) => (
               <label key={ev.id} style={{ display: "flex", alignItems: "center", gap: "10px", padding: "8px 12px", borderRadius: "8px", background: C.panel2, border: `1px solid ${seleccionados.has(ev.id) ? C.gold + "40" : C.border}`, cursor: "pointer" }}>
@@ -844,7 +842,7 @@ function ExportEventosModal({ eventos, onClose }) {
         </div>
 
         {/* botones */}
-        <div style={{ display: "flex", gap: "8px", padding: "16px 20px", borderTop: `1px solid ${C.border}`, flexShrink: 0 }}>
+        <div style={{ display: "flex", gap: "8px", padding: "16px 20px", borderTop: `1px solid ${C.border}` }}>
           <button onClick={onClose} style={{ flex: 1, fontSize: "0.875rem", padding: "8px 12px", borderRadius: "6px", background: C.panel2, border: `1px solid ${C.border}`, color: C.dim }}>
             Cancelar
           </button>
