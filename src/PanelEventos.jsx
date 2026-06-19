@@ -5,7 +5,7 @@ import {
   Trash2, Pencil, AlertTriangle, Clock, DollarSign, ChevronLeft,
   Download, Upload, WifiOff, RefreshCw, Paperclip, Receipt, Eye, EyeOff,
   LogOut, KeyRound, UserCog, ShieldCheck, Lock,
-  BarChart2, ChevronRight, MessageSquare, Send,
+  BarChart2, ChevronRight, MessageSquare, Send, Printer, Copy,
 } from "lucide-react";
 import { listEventos, upsertEvento, deleteEvento, subscribeEventos } from "./lib/eventosApi";
 import { listPersonas, upsertPersona, deletePersona, subscribePersonas } from "./lib/personasApi";
@@ -45,6 +45,25 @@ const MESES_ES = ["Enero","Febrero","Marzo","Abril","Mayo","Junio",
                   "Julio","Agosto","Septiembre","Octubre","Noviembre","Diciembre"];
 const EST_COLORS = { "1": "#D4AF37", "2": "#9b8cff", "3": "#4FD18B" };
 const PARTES_PROD = ["Armado", "Armado + Prelight", "Prelighting", "Rodaje", "Desarme"];
+const PARTES_COLORS = {
+  "Armado": "#4FD18B",
+  "Armado + Prelight": "#F0B429",
+  "Prelighting": "#9b8cff",
+  "Rodaje": "#F2557A",
+  "Desarme": "#64B5F6",
+};
+const getColorPartes = (partes) => {
+  if (!partes || partes.length === 0) return "#D4AF37";
+  const prio = ["Rodaje", "Prelighting", "Armado + Prelight", "Armado", "Desarme"];
+  for (const p of prio) { if (partes.includes(p)) return PARTES_COLORS[p]; }
+  return "#D4AF37";
+};
+const getFechasEvento = (ev) => {
+  const fechasPartes = new Set((ev.partes || []).flatMap((p) => p.fechas || []));
+  if (fechasPartes.size > 0) return fechasPartes;
+  if (ev.fecha) return new Set([ev.fecha]);
+  return new Set();
+};
 
 const C = {
   bg: "#000000",
@@ -224,6 +243,7 @@ export default function PanelEventos() {
   const [guardando, setGuardando] = useState(false);
   const [vista, setVista] = useState("home"); // home | lista | form | detalle | dashboard | personal | usuarios
   const [editId, setEditId] = useState(null);
+  const [duplicandoBase, setDuplicandoBase] = useState(null);
   const [verId, setVerId] = useState(null);
   const [busqueda, setBusqueda] = useState("");
   const [filtroCat, setFiltroCat] = useState("");
@@ -293,6 +313,7 @@ export default function PanelEventos() {
       await recargar();
       setVista("lista");
       setEditId(null);
+      setDuplicandoBase(null);
     } catch (e) {
       console.error(e);
       alert("No se pudo guardar el evento: " + e.message);
@@ -311,6 +332,25 @@ export default function PanelEventos() {
       console.error(e);
       alert("No se pudo actualizar el evento: " + e.message);
     }
+  };
+
+  const duplicarEvento = (ev) => {
+    const copia = {
+      ...nuevoEvento(),
+      ...ev,
+      id: crypto.randomUUID(),
+      nombre: "",
+      fecha: "",
+      facturas: [],
+      comprobantes: [],
+      mensajes: [],
+      facturado: false,
+      comprobantePago: false,
+      facturadoTotal: false,
+    };
+    setDuplicandoBase(copia);
+    setEditId(null);
+    setVista("form");
   };
 
   const borrarEvento = async (id) => {
@@ -582,8 +622,8 @@ export default function PanelEventos() {
           <div style={{ color: C.dim }} className="font-mono text-sm py-20 text-center">cargando…</div>
         ) : vista === "form" ? (
           <FormEvento
-            base={eventoEdit || nuevoEvento()}
-            onCancel={() => { setVista(eventoEdit ? "lista" : "lista"); setEditId(null); }}
+            base={eventoEdit || duplicandoBase || nuevoEvento()}
+            onCancel={() => { setVista("lista"); setEditId(null); setDuplicandoBase(null); }}
             onSave={guardarEvento}
             guardando={guardando}
             personas={personas}
@@ -600,6 +640,7 @@ export default function PanelEventos() {
             onEdit={() => { setEditId(eventoVer.id); setVista("form"); }}
             onDelete={() => borrarEvento(eventoVer.id)}
             onUpdate={(patch) => actualizarEvento(eventoVer.id, patch)}
+            onDuplicate={() => duplicarEvento(eventoVer)}
             perms={p}
             usuario={usuario}
             personas={personas}
@@ -629,9 +670,10 @@ export default function PanelEventos() {
             onSaveCategoria={guardarCategoriaPersonal}
             onDeleteCategoria={borrarCategoriaPersonal}
             perms={p}
+            eventos={eventos}
           />
         ) : vista === "home" ? (
-          <Home eventos={eventos} personas={personas} />
+          <Home eventos={eventos} personas={personas} onVer={(id) => { setVerId(id); setVista("detalle"); }} />
         ) : (
           <Lista
             eventos={filtrados}
@@ -914,6 +956,310 @@ function TablaPend({ titulo, icon, color, rows, onVer, vacio }) {
   );
 }
 
+/* ====================== CALENDARIO MES ====================== */
+function CalendarioMes({ anio, mes, eventos, onVer }) {
+  const hoy = new Date().toISOString().slice(0, 10);
+  const prefix = `${anio}-${String(mes + 1).padStart(2, "0")}`;
+  const firstDow = new Date(anio, mes, 1).getDay();
+  const daysInMonth = new Date(anio, mes + 1, 0).getDate();
+  const startOffset = (firstDow + 6) % 7;
+  const cells = [];
+  for (let i = 0; i < startOffset; i++) cells.push(null);
+  for (let d = 1; d <= daysInMonth; d++) cells.push(d);
+  while (cells.length % 7 !== 0) cells.push(null);
+
+  const getEventosDelDia = (day) => {
+    if (!day) return [];
+    const dateStr = `${prefix}-${String(day).padStart(2, "0")}`;
+    return eventos
+      .filter((ev) => getFechasEvento(ev).has(dateStr))
+      .map((ev) => ({
+        ...ev,
+        partesDelDia: (ev.partes || []).filter((p) => (p.fechas || []).includes(dateStr)).map((p) => p.tipo),
+      }));
+  };
+
+  const DIAS = ["Lu", "Ma", "Mi", "Ju", "Vi", "Sá", "Do"];
+
+  return (
+    <div className="rounded-xl p-4 mb-6" style={{ background: C.panel, border: `1px solid ${C.border}` }}>
+      <div className="flex items-center gap-2 mb-4">
+        <Calendar size={15} color={C.amber} />
+        <h2 className="text-sm font-semibold">Calendario — {MESES_ES[mes]} {anio}</h2>
+        <div className="ml-auto flex flex-wrap gap-2">
+          {PARTES_PROD.map((p) => (
+            <span key={p} className="flex items-center gap-1 text-[10px]" style={{ color: C.dim }}>
+              <span className="inline-block w-2 h-2 rounded-full" style={{ background: PARTES_COLORS[p] }} />
+              {p}
+            </span>
+          ))}
+        </div>
+      </div>
+      <div className="grid grid-cols-7 gap-0.5 mb-0.5">
+        {DIAS.map((d) => (
+          <div key={d} className="text-center text-[10px] font-semibold uppercase tracking-wide py-1.5" style={{ color: C.dim }}>
+            {d}
+          </div>
+        ))}
+      </div>
+      <div className="grid grid-cols-7 gap-0.5">
+        {cells.map((day, idx) => {
+          if (!day) return <div key={`e-${idx}`} className="rounded-lg" style={{ minHeight: 56 }} />;
+          const dateStr = `${prefix}-${String(day).padStart(2, "0")}`;
+          const isHoy = dateStr === hoy;
+          const evsDia = getEventosDelDia(day);
+          const tieneCosas = evsDia.length > 0;
+          return (
+            <div key={day} className="rounded-lg p-1 flex flex-col" style={{
+              minHeight: 56,
+              background: isHoy ? `${C.gold}18` : tieneCosas ? `${C.panel2}` : "transparent",
+              border: `1px solid ${isHoy ? C.gold + "60" : tieneCosas ? C.border : "transparent"}`,
+            }}>
+              <span className="text-[10px] font-mono text-right leading-none mb-0.5"
+                style={{ color: isHoy ? C.gold : tieneCosas ? C.text : C.dim }}>
+                {day}
+              </span>
+              <div className="flex flex-col gap-0.5 mt-0.5">
+                {evsDia.slice(0, 3).map((ev) => (
+                  <button key={ev.id}
+                    onClick={() => onVer(ev.id)}
+                    title={`${ev.nombre || "Sin nombre"}${ev.partesDelDia.length ? ` — ${ev.partesDelDia.join(", ")}` : ""}`}
+                    className="text-left rounded px-1 py-0.5 text-[8px] leading-tight truncate transition-opacity hover:opacity-75"
+                    style={{ background: getColorPartes(ev.partesDelDia), color: "#fff" }}>
+                    {ev.nombre || "Sin nombre"}
+                  </button>
+                ))}
+                {evsDia.length > 3 && (
+                  <span className="text-[8px] text-center" style={{ color: C.dim }}>+{evsDia.length - 3} más</span>
+                )}
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+/* ====================== BARCHART 12 MESES ====================== */
+function BarChart12Meses({ eventos, mesActual, anioActual }) {
+  const meses = useMemo(() => {
+    const arr = [];
+    for (let i = 11; i >= 0; i--) {
+      let m = mesActual - i, a = anioActual;
+      while (m < 0) { m += 12; a--; }
+      const pref = `${a}-${String(m + 1).padStart(2, "0")}`;
+      const evs = eventos.filter((e) => e.fecha?.startsWith(pref));
+      const total = evs.reduce((s, e) => s + totalFacturable(e), 0);
+      arr.push({ mes: m, anio: a, total, label: MESES_ES[m].slice(0, 3) });
+    }
+    return arr;
+  }, [eventos, mesActual, anioActual]);
+
+  const maxVal = Math.max(...meses.map((m) => m.total), 1);
+
+  return (
+    <div>
+      <p className="text-[11px] font-semibold uppercase tracking-wide mb-2" style={{ color: C.dim }}>Últimos 12 meses</p>
+      <div className="flex items-end gap-1" style={{ height: 72 }}>
+        {meses.map((m, i) => {
+          const pct = m.total / maxVal;
+          const isActual = m.mes === mesActual && m.anio === anioActual;
+          return (
+            <div key={i} className="flex-1 flex flex-col items-center gap-0.5">
+              <div className="w-full flex items-end" style={{ height: 56 }}>
+                <div className="w-full rounded-t transition-all duration-700"
+                  title={`${m.label} ${m.anio}: ${fmtMoneda(m.total, "ARS")}`}
+                  style={{
+                    height: `${Math.max(pct * 100, m.total > 0 ? 5 : 0)}%`,
+                    background: isActual ? C.gold : `${C.gold}35`,
+                    minHeight: m.total > 0 ? 2 : 0,
+                  }} />
+              </div>
+              <span className="text-[8px] font-mono w-full text-center truncate"
+                style={{ color: isActual ? C.gold : C.dim }}>
+                {m.label}
+              </span>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+/* ====================== PDF MODAL ====================== */
+function generarHtmlPdf(ev, sel) {
+  const fmtD = (f) => { if (!f) return "—"; const [y,m,d] = f.split("-"); return `${d}/${m}/${y}`; };
+  const fmtM = (n, mon) => new Intl.NumberFormat("es-AR", { style: "currency", currency: mon === "USD" ? "USD" : "ARS", maximumFractionDigits: 0 }).format(Number(n) || 0);
+
+  const secciones = [];
+
+  if (sel.produccion) {
+    let rows = "";
+    const campos = [
+      ["Fecha", fmtD(ev.fecha)],
+      ["Categoría", ev.categoria || "—"],
+      ["Estudio", ev.estudio ? `Estudio ${ev.estudio}` : "—"],
+      ["Tipo producción", ev.tipoProd || "—"],
+      ["Trackeo", ev.trackeo || "—"],
+      ["Equipamiento", ev.equipamiento ? `Sí — ${ev.equipamientoDetalle || ""}` : "No"],
+    ];
+    campos.forEach(([l, v]) => { rows += `<tr><td class="lbl">${l}</td><td>${v}</td></tr>`; });
+    secciones.push(`<div class="sec"><div class="sec-hdr">Producción</div><div class="sec-body"><table>${rows}</table></div></div>`);
+  }
+
+  if (sel.facturacion) {
+    const dist = ev.distribucion === "MIXTO" ? "M1 + M2" : ev.distribucion === "M2" ? "MG M2" : "MG M1";
+    let rows = "";
+    const m1 = Number(ev.montoM1) || 0;
+    const m2 = Number(ev.montoM2) || 0;
+    const campos = [
+      ["Empresa", dist],
+      ["Razón social", ev.razonSocial || "—"],
+      ["Moneda", ev.moneda || "ARS"],
+      ...(m1 ? [["Monto M1 (c/IVA)", fmtM(m1 * 1.21, ev.moneda)]] : []),
+      ...(m2 ? [["Monto M2 (efectivo)", fmtM(m2, ev.moneda)]] : []),
+      ["Total facturable", fmtM((m1 * 1.21) + m2, ev.moneda)],
+      ["Medio de pago", ev.medioPago || "—"],
+      ["Forma de pago", ev.formaPago || "—"],
+      ["Cant. facturas", ev.cantFacturas || "—"],
+      ["Facturado", ev.facturado ? "Sí" : "No"],
+      ["Comprobante de pago", ev.comprobantePago ? "Adjunto" : "Pendiente"],
+    ];
+    campos.forEach(([l, v]) => { rows += `<tr><td class="lbl">${l}</td><td>${v}</td></tr>`; });
+    secciones.push(`<div class="sec"><div class="sec-hdr">Facturación</div><div class="sec-body"><table>${rows}</table></div></div>`);
+  }
+
+  if (sel.equipo && ev.integrantes?.length) {
+    let rows = `<tr><th>Nombre</th><th>Rol</th><th>Fases</th></tr>`;
+    ev.integrantes.forEach((i) => {
+      const fases = i.partes?.length ? i.partes.join(", ") : "Todas";
+      rows += `<tr><td>${i.nombre || "—"}</td><td>${i.rol || "—"}</td><td style="font-size:11px;color:#666">${fases}</td></tr>`;
+    });
+    secciones.push(`<div class="sec"><div class="sec-hdr">Equipo</div><div class="sec-body"><table class="data">${rows}</table></div></div>`);
+  }
+
+  if (sel.partes && ev.partes?.length) {
+    const COLS = { "Armado": "#4FD18B", "Armado + Prelight": "#e6a800", "Prelighting": "#9b8cff", "Rodaje": "#e8335a", "Desarme": "#64B5F6" };
+    let inner = "";
+    ev.partes.filter(p => p.fechas?.length).forEach((p) => {
+      const fechasStr = (p.fechas || []).map(fmtD).join(" · ");
+      const color = COLS[p.tipo] || "#888";
+      inner += `<div class="fase-row"><span class="fase-dot" style="background:${color}"></span><strong>${p.tipo}</strong><span class="fase-fechas">${fechasStr}</span></div>`;
+    });
+    if (!inner) inner = `<p style="color:#888;font-size:12px">Sin fechas cargadas.</p>`;
+    secciones.push(`<div class="sec"><div class="sec-hdr">Partes del proyecto</div><div class="sec-body">${inner}</div></div>`);
+  }
+
+  if (sel.direccion && ev.director) {
+    const d = ev.director;
+    let rows = "";
+    [["Nombre", d.nombre || "—"], ["Teléfono", d.telefono || "—"], ["Email", d.email || "—"]].forEach(([l,v]) => {
+      rows += `<tr><td class="lbl">${l}</td><td>${v}</td></tr>`;
+    });
+    secciones.push(`<div class="sec"><div class="sec-hdr">Dirección</div><div class="sec-body"><table>${rows}</table></div></div>`);
+  }
+
+  if (sel.externo && ev.equipoExterno?.length) {
+    let rows = `<tr><th>Nombre</th><th>Rol</th></tr>`;
+    ev.equipoExterno.forEach((x) => { rows += `<tr><td>${x.nombre || "—"}</td><td>${x.rol || "—"}</td></tr>`; });
+    secciones.push(`<div class="sec"><div class="sec-hdr">Equipo técnico externo</div><div class="sec-body"><table class="data">${rows}</table></div></div>`);
+  }
+
+  if (sel.observaciones && ev.observaciones) {
+    secciones.push(`<div class="sec"><div class="sec-hdr">Observaciones</div><div class="sec-body"><p style="white-space:pre-wrap;line-height:1.6">${ev.observaciones}</p></div></div>`);
+  }
+
+  const fecha = new Date().toLocaleDateString("es-AR", { day: "2-digit", month: "2-digit", year: "numeric" });
+  return `<!DOCTYPE html><html lang="es"><head><meta charset="UTF-8"><title>${ev.nombre || "Evento"}</title><style>
+    *{margin:0;padding:0;box-sizing:border-box}
+    body{font-family:Arial,Helvetica,sans-serif;background:#fff;color:#1a1a1a;padding:24px 28px;max-width:800px;margin:0 auto;font-size:13px}
+    h1{font-size:22px;font-weight:700;margin-bottom:2px;color:#1a1400}
+    .meta{color:#888;font-size:11px;margin-bottom:20px;border-bottom:2px solid #D4AF37;padding-bottom:10px}
+    .meta strong{color:#D4AF37}
+    .sec{margin-bottom:14px;border:1px solid #e0d9cc;border-radius:6px;overflow:hidden;page-break-inside:avoid}
+    .sec-hdr{background:#f8f5ef;padding:7px 12px;font-weight:700;font-size:11px;text-transform:uppercase;letter-spacing:.06em;color:#6b5f3e;border-bottom:1px solid #e0d9cc}
+    .sec-body{padding:12px}
+    table{width:100%;border-collapse:collapse}
+    th{text-align:left;font-size:11px;color:#888;padding:4px 8px;border-bottom:1px solid #eee}
+    td{padding:5px 8px;font-size:12px;vertical-align:top}
+    table.data tr:nth-child(even) td{background:#faf8f4}
+    .lbl{color:#999;width:140px;font-size:11px}
+    .fase-row{display:flex;align-items:baseline;gap:8px;margin-bottom:7px;flex-wrap:wrap}
+    .fase-dot{display:inline-block;width:9px;height:9px;border-radius:50%;flex-shrink:0;margin-top:3px}
+    .fase-fechas{color:#666;font-size:11px}
+    @media print{body{padding:0}@page{margin:1.5cm}}
+  </style></head><body>
+    <h1>${ev.nombre || "Sin nombre"}</h1>
+    <div class="meta">Fecha: <strong>${new Date(ev.fecha + "T12:00:00").toLocaleDateString("es-AR", {day:"2-digit",month:"long",year:"numeric"}) || "—"}</strong> &nbsp;·&nbsp; ${ev.categoria || ""} ${ev.estudio ? "· Estudio " + ev.estudio : ""} &nbsp;·&nbsp; Generado el ${fecha}</div>
+    ${secciones.join("")}
+  </body></html>`;
+}
+
+function PdfModal({ ev, onClose }) {
+  const SECCIONES = [
+    { id: "produccion", label: "Producción" },
+    { id: "facturacion", label: "Facturación" },
+    { id: "equipo", label: "Equipo" },
+    { id: "partes", label: "Partes del proyecto" },
+    { id: "direccion", label: "Dirección" },
+    { id: "externo", label: "Equipo técnico externo" },
+    { id: "observaciones", label: "Observaciones" },
+  ];
+  const [sel, setSel] = useState(() => SECCIONES.reduce((a, s) => ({ ...a, [s.id]: true }), {}));
+  const toggle = (id) => setSel((p) => ({ ...p, [id]: !p[id] }));
+
+  const generar = () => {
+    const html = generarHtmlPdf(ev, sel);
+    const win = window.open("", "_blank");
+    if (!win) { alert("Habilitá los popups para este sitio."); return; }
+    win.document.write(html);
+    win.document.close();
+    setTimeout(() => win.print(), 400);
+    onClose();
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4"
+      style={{ background: "rgba(0,0,0,0.85)" }}
+      onClick={onClose}>
+      <div className="rounded-xl p-5 w-full max-w-sm"
+        style={{ background: C.panel, border: `1px solid ${C.border}` }}
+        onClick={(e) => e.stopPropagation()}>
+        <div className="flex items-center gap-2 mb-3">
+          <Printer size={16} color={C.gold} />
+          <h2 className="font-semibold text-sm flex-1">Exportar PDF — {ev.nombre || "Sin nombre"}</h2>
+          <button onClick={onClose} style={{ color: C.dim }}><X size={16} /></button>
+        </div>
+        <p className="text-xs mb-3" style={{ color: C.dim }}>Elegí qué secciones incluir:</p>
+        <div className="grid gap-1.5 mb-4">
+          {SECCIONES.map((s) => (
+            <label key={s.id}
+              className="flex items-center gap-2.5 cursor-pointer px-3 py-2 rounded-lg"
+              style={{ background: C.panel2, border: `1px solid ${sel[s.id] ? C.gold + "50" : C.border}` }}>
+              <input type="checkbox" checked={sel[s.id]} onChange={() => toggle(s.id)}
+                className="w-3.5 h-3.5 rounded" style={{ accentColor: C.gold }} />
+              <span className="text-sm">{s.label}</span>
+            </label>
+          ))}
+        </div>
+        <div className="flex gap-2">
+          <button onClick={onClose} className="flex-1 text-sm px-3 py-2 rounded-md"
+            style={{ background: C.panel2, border: `1px solid ${C.border}`, color: C.dim }}>
+            Cancelar
+          </button>
+          <button onClick={generar}
+            className="flex-1 text-sm font-semibold px-3 py-2 rounded-md flex items-center justify-center gap-1.5"
+            style={{ background: C.gold, color: C.onGold }}>
+            <Printer size={13} /> Imprimir / PDF
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 /* ====================== HOME / RESUMEN ====================== */
 function AnimNum({ value }) {
   const [display, setDisplay] = useState(value);
@@ -1091,7 +1437,7 @@ function CenterMonthChart({ evs }) {
   );
 }
 
-function Home({ eventos }) {
+function Home({ eventos, onVer }) {
   const hoy = new Date();
   const [anio, setAnio] = useState(hoy.getFullYear());
   const [mes, setMes] = useState(hoy.getMonth());
@@ -1157,6 +1503,16 @@ function Home({ eventos }) {
     return Object.entries(map).sort((a, b) => b[1] - a[1]);
   }, [eventosMes]);
 
+  const finStats = useMemo(() => {
+    const totalMes = eventosMes.reduce((s, e) => s + totalFacturable(e), 0);
+    const facturadoMes = eventosMes.filter((e) => e.facturado).reduce((s, e) => s + totalFacturable(e), 0);
+    const pendienteMes = eventosMes.filter((e) => !e.facturado).reduce((s, e) => s + totalFacturable(e), 0);
+    const m1Mes = eventosMes.reduce((s, e) => s + montoM1(e) * 1.21, 0);
+    const m2Mes = eventosMes.reduce((s, e) => s + montoM2(e), 0);
+    const tieneUSD = eventosMes.some((e) => e.moneda === "USD");
+    return { totalMes, facturadoMes, pendienteMes, m1Mes, m2Mes, tieneUSD };
+  }, [eventosMes]);
+
   const teamStats = useMemo(() => {
     const evs = scope === "mes" ? eventosMes : eventos;
     const map = new Map();
@@ -1218,6 +1574,9 @@ function Home({ eventos }) {
         </div>
       </div>
 
+      {/* Calendario */}
+      <CalendarioMes anio={anio} mes={mes} eventos={eventos} onVer={onVer} />
+
       {/* Stat cards */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-6">
         <StatCard
@@ -1237,6 +1596,33 @@ function Home({ eventos }) {
           />
         ))}
       </div>
+
+      {/* Estadísticas financieras */}
+      {eventosMes.length > 0 && (
+        <div className="rounded-xl p-4 mb-6" style={{ background: C.panel, border: `1px solid ${C.border}` }}>
+          <div className="flex items-center gap-2 mb-4">
+            <DollarSign size={15} color={C.green} />
+            <h2 className="text-sm font-semibold">Facturación — {MESES_ES[mes]} {anio}</h2>
+          </div>
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-5">
+            {[
+              { label: "Total del mes", val: finStats.totalMes, color: C.gold },
+              { label: "Facturado", val: finStats.facturadoMes, color: C.green },
+              { label: "Sin facturar", val: finStats.pendienteMes, color: C.amber },
+              { label: "MG M1 c/IVA", val: finStats.m1Mes, color: C.dim },
+            ].map(({ label, val, color }) => (
+              <div key={label} className="rounded-xl p-3 flex flex-col gap-1"
+                style={{ background: C.panel2, border: `1px solid ${C.border}` }}>
+                <span className="text-[10px] font-semibold uppercase tracking-wide" style={{ color }}>{label}</span>
+                <span className="font-mono font-bold text-sm" style={{ color }}>
+                  {fmtMoneda(val, "ARS")}
+                </span>
+              </div>
+            ))}
+          </div>
+          <BarChart12Meses eventos={eventos} mesActual={mes} anioActual={anio} />
+        </div>
+      )}
 
       {/* Carousel chart */}
       <div className="rounded-xl p-4 mb-6" style={{ background: C.panel, border: `1px solid ${C.border}` }}>
@@ -1426,12 +1812,13 @@ function Home({ eventos }) {
 }
 
 /* ====================== PERSONAL ====================== */
-function Personal({ personas, categorias, onSave, onDelete, onSaveCategoria, onDeleteCategoria, perms = {} }) {
+function Personal({ personas, categorias, onSave, onDelete, onSaveCategoria, onDeleteCategoria, perms = {}, eventos = [] }) {
   const vacio = { nombre: "", rolHabitual: "", telefono: "", email: "", categoriaId: "", activo: true };
   const [editando, setEditando] = useState(null); // null | "new" | persona id
   const [f, setF] = useState(vacio);
   const [filtroCatId, setFiltroCatId] = useState(""); // "" todas, "__sin" sin categoría, o id
   const [catAbierto, setCatAbierto] = useState(false);
+  const [tabPersonal, setTabPersonal] = useState("lista"); // "lista" | "disponibilidad"
 
   const empezarNuevo = () => { setF(vacio); setEditando("new"); };
   const empezarEditar = (p) => { setF({ ...vacio, ...p }); setEditando(p.id); };
@@ -1464,9 +1851,19 @@ function Personal({ personas, categorias, onSave, onDelete, onSaveCategoria, onD
 
   return (
     <div className="fade max-w-3xl mx-auto">
-      <div className="flex items-center gap-2 mb-4">
+      <div className="flex items-center gap-2 mb-4 flex-wrap">
         <h1 className="text-lg font-semibold flex-1">Personal</h1>
-        {editando === null && (
+        {/* Tabs */}
+        <div className="flex items-center gap-0.5 p-0.5 rounded-lg" style={{ background: C.panel2, border: `1px solid ${C.border}` }}>
+          {[{ v: "lista", l: "Listado" }, { v: "disponibilidad", l: "Disponibilidad" }].map(({ v, l }) => (
+            <button key={v} onClick={() => { setTabPersonal(v); setEditando(null); }}
+              className="text-xs font-medium px-3 py-1.5 rounded-md transition-all"
+              style={{ background: tabPersonal === v ? C.panel : "transparent", color: tabPersonal === v ? C.text : C.dim, border: tabPersonal === v ? `1px solid ${C.border}` : "1px solid transparent" }}>
+              {l}
+            </button>
+          ))}
+        </div>
+        {tabPersonal === "lista" && editando === null && (
           <>
             {perms.categoriaAgregar && (
               <button onClick={() => setCatAbierto(true)} className="text-sm font-medium px-3 py-1.5 rounded-md flex items-center gap-1.5"
@@ -1484,6 +1881,11 @@ function Personal({ personas, categorias, onSave, onDelete, onSaveCategoria, onD
         )}
       </div>
 
+      {tabPersonal === "disponibilidad" && (
+        <DisponibilidadPersonal personas={personas} eventos={eventos} />
+      )}
+
+      {tabPersonal === "lista" && (<>
       <p className="text-xs mb-4" style={{ color: C.dim }}>
         Cargá acá a todo el personal, agrupado por categoría
         (Cámara, Estudio, Deposito, etc.). Después, al armar un evento,
@@ -1625,6 +2027,145 @@ function Personal({ personas, categorias, onSave, onDelete, onSaveCategoria, onD
           ))}
         </div>
       )}
+      </>)}
+    </div>
+  );
+}
+
+/* ====================== DISPONIBILIDAD DEL PERSONAL ====================== */
+function DisponibilidadPersonal({ personas, eventos }) {
+  const hoy = new Date().toISOString().slice(0, 10);
+  const [fecha, setFecha] = useState(hoy);
+  const [filtro, setFiltro] = useState("todos"); // "todos" | "libres" | "ocupados"
+
+  const estadoPorPersona = useMemo(() => {
+    if (!fecha) return [];
+    return personas.map((p) => {
+      const eventosOcupado = eventos.filter((ev) => {
+        const enEvento = (ev.integrantes || []).find((i) => i.personaId === p.id);
+        if (!enEvento) return false;
+        const fechasTrabajo = getFechasTrabajo(ev.partes, enEvento.partes || []);
+        if (fechasTrabajo.size > 0) return fechasTrabajo.has(fecha);
+        return ev.fecha === fecha;
+      });
+      return { persona: p, eventosOcupado };
+    });
+  }, [personas, eventos, fecha]);
+
+  const filtrados = useMemo(() => {
+    if (filtro === "libres") return estadoPorPersona.filter((e) => e.eventosOcupado.length === 0);
+    if (filtro === "ocupados") return estadoPorPersona.filter((e) => e.eventosOcupado.length > 0);
+    return estadoPorPersona;
+  }, [estadoPorPersona, filtro]);
+
+  const libres = estadoPorPersona.filter((e) => e.eventosOcupado.length === 0).length;
+  const ocupados = estadoPorPersona.filter((e) => e.eventosOcupado.length > 0).length;
+
+  return (
+    <div>
+      <div className="rounded-xl p-4 mb-4" style={{ background: C.panel, border: `1px solid ${C.border}` }}>
+        <div className="flex flex-wrap items-center gap-3">
+          <div className="flex flex-col gap-1">
+            <label className="text-xs font-semibold" style={{ color: C.dim }}>Consultar disponibilidad para el día:</label>
+            <input type="date" value={fecha} onChange={(e) => setFecha(e.target.value)}
+              className="text-sm px-3 py-2 rounded-md"
+              style={{ background: C.panel2, border: `1px solid ${C.border}`, color: C.text, colorScheme: "dark" }} />
+          </div>
+          {fecha && (
+            <div className="flex gap-3 mt-4">
+              <div className="text-center">
+                <div className="text-2xl font-bold font-mono" style={{ color: C.green }}>{libres}</div>
+                <div className="text-[11px]" style={{ color: C.dim }}>libres</div>
+              </div>
+              <div className="text-center">
+                <div className="text-2xl font-bold font-mono" style={{ color: C.rose }}>{ocupados}</div>
+                <div className="text-[11px]" style={{ color: C.dim }}>ocupados</div>
+              </div>
+              <div className="text-center">
+                <div className="text-2xl font-bold font-mono" style={{ color: C.gold }}>{personas.length}</div>
+                <div className="text-[11px]" style={{ color: C.dim }}>total</div>
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
+
+      {fecha && personas.length > 0 && (
+        <>
+          <div className="flex gap-1.5 mb-3 flex-wrap">
+            {[
+              { v: "todos", l: "Todos" },
+              { v: "libres", l: `Libres (${libres})` },
+              { v: "ocupados", l: `Ocupados (${ocupados})` },
+            ].map(({ v, l }) => (
+              <button key={v} onClick={() => setFiltro(v)}
+                className="text-xs px-3 py-1.5 rounded-full"
+                style={{
+                  background: filtro === v ? (v === "libres" ? C.green : v === "ocupados" ? C.rose : C.gold) : C.panel2,
+                  color: filtro === v ? (v === "todos" ? C.onGold : "#fff") : C.dim,
+                  border: `1px solid ${filtro === v ? "transparent" : C.border}`,
+                }}>
+                {l}
+              </button>
+            ))}
+          </div>
+
+          <div className="grid gap-2">
+            {filtrados.map(({ persona, eventosOcupado }) => {
+              const libre = eventosOcupado.length === 0;
+              return (
+                <div key={persona.id} className="rounded-xl px-4 py-3 flex flex-col sm:flex-row sm:items-center gap-2"
+                  style={{ background: C.panel, border: `1px solid ${libre ? C.green + "30" : C.rose + "30"}` }}>
+                  <div className="flex items-center gap-2 flex-1 min-w-0">
+                    <span className="w-2 h-2 rounded-full shrink-0" style={{ background: libre ? C.green : C.rose }} />
+                    <div className="min-w-0">
+                      <div className="font-medium text-sm truncate">{persona.nombre}</div>
+                      {persona.rolHabitual && (
+                        <div className="text-[11px]" style={{ color: C.dim }}>{persona.rolHabitual}</div>
+                      )}
+                    </div>
+                  </div>
+                  <div className="text-sm">
+                    {libre ? (
+                      <span className="text-xs font-semibold px-2 py-0.5 rounded-full" style={{ background: `${C.green}20`, color: C.green }}>
+                        Disponible
+                      </span>
+                    ) : (
+                      <div className="flex flex-wrap gap-1.5">
+                        {eventosOcupado.map((ev) => {
+                          const integrante = (ev.integrantes || []).find((i) => i.personaId === persona.id);
+                          const partes = integrante?.partes?.length ? integrante.partes.join(", ") : "Todas";
+                          return (
+                            <span key={ev.id}
+                              className="text-xs px-2 py-0.5 rounded-full"
+                              style={{ background: `${C.rose}20`, color: C.rose, border: `1px solid ${C.rose}30` }}
+                              title={`Fases: ${partes}`}>
+                              {ev.nombre || "Sin nombre"} — {partes}
+                            </span>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+          {filtrados.length === 0 && (
+            <div className="rounded-xl py-10 text-center" style={{ background: C.panel, border: `1px dashed ${C.border}` }}>
+              <Users size={24} color={C.dim} className="mx-auto mb-2 opacity-40" />
+              <p className="text-sm" style={{ color: C.dim }}>Sin resultados para este filtro.</p>
+            </div>
+          )}
+        </>
+      )}
+
+      {!fecha && (
+        <div className="rounded-xl py-12 text-center" style={{ background: C.panel, border: `1px dashed ${C.border}` }}>
+          <Calendar size={28} color={C.dim} className="mx-auto mb-3 opacity-40" />
+          <p className="text-sm" style={{ color: C.dim }}>Elegí una fecha para ver quién está disponible.</p>
+        </div>
+      )}
     </div>
   );
 }
@@ -1743,16 +2284,30 @@ function CategoriasPersonal({ categorias, personas, onSave, onDelete, abierto, s
 }
 
 /* ====================== DETALLE ====================== */
-function Detalle({ ev, onBack, onEdit, onDelete, onUpdate, perms = {}, usuario = {}, personas = [], eventos = [] }) {
+function Detalle({ ev, onBack, onEdit, onDelete, onUpdate, onDuplicate, perms = {}, usuario = {}, personas = [], eventos = [] }) {
+  const [pdfModal, setPdfModal] = useState(false);
   useEffect(() => {
     if (usuario?.id && ev?.id) marcarLeido(ev.id, usuario.id);
   }, [ev?.id, ev?.mensajes?.length, usuario?.id]);
 
   return (
     <div className="fade">
-      <div className="flex items-center gap-2 mb-4">
+      {pdfModal && <PdfModal ev={ev} onClose={() => setPdfModal(false)} />}
+      <div className="flex items-center gap-2 mb-4 flex-wrap">
         <IconBtn onClick={onBack} title="Volver"><ChevronLeft size={18} /></IconBtn>
         <h1 className="text-lg font-semibold flex-1 truncate">{ev.nombre || "Sin nombre"}</h1>
+        <button onClick={() => setPdfModal(true)}
+          className="text-sm flex items-center gap-1.5 px-3 py-1.5 rounded-md"
+          style={{ background: C.panel2, border: `1px solid ${C.border}`, color: C.dim }}>
+          <Printer size={14} /> PDF
+        </button>
+        {perms.eventoEditar && (
+          <button onClick={onDuplicate} title="Duplicar evento"
+            className="text-sm flex items-center gap-1.5 px-3 py-1.5 rounded-md"
+            style={{ background: C.panel2, border: `1px solid ${C.border}`, color: C.dim }}>
+            <Copy size={14} /> Duplicar
+          </button>
+        )}
         {perms.eventoEditar && (
           <button onClick={onEdit} className="text-sm flex items-center gap-1.5 px-3 py-1.5 rounded-md" style={{ background: C.panel2, border: `1px solid ${C.border}` }}><Pencil size={14} /> Editar</button>
         )}
