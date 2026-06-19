@@ -1191,10 +1191,7 @@ function CalendarioMes({ anio, mes, eventos, onVer }) {
   for (let d = 1; d <= daysInMonth; d++) cells.push(d);
   while (cells.length % 7 !== 0) cells.push(null);
 
-  const estudios = useMemo(() => {
-    const s = new Set(eventos.map((e) => e.estudio).filter(Boolean));
-    return Array.from(s).sort();
-  }, [eventos]);
+  const estudios = ESTUDIOS;
 
   const eventosFiltrados = useMemo(() =>
     filtroEstudio ? eventos.filter((e) => e.estudio === filtroEstudio) : eventos,
