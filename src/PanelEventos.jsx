@@ -1181,6 +1181,7 @@ function TablaPend({ titulo, icon, color, rows, onVer, vacio }) {
 /* ====================== CALENDARIO MES ====================== */
 function CalendarioMes({ anio, mes, eventos, onVer }) {
   const hoy = new Date().toISOString().slice(0, 10);
+  const [filtroEstudio, setFiltroEstudio] = useState("");
   const prefix = `${anio}-${String(mes + 1).padStart(2, "0")}`;
   const firstDow = new Date(anio, mes, 1).getDay();
   const daysInMonth = new Date(anio, mes + 1, 0).getDate();
@@ -1190,10 +1191,19 @@ function CalendarioMes({ anio, mes, eventos, onVer }) {
   for (let d = 1; d <= daysInMonth; d++) cells.push(d);
   while (cells.length % 7 !== 0) cells.push(null);
 
+  const estudios = useMemo(() => {
+    const s = new Set(eventos.map((e) => e.estudio).filter(Boolean));
+    return Array.from(s).sort();
+  }, [eventos]);
+
+  const eventosFiltrados = useMemo(() =>
+    filtroEstudio ? eventos.filter((e) => e.estudio === filtroEstudio) : eventos,
+  [eventos, filtroEstudio]);
+
   const getEventosDelDia = (day) => {
     if (!day) return [];
     const dateStr = `${prefix}-${String(day).padStart(2, "0")}`;
-    return eventos
+    return eventosFiltrados
       .filter((ev) => getFechasEvento(ev).has(dateStr))
       .map((ev) => ({
         ...ev,
@@ -1205,9 +1215,27 @@ function CalendarioMes({ anio, mes, eventos, onVer }) {
 
   return (
     <div className="rounded-xl p-4 mb-6" style={{ background: C.panel, border: `1px solid ${C.border}` }}>
-      <div className="flex items-center gap-2 mb-4">
+      <div className="flex items-center gap-2 mb-3 flex-wrap">
         <Calendar size={15} color={C.amber} />
         <h2 className="text-sm font-semibold">Calendario — {MESES_ES[mes]} {anio}</h2>
+        {estudios.length > 0 && (
+          <div className="flex items-center gap-1 ml-2">
+            <button
+              onClick={() => setFiltroEstudio("")}
+              className="text-[10px] px-2 py-0.5 rounded-full"
+              style={{ background: !filtroEstudio ? C.gold : C.panel2, color: !filtroEstudio ? C.onGold : C.dim, border: `1px solid ${!filtroEstudio ? C.gold : C.border}` }}>
+              Todos
+            </button>
+            {estudios.map((est) => (
+              <button key={est}
+                onClick={() => setFiltroEstudio(filtroEstudio === est ? "" : est)}
+                className="text-[10px] px-2 py-0.5 rounded-full"
+                style={{ background: filtroEstudio === est ? C.gold : C.panel2, color: filtroEstudio === est ? C.onGold : C.dim, border: `1px solid ${filtroEstudio === est ? C.gold : C.border}` }}>
+                Est. {est}
+              </button>
+            ))}
+          </div>
+        )}
         <div className="ml-auto flex flex-wrap gap-2">
           {PARTES_PROD.map((p) => (
             <span key={p} className="flex items-center gap-1 text-[10px]" style={{ color: C.dim }}>
