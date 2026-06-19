@@ -798,7 +798,7 @@ function ExportEventosModal({ eventos, onClose }) {
         {/* cabecera */}
         <div style={{ display: "flex", alignItems: "center", gap: "8px", padding: "20px 20px 12px" }}>
           <Download size={16} color={C.gold} />
-          <span style={{ fontWeight: 600, fontSize: "0.875rem", flex: 1 }}>Descargar eventos</span>
+          <span style={{ fontWeight: 600, fontSize: "0.875rem", flex: 1, color: C.text }}>Descargar eventos</span>
           <button onClick={onClose} style={{ color: C.dim, background: "none", border: "none", padding: 0 }}><X size={16} /></button>
         </div>
 
@@ -833,7 +833,7 @@ function ExportEventosModal({ eventos, onClose }) {
                 <input type="checkbox" checked={seleccionados.has(ev.id)} onChange={() => toggle(ev.id)}
                   style={{ width: "14px", height: "14px", accentColor: C.gold, flexShrink: 0 }} />
                 <div style={{ flex: 1, minWidth: 0 }}>
-                  <div style={{ fontSize: "0.875rem", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{ev.nombre || "Sin nombre"}</div>
+                  <div style={{ fontSize: "0.875rem", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", color: C.text }}>{ev.nombre || "Sin nombre"}</div>
                   <div style={{ fontSize: "0.6875rem", color: C.dim }}>{fmtFecha(ev.fecha)} · {ev.categoria || "Sin categoría"}</div>
                 </div>
               </label>
