@@ -737,8 +737,9 @@ function Badge({ color, children, solid }) {
 
 /* ====================== GENERADOR HTML MULTI-EVENTO ====================== */
 function generarHtmlEventos(evs) {
+  const esc = (s) => String(s ?? "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
   const fmtD = (f) => { if (!f) return "—"; const [y,m,d] = f.split("-"); return `${d}/${m}/${y}`; };
-  const fmtM = (n, mon) => new Intl.NumberFormat("es-AR", { style: "currency", currency: mon === "USD" ? "USD" : "ARS", maximumFractionDigits: 0 }).format(Number(n) || 0);
+  const fmtM = (n, mon) => new Intl.NumberFormat("es-AR", { style: "currency", currency: (mon || "") === "USD" ? "USD" : "ARS", maximumFractionDigits: 0 }).format(Number(n) || 0);
   const COLS = { "Armado": "#4FD18B", "Armado + Prelight": "#e6a800", "Prelighting": "#9b8cff", "Rodaje": "#e8335a", "Desarme": "#64B5F6" };
   const fechaGen = new Date().toLocaleDateString("es-AR", { day: "2-digit", month: "long", year: "numeric" });
 
@@ -749,14 +750,14 @@ function generarHtmlEventos(evs) {
     const dist = ev.distribucion === "MIXTO" ? "M1 + M2" : ev.distribucion === "M2" ? "MG M2" : "MG M1";
 
     let filas = `<tr><td class="lbl">Fecha</td><td>${fmtD(ev.fecha)}</td></tr>`;
-    if (ev.categoria) filas += `<tr><td class="lbl">Categoría</td><td>${ev.categoria}</td></tr>`;
-    if (ev.estudio) filas += `<tr><td class="lbl">Estudio</td><td>Estudio ${ev.estudio}</td></tr>`;
-    if (ev.tipoProd) filas += `<tr><td class="lbl">Tipo producción</td><td>${ev.tipoProd}</td></tr>`;
-    if (ev.razonSocial) filas += `<tr><td class="lbl">Razón social</td><td>${ev.razonSocial}</td></tr>`;
+    if (ev.categoria) filas += `<tr><td class="lbl">Categoría</td><td>${esc(ev.categoria)}</td></tr>`;
+    if (ev.estudio) filas += `<tr><td class="lbl">Estudio</td><td>Estudio ${esc(ev.estudio)}</td></tr>`;
+    if (ev.tipoProd) filas += `<tr><td class="lbl">Tipo producción</td><td>${esc(ev.tipoProd)}</td></tr>`;
+    if (ev.razonSocial) filas += `<tr><td class="lbl">Razón social</td><td>${esc(ev.razonSocial)}</td></tr>`;
     filas += `<tr><td class="lbl">Empresa</td><td>${dist}</td></tr>`;
     if (total > 0) filas += `<tr><td class="lbl">Total facturable</td><td><strong>${fmtM(total, ev.moneda)}</strong></td></tr>`;
     filas += `<tr><td class="lbl">Facturado</td><td>${ev.facturado ? "✓ Sí" : "✗ Pendiente"}</td></tr>`;
-    if (ev.director?.nombre) filas += `<tr><td class="lbl">Director/a</td><td>${ev.director.nombre}</td></tr>`;
+    if (ev.director?.nombre) filas += `<tr><td class="lbl">Director/a</td><td>${esc(ev.director.nombre)}</td></tr>`;
 
     let parteHtml = "";
     if (ev.partes?.length) {
@@ -764,25 +765,25 @@ function generarHtmlEventos(evs) {
       if (pts.length) {
         parteHtml = `<div class="subsec">Fases: ` + pts.map(p => {
           const col = COLS[p.tipo] || "#888";
-          return `<span class="fase-tag" style="background:${col}22;border:1px solid ${col};color:${col === "#e6a800" ? "#7a5500" : col}">${p.tipo} (${p.fechas.map(fmtD).join(", ")})</span>`;
+          return `<span class="fase-tag" style="background:${col}22;border:1px solid ${col};color:${col === "#e6a800" ? "#7a5500" : col}">${esc(p.tipo)} (${p.fechas.map(fmtD).join(", ")})</span>`;
         }).join(" ") + `</div>`;
       }
     }
 
     let equipoHtml = "";
     if (ev.integrantes?.length) {
-      const rows = ev.integrantes.map(i => `<tr><td>${i.nombre || "—"}</td><td>${i.rol || "—"}</td><td style="color:#888;font-size:11px">${i.partes?.length ? i.partes.join(", ") : "Todas"}</td></tr>`).join("");
+      const rows = ev.integrantes.map(i => `<tr><td>${esc(i.nombre)}</td><td>${esc(i.rol)}</td><td style="color:#888;font-size:11px">${i.partes?.length ? i.partes.map(esc).join(", ") : "Todas"}</td></tr>`).join("");
       equipoHtml = `<div class="subsec"><table class="data"><tr><th>Nombre</th><th>Rol</th><th>Fases</th></tr>${rows}</table></div>`;
     }
 
     let obsHtml = "";
-    if (ev.observaciones) obsHtml = `<div class="subsec obs">${ev.observaciones}</div>`;
+    if (ev.observaciones) obsHtml = `<div class="subsec obs">${esc(ev.observaciones)}</div>`;
 
     return `
       <div class="ev">
         <div class="ev-hdr">
-          <span class="ev-nombre">${ev.nombre || "Sin nombre"}</span>
-          <span class="ev-cat">${ev.categoria || ""}</span>
+          <span class="ev-nombre">${esc(ev.nombre) || "Sin nombre"}</span>
+          <span class="ev-cat">${esc(ev.categoria)}</span>
         </div>
         <div class="ev-body">
           <table>${filas}</table>
@@ -848,7 +849,9 @@ function ExportEventosModal({ eventos, onClose }) {
   const exportar = async () => {
     const evs = eventos.filter((e) => seleccionados.has(e.id));
     if (!evs.length) { alert("Seleccioná al menos un evento."); return; }
-    const html = generarHtmlEventos(evs);
+    let html;
+    try { html = generarHtmlEventos(evs); }
+    catch (e) { alert("Error al generar el reporte: " + e.message); return; }
     const defaultName = `proyectos-${new Date().toISOString().slice(0, 10)}.html`;
     if (typeof window.showSaveFilePicker === "function") {
       try {
@@ -857,17 +860,20 @@ function ExportEventosModal({ eventos, onClose }) {
           types: [{ description: "Documento HTML", accept: { "text/html": [".html"] } }],
         });
         const writable = await handle.createWritable();
-        await writable.write(html);
+        await writable.write(new Blob([html], { type: "text/html;charset=utf-8" }));
         await writable.close();
         onClose(); return;
-      } catch (e) { if (e.name === "AbortError") return; }
+      } catch (e) {
+        if (e.name === "AbortError") return;
+      }
     }
     const blob = new Blob([html], { type: "text/html;charset=utf-8" });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url; a.download = defaultName;
     document.body.appendChild(a); a.click();
-    document.body.removeChild(a); URL.revokeObjectURL(url);
+    document.body.removeChild(a);
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
     onClose();
   };
 
