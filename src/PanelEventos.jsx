@@ -784,71 +784,71 @@ function ExportEventosModal({ eventos, onClose }) {
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4"
-      style={{ background: "rgba(0,0,0,0.85)" }} onClick={onClose}>
-      <div className="rounded-xl w-full max-w-lg flex flex-col overflow-hidden"
-        style={{ background: C.panel, border: `1px solid ${C.border}`, maxHeight: "90vh" }}
-        onClick={(e) => e.stopPropagation()}>
-
-        {/* cabecera fija */}
-        <div className="flex items-center gap-2 px-5 pt-5 pb-3 shrink-0">
+    <div onClick={onClose} style={{
+      position: "fixed", inset: 0, zIndex: 50,
+      background: "rgba(0,0,0,0.85)",
+      display: "flex", alignItems: "center", justifyContent: "center",
+      padding: "16px",
+    }}>
+      <div onClick={(e) => e.stopPropagation()} style={{
+        background: C.panel, border: `1px solid ${C.border}`,
+        borderRadius: "12px", width: "100%", maxWidth: "512px",
+        display: "flex", flexDirection: "column",
+        height: "min(90vh, 580px)", overflow: "hidden",
+      }}>
+        {/* cabecera */}
+        <div style={{ display: "flex", alignItems: "center", gap: "8px", padding: "20px 20px 12px", flexShrink: 0 }}>
           <Download size={16} color={C.gold} />
-          <h2 className="font-semibold text-sm flex-1">Descargar eventos</h2>
-          <button onClick={onClose} style={{ color: C.dim }}><X size={16} /></button>
+          <span style={{ fontWeight: 600, fontSize: "0.875rem", flex: 1 }}>Descargar eventos</span>
+          <button onClick={onClose} style={{ color: C.dim, background: "none", border: "none", padding: 0 }}><X size={16} /></button>
         </div>
 
-        {/* filtros + buscador fijos */}
-        <div className="px-5 shrink-0">
-          <div className="flex gap-1 mb-3 flex-wrap">
+        {/* filtros + buscador */}
+        <div style={{ padding: "0 20px", flexShrink: 0 }}>
+          <div style={{ display: "flex", gap: "4px", marginBottom: "12px", flexWrap: "wrap" }}>
             {[{ v: "todos", l: "Todos" }, { v: "proximos", l: "Próximos" }, { v: "finalizados", l: "Finalizados" }].map(({ v, l }) => (
-              <button key={v} onClick={() => setFiltro(v)} className="text-xs px-2.5 py-1 rounded-full"
-                style={{ background: filtro === v ? C.gold : C.panel2, color: filtro === v ? C.onGold : C.dim, border: `1px solid ${filtro === v ? C.gold : C.border}` }}>
+              <button key={v} onClick={() => setFiltro(v)}
+                style={{ fontSize: "0.75rem", padding: "4px 10px", borderRadius: "9999px", background: filtro === v ? C.gold : C.panel2, color: filtro === v ? C.onGold : C.dim, border: `1px solid ${filtro === v ? C.gold : C.border}` }}>
                 {l}
               </button>
             ))}
           </div>
-          <div className="relative mb-3">
-            <Search size={13} color={C.dim} className="absolute left-3 top-1/2 -translate-y-1/2" />
+          <div style={{ position: "relative", marginBottom: "12px" }}>
+            <Search size={13} color={C.dim} style={{ position: "absolute", left: "12px", top: "50%", transform: "translateY(-50%)" }} />
             <input value={busqueda} onChange={(e) => setBusqueda(e.target.value)} placeholder="Buscar evento…"
-              className="w-full text-sm pl-8 pr-3 py-2 rounded-md"
-              style={{ background: C.panel2, border: `1px solid ${C.border}`, color: C.text, colorScheme: "dark" }} />
+              style={{ width: "100%", fontSize: "0.875rem", padding: "8px 12px 8px 32px", borderRadius: "6px", background: C.panel2, border: `1px solid ${C.border}`, color: C.text, colorScheme: "dark", boxSizing: "border-box" }} />
           </div>
-          <div className="flex items-center justify-between mb-2">
-            <span className="text-xs" style={{ color: C.dim }}>{seleccionados.size} de {eventos.length} seleccionados</span>
-            <button onClick={toggleTodos} className="text-xs px-2 py-1 rounded"
-              style={{ color: C.gold, border: `1px solid ${C.gold}30` }}>
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "8px" }}>
+            <span style={{ fontSize: "0.75rem", color: C.dim }}>{seleccionados.size} de {eventos.length} seleccionados</span>
+            <button onClick={toggleTodos} style={{ fontSize: "0.75rem", padding: "4px 8px", borderRadius: "4px", color: C.gold, border: `1px solid ${C.gold}40`, background: "none" }}>
               {todosVisiblesSeleccionados ? "Deseleccionar visibles" : "Seleccionar visibles"}
             </button>
           </div>
         </div>
 
-        {/* lista scrolleable — ocupa el espacio que sobra */}
-        <div className="flex-1 min-h-0 overflow-y-auto px-5 pb-1">
-          <div className="grid gap-1 pr-0.5">
+        {/* lista — ocupa el espacio restante y scrollea */}
+        <div style={{ flex: 1, minHeight: 0, overflowY: "auto", padding: "0 20px 4px" }}>
+          <div style={{ display: "grid", gap: "4px" }}>
             {filtrados.map((ev) => (
-              <label key={ev.id} className="flex items-center gap-2.5 px-3 py-2 rounded-lg"
-                style={{ background: C.panel2, border: `1px solid ${seleccionados.has(ev.id) ? C.gold + "40" : C.border}` }}>
+              <label key={ev.id} style={{ display: "flex", alignItems: "center", gap: "10px", padding: "8px 12px", borderRadius: "8px", background: C.panel2, border: `1px solid ${seleccionados.has(ev.id) ? C.gold + "40" : C.border}`, cursor: "pointer" }}>
                 <input type="checkbox" checked={seleccionados.has(ev.id)} onChange={() => toggle(ev.id)}
-                  className="w-3.5 h-3.5" style={{ accentColor: C.gold }} />
-                <div className="flex-1 min-w-0">
-                  <div className="text-sm truncate">{ev.nombre || "Sin nombre"}</div>
-                  <div className="text-[11px]" style={{ color: C.dim }}>{fmtFecha(ev.fecha)} · {ev.categoria || "Sin categoría"}</div>
+                  style={{ width: "14px", height: "14px", accentColor: C.gold, flexShrink: 0 }} />
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ fontSize: "0.875rem", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{ev.nombre || "Sin nombre"}</div>
+                  <div style={{ fontSize: "0.6875rem", color: C.dim }}>{fmtFecha(ev.fecha)} · {ev.categoria || "Sin categoría"}</div>
                 </div>
               </label>
             ))}
-            {filtrados.length === 0 && <p className="text-sm text-center py-4" style={{ color: C.dim }}>Sin resultados.</p>}
+            {filtrados.length === 0 && <p style={{ fontSize: "0.875rem", textAlign: "center", padding: "16px 0", color: C.dim }}>Sin resultados.</p>}
           </div>
         </div>
 
-        {/* botones fijos abajo */}
-        <div className="flex gap-2 px-5 py-4 shrink-0" style={{ borderTop: `1px solid ${C.border}` }}>
-          <button onClick={onClose} className="flex-1 text-sm px-3 py-2 rounded-md"
-            style={{ background: C.panel2, border: `1px solid ${C.border}`, color: C.dim }}>
+        {/* botones */}
+        <div style={{ display: "flex", gap: "8px", padding: "16px 20px", borderTop: `1px solid ${C.border}`, flexShrink: 0 }}>
+          <button onClick={onClose} style={{ flex: 1, fontSize: "0.875rem", padding: "8px 12px", borderRadius: "6px", background: C.panel2, border: `1px solid ${C.border}`, color: C.dim }}>
             Cancelar
           </button>
-          <button onClick={exportar}
-            className="flex-1 text-sm font-semibold px-3 py-2 rounded-md flex items-center justify-center gap-1.5"
-            style={{ background: C.gold, color: C.onGold }}>
+          <button onClick={exportar} style={{ flex: 1, fontSize: "0.875rem", fontWeight: 600, padding: "8px 12px", borderRadius: "6px", background: C.gold, color: C.onGold, display: "flex", alignItems: "center", justifyContent: "center", gap: "6px" }}>
             <Download size={13} /> Guardar como…
           </button>
         </div>
