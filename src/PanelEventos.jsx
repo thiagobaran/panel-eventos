@@ -3014,7 +3014,8 @@ function FacturacionCard({ ev, onUpdate, perms }) {
           <div><label className="text-[11px] block mb-1" style={{ color: C.dim }}>Medio de pago</label>
             <Input value={f.medioPago} onChange={(v) => set("medioPago", v)} placeholder="Transferencia, efectivo…" /></div>
           <div><label className="text-[11px] block mb-1" style={{ color: C.dim }}>Forma de pago</label>
-            <Input value={f.formaPago} onChange={(v) => set("formaPago", v)} placeholder="Contado, cuotas…" /></div>
+            <Input value={f.formaPago} onChange={(v) => set("formaPago", v)} placeholder="Contado, 30 días, 2 semanas…" />
+            <span className="text-[10px] mt-1 block" style={{ color: C.dim }}>Escribí los días/semanas/meses para activar alertas de vencimiento (ej: 30 días, 2 semanas, 1 mes)</span></div>
           <EditCardFooter onSave={() => { onUpdate(f); setEditando(false); }} onCancel={() => setEditando(false)} />
         </div>
       ) : (
@@ -4185,7 +4186,8 @@ function FormEvento({ base, onCancel, onSave, guardando, personas = [], eventos 
             <Input value={f.medioPago} onChange={(v) => set("medioPago", v)} placeholder="Transferencia, efectivo…" />
           </Field>
           <Field label="Forma de pago">
-            <Input value={f.formaPago} onChange={(v) => set("formaPago", v)} placeholder="Contado, 30 días…" />
+            <Input value={f.formaPago} onChange={(v) => set("formaPago", v)} placeholder="Contado, 30 días, 2 semanas…" />
+            <span className="text-[10px] mt-1 block" style={{ color: C.dim }}>Escribí los días/semanas/meses para activar alertas de vencimiento (ej: 30 días, 2 semanas, 1 mes)</span>
           </Field>
 
           <div className="sm:col-span-2 text-xs px-3 py-2 rounded-md flex items-start gap-2" style={{ background: C.panel2, border: `1px solid ${C.border}`, color: C.dim }}>
