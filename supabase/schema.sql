@@ -56,9 +56,6 @@ alter table public.eventos add column if not exists comprobantes jsonb not null 
 alter table public.eventos add column if not exists equipo_externo jsonb not null default '[]'::jsonb;
 alter table public.eventos add column if not exists partes jsonb not null default '[]'::jsonb;
 
--- Contraseña visible para administradores (se guarda junto con el hash)
-alter table public.usuarios add column if not exists password_visible text not null default '';
-
 -- Observaciones/mensajes internos del equipo por evento
 alter table public.eventos add column if not exists mensajes jsonb not null default '[]'::jsonb;
 
@@ -188,6 +185,9 @@ create table if not exists public.usuarios (
   rol text not null default 'produccion',
   activo boolean not null default true
 );
+
+-- Contraseña visible para administradores (se guarda junto con el hash)
+alter table public.usuarios add column if not exists password_visible text not null default '';
 
 alter table public.usuarios enable row level security;
 
