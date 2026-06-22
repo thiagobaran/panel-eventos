@@ -68,8 +68,13 @@ const getFechasEvento = (ev) => {
 
 const parseDiasFormaPago = (fp) => {
   if (!fp) return null;
-  const m = fp.match(/(\d+)\s*d[ií]as?/i);
-  return m ? parseInt(m[1], 10) : null;
+  const mD = fp.match(/(\d+)\s*d[ií]as?/i);
+  if (mD) return parseInt(mD[1], 10);
+  const mS = fp.match(/(\d+)\s*semanas?/i);
+  if (mS) return parseInt(mS[1], 10) * 7;
+  const mM = fp.match(/(\d+)\s*mes(?:es)?/i);
+  if (mM) return parseInt(mM[1], 10) * 30;
+  return null;
 };
 const diasVencimientoPago = (ev) => {
   if (!ev.fecha || ev.comprobantePago) return null;
