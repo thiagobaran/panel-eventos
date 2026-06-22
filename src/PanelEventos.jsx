@@ -66,6 +66,22 @@ const getFechasEvento = (ev) => {
   return new Set();
 };
 
+const parseDiasFormaPago = (fp) => {
+  if (!fp) return null;
+  const m = fp.match(/(\d+)\s*d[ií]as?/i);
+  return m ? parseInt(m[1], 10) : null;
+};
+const diasVencimientoPago = (ev) => {
+  if (!ev.fecha || ev.comprobantePago) return null;
+  const dias = parseDiasFormaPago(ev.formaPago);
+  if (dias === null) return null;
+  const vence = new Date(ev.fecha + "T12:00:00");
+  vence.setDate(vence.getDate() + dias);
+  const hoy = new Date();
+  hoy.setHours(12, 0, 0, 0);
+  return Math.ceil((vence - hoy) / 86400000);
+};
+
 const C = {
   bg: "#000000",
   panel: "#141414",
@@ -503,6 +519,7 @@ export default function PanelEventos() {
   const pendComp = eventos.filter(
     (e) => e.nombre && e.facturado && !e.comprobantePago
   );
+  const pendVenc = eventos.filter((e) => { const d = diasVencimientoPago(e); return d !== null && d < 0; });
 
   const eventoEdit = editId ? eventos.find((e) => e.id === editId) : null;
   const eventoVer = verId ? eventos.find((e) => e.id === verId) : null;
@@ -582,10 +599,10 @@ export default function PanelEventos() {
           <Tab active={vista === "personal"} onClick={() => setVista("personal")} icon={<Users size={15} />}>Personal</Tab>
           <Tab active={vista === "dashboard"} onClick={() => setVista("dashboard")} icon={<AlertTriangle size={15} />}>
             Pendientes
-            {(pendFact.length + pendComp.length) > 0 && (
+            {(pendFact.length + pendComp.length + pendVenc.length) > 0 && (
               <span className="ml-1.5 text-[10px] font-mono px-1.5 rounded-full"
-                style={{ background: C.amber, color: "#1a1200" }}>
-                {pendFact.length + pendComp.length}
+                style={{ background: pendVenc.length > 0 ? C.rose : C.amber, color: pendVenc.length > 0 ? "#fff" : "#1a1200" }}>
+                {pendFact.length + pendComp.length + pendVenc.length}
               </span>
             )}
           </Tab>
@@ -654,6 +671,7 @@ export default function PanelEventos() {
           <Dashboard
             pendFact={pendFact}
             pendComp={pendComp}
+            pagosVencidos={pendVenc}
             onVer={(id) => { setVerId(id); setVista("detalle"); }}
           />
         ) : vista === "usuarios" && p.usuarios ? (
@@ -1086,6 +1104,13 @@ function Lista({ eventos, total, busqueda, setBusqueda, filtroCat, setFiltroCat,
                     {finalizado && <Badge color={C.dim}>Finalizado</Badge>}
                     {e.facturado ? <Badge solid color={C.green}>Facturado</Badge> : <Badge color={C.amber}>S/ facturar</Badge>}
                     {e.facturado && !e.comprobantePago && <Badge color={C.rose}>S/ comprob.</Badge>}
+                    {(() => {
+                      const d = diasVencimientoPago(e);
+                      if (d === null) return null;
+                      if (d < 0) return <Badge color={C.rose}>Pago vencido ({Math.abs(d)}d)</Badge>;
+                      if (d <= 7) return <Badge color={C.amber}>Vence en {d}d</Badge>;
+                      return null;
+                    })()}
                   </div>
                 </div>
                 <div className="flex gap-1 opacity-60 group-hover:opacity-100 transition-opacity">
@@ -1107,9 +1132,23 @@ function Lista({ eventos, total, busqueda, setBusqueda, filtroCat, setFiltroCat,
 }
 
 /* ====================== DASHBOARD ====================== */
-function Dashboard({ pendFact, pendComp, onVer }) {
+function Dashboard({ pendFact, pendComp, pagosVencidos, onVer }) {
   return (
     <div className="fade grid gap-5">
+      {pagosVencidos.length > 0 && (
+        <TablaPend
+          titulo="Pagos vencidos"
+          icon={<AlertTriangle size={16} color={C.rose} />}
+          color={C.rose}
+          rows={pagosVencidos}
+          onVer={onVer}
+          vacio=""
+          extraCol={{ header: "Vencimiento", render: (e) => {
+            const d = diasVencimientoPago(e);
+            return d !== null && d < 0 ? `Hace ${Math.abs(d)} días` : "—";
+          }}}
+        />
+      )}
       <TablaPend
         titulo="Pendientes de facturación"
         icon={<AlertTriangle size={16} color={C.amber} />}
@@ -1130,7 +1169,9 @@ function Dashboard({ pendFact, pendComp, onVer }) {
   );
 }
 
-function TablaPend({ titulo, icon, color, rows, onVer, vacio }) {
+function TablaPend({ titulo, icon, color, rows, onVer, vacio, extraCol }) {
+  const headers = ["Fecha", "Evento", "Estudio", "Distrib.", "Monto M1", "Monto M2", "Total"];
+  if (extraCol) headers.push(extraCol.header);
   return (
     <section className="rounded-xl overflow-hidden" style={{ background: C.panel, border: `1px solid ${C.border}` }}>
       <div className="flex items-center gap-2 px-4 py-3" style={{ borderBottom: `1px solid ${C.border}` }}>
@@ -1144,7 +1185,7 @@ function TablaPend({ titulo, icon, color, rows, onVer, vacio }) {
           <table className="w-full text-sm">
             <thead>
               <tr style={{ color: C.dim }} className="text-[11px] uppercase tracking-wide">
-                {["Fecha", "Evento", "Estudio", "Distrib.", "Monto M1", "Monto M2", "Total"].map((h) => (
+                {headers.map((h) => (
                   <th key={h} className="text-left font-medium px-4 py-2 whitespace-nowrap">{h}</th>
                 ))}
               </tr>
@@ -1168,6 +1209,11 @@ function TablaPend({ titulo, icon, color, rows, onVer, vacio }) {
                   <td className="px-4 py-2.5 font-mono whitespace-nowrap" style={{ color: C.gold }}>
                     {fmtMoneda(totalFacturable(e), e.moneda)}
                   </td>
+                  {extraCol && (
+                    <td className="px-4 py-2.5 text-xs font-semibold" style={{ color: C.rose }}>
+                      {extraCol.render(e)}
+                    </td>
+                  )}
                 </tr>
               ))}
             </tbody>
@@ -2981,6 +3027,23 @@ function FacturacionCard({ ev, onUpdate, perms }) {
           <Dato k="Cant. facturas" v={ev.cantFacturas || "—"} />
           <Dato k="Medio de pago" v={ev.medioPago || "—"} />
           <Dato k="Forma de pago" v={ev.formaPago || "—"} />
+          {(() => {
+            const d = diasVencimientoPago(ev);
+            if (d === null) return null;
+            if (d < 0) return (
+              <div className="sm:col-span-2 mt-1 flex items-center gap-2 px-3 py-2 rounded-lg text-xs font-semibold"
+                style={{ background: `${C.rose}1a`, border: `1px solid ${C.rose}40`, color: C.rose }}>
+                <AlertTriangle size={14} /> Pago vencido hace {Math.abs(d)} días — contactar al cliente
+              </div>
+            );
+            if (d <= 7) return (
+              <div className="sm:col-span-2 mt-1 flex items-center gap-2 px-3 py-2 rounded-lg text-xs font-semibold"
+                style={{ background: `${C.amber}1a`, border: `1px solid ${C.amber}40`, color: C.amber }}>
+                <Clock size={14} /> El pago vence en {d} día{d !== 1 ? "s" : ""}
+              </div>
+            );
+            return null;
+          })()}
         </>
       )}
     </Card>
