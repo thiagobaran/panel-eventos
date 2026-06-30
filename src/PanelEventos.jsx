@@ -158,6 +158,27 @@ const estudioLabel = (est) => {
 const totalDias = (partes) =>
   new Set((partes || []).flatMap((p) => p.fechas || [])).size;
 
+// Devuelve Map<fecha, Set<estudio>> con los estudios ocupados por fecha para un evento.
+const getEstudiosPorFecha = (ev) => {
+  const map = new Map();
+  const estudios = normEstudio(ev.estudio);
+  if (estudios.length === 0) return map;
+  const partes = ev.partes || [];
+  const fechas = new Set(partes.flatMap((p) => p.fechas || []));
+  if (fechas.size === 0 && ev.fecha) fechas.add(ev.fecha);
+  for (const fecha of fechas) {
+    let estDelDia = null;
+    for (const p of partes) {
+      if ((p.fechas || []).includes(fecha) && p.estudiosXFecha?.[fecha]?.length > 0) {
+        if (!estDelDia) estDelDia = new Set();
+        for (const e of p.estudiosXFecha[fecha]) estDelDia.add(e);
+      }
+    }
+    map.set(fecha, estDelDia || new Set(estudios));
+  }
+  return map;
+};
+
 // Dado un array de partes de un evento y los tipos asignados a un integrante,
 // devuelve el Set de fechas en las que ese integrante trabajaría.
 // Si el integrante no tiene partes asignadas, se considera que va a todas.
@@ -632,7 +653,7 @@ export default function PanelEventos() {
         <div className="flex items-center gap-2.5">
           <img src="/logo.png" alt="Cacodelphia" style={{ height: 34 }} className="object-contain" />
           <div className="leading-tight">
-            <div className="font-semibold tracking-tight text-sm sm:text-base">Sistema eventos Cacodelphia</div>
+            <div className="font-semibold tracking-tight text-sm sm:text-base">DEV Sistema eventos Cacodelphia</div>
             <div style={{ color: C.dim }} className="text-[11px] font-mono">Estudios</div>
           </div>
         </div>
@@ -2815,7 +2836,7 @@ function Detalle({ ev, onBack, onEdit, onDelete, onUpdate, onDuplicate, perms = 
       <div className="grid sm:grid-cols-2 gap-4">
         <MensajesEquipo ev={ev} usuario={usuario} onUpdate={onUpdate} />
 
-        <ProduccionCard ev={ev} onUpdate={onUpdate} perms={perms} />
+        <ProduccionCard ev={ev} onUpdate={onUpdate} perms={perms} eventos={eventos} />
 
         <FacturacionCard ev={ev} onUpdate={onUpdate} perms={perms} />
 
@@ -2849,7 +2870,7 @@ function Detalle({ ev, onBack, onEdit, onDelete, onUpdate, onDuplicate, perms = 
 
         <EquipoExternoCard ev={ev} onUpdate={onUpdate} perms={perms} />
 
-        <PartesDetalle ev={ev} onUpdate={onUpdate} perms={perms} />
+        <PartesDetalle ev={ev} onUpdate={onUpdate} perms={perms} eventos={eventos} />
 
         {ev.observaciones && (
           <Card titulo="Observaciones" icon={<FileText size={15} color={C.dim} />} full>
@@ -2862,7 +2883,7 @@ function Detalle({ ev, onBack, onEdit, onDelete, onUpdate, onDuplicate, perms = 
 }
 
 /* ====================== PARTES DEL PROYECTO (edición inline desde detalle) ====================== */
-function PartesDetalle({ ev, onUpdate, perms }) {
+function PartesDetalle({ ev, onUpdate, perms, eventos = [] }) {
   const [editandoIdx, setEditandoIdx] = useState(null);
   const [fechaInput, setFechaInput] = useState("");
   const [partesTmp, setPartesTmp] = useState(null);
@@ -2919,6 +2940,25 @@ function PartesDetalle({ ev, onUpdate, perms }) {
   };
   const guardar = () => {
     const allFechas = partesTmp.flatMap((p) => p.fechas || []).filter(Boolean).sort();
+    // Check studio conflicts
+    const tmpEv = { ...ev, partes: partesTmp, fecha: allFechas.length > 0 ? allFechas[0] : "" };
+    const miMapa = getEstudiosPorFecha(tmpEv);
+    const conflictos = [];
+    for (const [fecha, misEst] of miMapa) {
+      for (const otroEv of eventos) {
+        if (otroEv.id === ev.id) continue;
+        const otroMapa = getEstudiosPorFecha(otroEv);
+        const otrosEst = otroMapa.get(fecha);
+        if (!otrosEst) continue;
+        for (const est of misEst) {
+          if (otrosEst.has(est)) conflictos.push({ fecha, estudio: est, evento: otroEv.nombre || "Sin nombre" });
+        }
+      }
+    }
+    if (conflictos.length > 0) {
+      const lista = conflictos.map((c) => `• Est. ${c.estudio} el ${fmtFecha(c.fecha)} — "${c.evento}"`).join("\n");
+      if (!confirm(`El estudio ya está ocupado para otro evento ese día:\n\n${lista}\n\n¿Guardar de todos modos?`)) return;
+    }
     onUpdate({ partes: partesTmp, fecha: allFechas.length > 0 ? allFechas[0] : "" });
     setEditandoIdx(null); setPartesTmp(null); setFechaInput("");
   };
@@ -3059,7 +3099,7 @@ function EditCardFooter({ onSave, onCancel }) {
   );
 }
 
-function ProduccionCard({ ev, onUpdate, perms }) {
+function ProduccionCard({ ev, onUpdate, perms, eventos = [] }) {
   const [editando, setEditando] = useState(false);
   const [f, setF] = useState({});
   const set = (k, v) => setF((p) => ({ ...p, [k]: v }));
@@ -3117,7 +3157,27 @@ function ProduccionCard({ ev, onUpdate, perms }) {
             <div><label className="text-[11px] block mb-1" style={{ color: C.dim }}>Detalle equipamiento</label>
               <Input value={f.equipamientoDetalle} onChange={(v) => set("equipamientoDetalle", v)} placeholder="Cámaras, LED wall…" /></div>
           )}
-          <EditCardFooter onSave={() => { onUpdate(f); setEditando(false); }} onCancel={() => setEditando(false)} />
+          <EditCardFooter onSave={() => {
+            const tmpEv = { ...ev, ...f };
+            const miMapa = getEstudiosPorFecha(tmpEv);
+            const conflictos = [];
+            for (const [fecha, misEst] of miMapa) {
+              for (const otroEv of eventos) {
+                if (otroEv.id === ev.id) continue;
+                const otroMapa = getEstudiosPorFecha(otroEv);
+                const otrosEst = otroMapa.get(fecha);
+                if (!otrosEst) continue;
+                for (const est of misEst) {
+                  if (otrosEst.has(est)) conflictos.push({ fecha, estudio: est, evento: otroEv.nombre || "Sin nombre" });
+                }
+              }
+            }
+            if (conflictos.length > 0) {
+              const lista = conflictos.map((c) => `• Est. ${c.estudio} el ${fmtFecha(c.fecha)} — "${c.evento}"`).join("\n");
+              if (!confirm(`El estudio ya está ocupado para otro evento ese día:\n\n${lista}\n\n¿Guardar de todos modos?`)) return;
+            }
+            onUpdate(f); setEditando(false);
+          }} onCancel={() => setEditando(false)} />
         </div>
       ) : (
         <>
@@ -4058,8 +4118,35 @@ function FormEvento({ base, onCancel, onSave, guardando, personas = [], eventos 
     );
   };
 
+  // Detecta conflictos de estudio: otro evento usa el mismo estudio en la misma fecha
+  const conflictosEstudio = useMemo(() => {
+    const estudiosEvento = normEstudio(f.estudio);
+    if (estudiosEvento.length === 0) return [];
+    const miMapa = getEstudiosPorFecha(f);
+    const result = [];
+    for (const [fecha, misEstudios] of miMapa) {
+      for (const otroEv of eventos) {
+        if (otroEv.id === f.id) continue;
+        const otroMapa = getEstudiosPorFecha(otroEv);
+        const otrosEstudios = otroMapa.get(fecha);
+        if (!otrosEstudios) continue;
+        for (const est of misEstudios) {
+          if (otrosEstudios.has(est)) {
+            result.push({ fecha, estudio: est, evento: otroEv.nombre || "Sin nombre" });
+          }
+        }
+      }
+    }
+    return result;
+  }, [f.estudio, f.partes, f.fecha, f.id, eventos]);
+
   const submit = () => {
     if (!f.nombre.trim()) { alert("Poné al menos el nombre del evento."); return; }
+    // Warning: estudio ocupado por otro evento en la misma fecha
+    if (conflictosEstudio.length > 0) {
+      const lista = conflictosEstudio.map((c) => `• Est. ${c.estudio} el ${fmtFecha(c.fecha)} — "${c.evento}"`).join("\n");
+      if (!confirm(`El estudio ya está ocupado para otro evento ese día:\n\n${lista}\n\n¿Guardar de todos modos?`)) return;
+    }
     // Bloqueo: misma persona con fases superpuestas dentro del mismo evento
     const conDups = f.integrantes.filter((int, idx) =>
       int.personaId && dupInternos(idx).length > 0
@@ -4227,6 +4314,19 @@ function FormEvento({ base, onCancel, onSave, guardando, personas = [], eventos 
                 <span className="text-sm font-semibold" style={{ color: C.amber }}>
                   Total: {totalDias(f.partes)} {totalDias(f.partes) === 1 ? "día" : "días"} de producción
                 </span>
+              </div>
+            )}
+            {conflictosEstudio.length > 0 && (
+              <div className="rounded-lg p-3 flex items-start gap-2" style={{ background: `${C.rose}15`, border: `1px solid ${C.rose}55` }}>
+                <AlertTriangle size={16} color={C.rose} className="shrink-0 mt-0.5" />
+                <div>
+                  <p className="text-xs font-semibold mb-1" style={{ color: C.rose }}>El estudio ya está ocupado para otro evento ese día</p>
+                  {conflictosEstudio.map((c, i) => (
+                    <p key={i} className="text-[11px]" style={{ color: C.rose }}>
+                      Est. {c.estudio} el {fmtFecha(c.fecha)} — "{c.evento}"
+                    </p>
+                  ))}
+                </div>
               </div>
             )}
           </div>
@@ -4731,7 +4831,7 @@ function Login({ onLogin, bootError, seedInfo, hayUsuarios }) {
         <div className="flex items-center gap-3 mb-6 justify-center">
           <img src="/logo.png" alt="Cacodelphia" style={{ height: 44 }} className="object-contain" />
           <div className="leading-tight">
-            <div className="font-semibold tracking-tight">Sistema eventos Cacodelphia</div>
+            <div className="font-semibold tracking-tight">DEV Sistema eventos Cacodelphia</div>
             <div style={{ color: C.dim }} className="text-[11px] font-mono">Estudios</div>
           </div>
         </div>
