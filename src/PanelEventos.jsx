@@ -23,11 +23,13 @@ import {
 } from "./lib/usuariosApi";
 
 /* ---------- constantes ---------- */
-const CATEGORIAS = ["Videoclip", "Publicidad", "Película", "Serie"];
+const CATEGORIAS = ["VIDEO CLIP", "RODAJE SERIE", "RODAJE LARGO", "EVENTO / DEMO", "PUBLICIDAD"];
 const ESTUDIOS = ["1", "2", "3"];
 const MONEDAS = ["ARS", "USD"];
 const TIPO_PROD = ["Virtual Production", "Back Projecting"];
 const TRACKEO = ["Con trackeo", "Sin trackeo"];
+const MODALIDAD_RODAJE = ["En estudio", "Rodaje externo", "Servicio virtual"];
+const ROLES_EQUIPO_TECNICO = ["DIRECTOR/A", "DIRECTOR/A DE FOTOGRAFIA", "DIRECTOR/A DE ARTE", "PRODUCTOR/A", "JEFE/A DE PRODUCCION"];
 
 // Distribución de facturación entre las dos razones sociales.
 // M1 = factura con IVA · M2 = efectivo (sin IVA) · MIXTO = una parte por cada una
@@ -106,7 +108,8 @@ const nuevoEvento = () => ({
   fecha: "",
   nombre: "",
   categoria: "",
-  estudio: "",
+  estudio: [],
+  modalidadRodaje: "",
   tipoProd: "",
   trackeo: "",
   equipamiento: false,
@@ -122,6 +125,8 @@ const nuevoEvento = () => ({
   montoM1: "",
   montoM2: "",
   cantFacturas: "",
+  facturasDesglose: [],
+  tipoCambio: "",
   medioPago: "",
   formaPago: "",
   facturas: [],
@@ -133,6 +138,18 @@ const nuevoEvento = () => ({
   facturadoTotal: false,
   observaciones: "",
 });
+
+// Normaliza estudio: eventos viejos tienen string, nuevos tienen array.
+const normEstudio = (est) => {
+  if (Array.isArray(est)) return est;
+  if (est) return [est];
+  return [];
+};
+const estudioLabel = (est) => {
+  const arr = normEstudio(est);
+  if (arr.length === 0) return "—";
+  return arr.map((s) => `Est. ${s}`).join(", ");
+};
 
 /* ---------- helpers ---------- */
 const totalDias = (partes) =>
@@ -189,12 +206,30 @@ const fmtBytes = (b) => {
 };
 
 // Totales derivados de la distribución M1 / M2 / MIXTO.
-const montoM1 = (ev) => Number(ev?.montoM1) || 0;
-const montoM2 = (ev) => Number(ev?.montoM2) || 0;
+// Si hay facturasDesglose, el total es la suma; si no, usa montoM1/montoM2 clásicos.
+const montoM1 = (ev) => {
+  const desg = ev?.facturasDesglose;
+  if (Array.isArray(desg) && desg.length > 0) {
+    const dist = ev.distribucion || "M1";
+    if (dist === "M2") return 0;
+    return desg.reduce((s, f) => s + (Number(f.montoM1) || 0), 0);
+  }
+  return Number(ev?.montoM1) || 0;
+};
+const montoM2 = (ev) => {
+  const desg = ev?.facturasDesglose;
+  if (Array.isArray(desg) && desg.length > 0) {
+    const dist = ev.distribucion || "M1";
+    if (dist === "M1") return 0;
+    return desg.reduce((s, f) => s + (Number(f.montoM2) || 0), 0);
+  }
+  return Number(ev?.montoM2) || 0;
+};
 const totalNeto = (ev) => montoM1(ev) + montoM2(ev);
 const totalFacturable = (ev) => montoM1(ev) * 1.21 + montoM2(ev);
 const empresaLabel = (d) =>
   d === "MIXTO" ? "MG M1 + M2" : d === "M2" ? "MG M2" : "MG M1";
+const tipoCambio = (ev) => Number(ev?.tipoCambio) || 0;
 
 /* ===================================================================== */
 export default function PanelEventos() {
@@ -364,6 +399,7 @@ export default function PanelEventos() {
       id: crypto.randomUUID(),
       nombre: "",
       fecha: "",
+      estudio: normEstudio(ev.estudio),
       facturas: [],
       comprobantes: [],
       mensajes: [],
@@ -774,11 +810,12 @@ function generarHtmlEventos(evs) {
 
     let filas = `<tr><td class="lbl">Fecha</td><td>${fmtD(ev.fecha)}</td></tr>`;
     if (ev.categoria) filas += `<tr><td class="lbl">Categoría</td><td>${esc(ev.categoria)}</td></tr>`;
-    if (ev.estudio) filas += `<tr><td class="lbl">Estudio</td><td>Estudio ${esc(ev.estudio)}</td></tr>`;
+    const estArr = Array.isArray(ev.estudio) ? ev.estudio : ev.estudio ? [ev.estudio] : [];
+    if (estArr.length > 0) filas += `<tr><td class="lbl">Estudio</td><td>${estArr.map(s => `Estudio ${esc(s)}`).join(", ")}</td></tr>`;
     if (ev.tipoProd) filas += `<tr><td class="lbl">Tipo producción</td><td>${esc(ev.tipoProd)}</td></tr>`;
     if (ev.razonSocial) filas += `<tr><td class="lbl">Razón social</td><td>${esc(ev.razonSocial)}</td></tr>`;
     filas += `<tr><td class="lbl">Empresa</td><td>${dist}</td></tr>`;
-    if (total > 0) filas += `<tr><td class="lbl">Total facturable</td><td><strong>${fmtM(total, ev.moneda)}</strong></td></tr>`;
+    filas += `<tr><td class="lbl">Total facturable</td><td><strong>${fmtM(total, ev.moneda)}</strong></td></tr>`;
     filas += `<tr><td class="lbl">Facturado</td><td>${ev.facturado ? "✓ Sí" : "✗ Pendiente"}</td></tr>`;
     if (ev.director?.nombre) filas += `<tr><td class="lbl">Director/a</td><td>${esc(ev.director.nombre)}</td></tr>`;
 
@@ -1082,6 +1119,8 @@ function Lista({ eventos, total, busqueda, setBusqueda, filtroCat, setFiltroCat,
                 <div className="font-medium truncate">{e.nombre || <span style={{ color: C.dim }}>Sin nombre</span>}</div>
                 <div className="flex flex-wrap gap-1.5 mt-1.5">
                   {e.categoria && <Badge color={C.gold}><Film size={11} />{e.categoria}</Badge>}
+                  {e.modalidadRodaje && <Badge color="#64B5F6">{e.modalidadRodaje}</Badge>}
+                  {normEstudio(e.estudio).length > 0 && <Badge color={C.amber}><Building2 size={11} />{estudioLabel(e.estudio)}</Badge>}
                   {e.tipoProd && <Badge color="#9b8cff">{e.tipoProd}</Badge>}
                   {e.trackeo && <Badge color={e.trackeo === "Con trackeo" ? C.green : C.dim}><Crosshair size={11} />{e.trackeo.replace(" trackeo", "")}</Badge>}
                   <Badge color={C.dim}><Building2 size={11} />{empresaLabel(e.distribucion)}</Badge>
@@ -1203,13 +1242,13 @@ function TablaPend({ titulo, icon, color, rows, onVer, vacio, extraCol }) {
                   onMouseLeave={(ev) => ev.currentTarget.style.background = "transparent"}>
                   <td className="px-4 py-2.5 font-mono text-xs whitespace-nowrap" style={{ color: C.dim }}>{fmtFecha(e.fecha)}</td>
                   <td className="px-4 py-2.5 font-medium">{e.nombre}</td>
-                  <td className="px-4 py-2.5">{e.estudio || "—"}</td>
+                  <td className="px-4 py-2.5">{estudioLabel(e.estudio)}</td>
                   <td className="px-4 py-2.5 text-xs">{empresaLabel(e.distribucion)}</td>
                   <td className="px-4 py-2.5 font-mono whitespace-nowrap text-xs">
-                    {montoM1(e) ? fmtMoneda(montoM1(e) * 1.21, e.moneda) : "—"}
+                    {fmtMoneda(montoM1(e) * 1.21, e.moneda)}
                   </td>
                   <td className="px-4 py-2.5 font-mono whitespace-nowrap text-xs">
-                    {montoM2(e) ? fmtMoneda(montoM2(e), e.moneda) : "—"}
+                    {fmtMoneda(montoM2(e), e.moneda)}
                   </td>
                   <td className="px-4 py-2.5 font-mono whitespace-nowrap" style={{ color: C.gold }}>
                     {fmtMoneda(totalFacturable(e), e.moneda)}
@@ -1245,7 +1284,7 @@ function CalendarioMes({ anio, mes, eventos, onVer }) {
   const estudios = ESTUDIOS;
 
   const eventosFiltrados = useMemo(() =>
-    filtroEstudio ? eventos.filter((e) => e.estudio === filtroEstudio) : eventos,
+    filtroEstudio ? eventos.filter((e) => normEstudio(e.estudio).includes(filtroEstudio)) : eventos,
   [eventos, filtroEstudio]);
 
   const getEventosDelDia = (day) => {
@@ -1324,7 +1363,7 @@ function CalendarioMes({ anio, mes, eventos, onVer }) {
                     title={`${ev.nombre || "Sin nombre"}${ev.partesDelDia.length ? ` — ${ev.partesDelDia.join(", ")}` : ""}`}
                     className="text-left rounded px-1 py-0.5 text-[8px] leading-tight truncate transition-opacity hover:opacity-75"
                     style={{ background: getColorPartes(ev.partesDelDia), color: "#fff" }}>
-                    {ev.nombre || "Sin nombre"}{ev.estudio ? ` · Est.${ev.estudio}` : ""}
+                    {ev.nombre || "Sin nombre"}{normEstudio(ev.estudio).length > 0 ? ` · ${normEstudio(ev.estudio).map(s=>`E${s}`).join("+")}` : ""}
                   </button>
                 ))}
                 {evsDia.length > 3 && (
@@ -1348,30 +1387,43 @@ function BarChart12Meses({ eventos, mesActual, anioActual }) {
       while (m < 0) { m += 12; a--; }
       const pref = `${a}-${String(m + 1).padStart(2, "0")}`;
       const evs = eventos.filter((e) => e.fecha?.startsWith(pref));
-      const total = evs.reduce((s, e) => s + totalFacturable(e), 0);
-      arr.push({ mes: m, anio: a, total, label: MESES_ES[m].slice(0, 3) });
+      const totalARS = evs.filter((e) => e.moneda !== "USD").reduce((s, e) => s + totalFacturable(e), 0);
+      const totalUSD = evs.filter((e) => e.moneda === "USD").reduce((s, e) => s + totalFacturable(e), 0);
+      // Equivalente en ARS usando tipo de cambio de cada evento USD
+      const equivARS = totalARS + evs.filter((e) => e.moneda === "USD").reduce((s, e) => {
+        const tc = tipoCambio(e);
+        return s + totalFacturable(e) * (tc || 0);
+      }, 0);
+      arr.push({ mes: m, anio: a, totalARS, totalUSD, equivARS, label: MESES_ES[m].slice(0, 3) });
     }
     return arr;
   }, [eventos, mesActual, anioActual]);
 
-  const maxVal = Math.max(...meses.map((m) => m.total), 1);
+  const tieneUSD = meses.some((m) => m.totalUSD > 0);
+  const maxVal = Math.max(...meses.map((m) => tieneUSD ? m.equivARS : m.totalARS), 1);
 
   return (
     <div>
-      <p className="text-[11px] font-semibold uppercase tracking-wide mb-2" style={{ color: C.dim }}>Últimos 12 meses</p>
+      <p className="text-[11px] font-semibold uppercase tracking-wide mb-2" style={{ color: C.dim }}>
+        Últimos 12 meses {tieneUSD ? "(equiv. ARS con tipo de cambio)" : ""}
+      </p>
       <div className="flex items-end gap-1" style={{ height: 72 }}>
         {meses.map((m, i) => {
-          const pct = m.total / maxVal;
+          const val = tieneUSD ? m.equivARS : m.totalARS;
+          const pct = val / maxVal;
           const isActual = m.mes === mesActual && m.anio === anioActual;
+          const tooltip = tieneUSD
+            ? `${m.label} ${m.anio}: ${fmtMoneda(m.totalARS, "ARS")} + ${fmtMoneda(m.totalUSD, "USD")} = ${fmtMoneda(m.equivARS, "ARS")} equiv.`
+            : `${m.label} ${m.anio}: ${fmtMoneda(m.totalARS, "ARS")}`;
           return (
             <div key={i} className="flex-1 flex flex-col items-center gap-0.5">
               <div className="w-full flex items-end" style={{ height: 56 }}>
                 <div className="w-full rounded-t transition-all duration-700"
-                  title={`${m.label} ${m.anio}: ${fmtMoneda(m.total, "ARS")}`}
+                  title={tooltip}
                   style={{
-                    height: `${Math.max(pct * 100, m.total > 0 ? 5 : 0)}%`,
+                    height: `${Math.max(pct * 100, val > 0 ? 5 : 0)}%`,
                     background: isActual ? C.gold : `${C.gold}35`,
-                    minHeight: m.total > 0 ? 2 : 0,
+                    minHeight: val > 0 ? 2 : 0,
                   }} />
               </div>
               <span className="text-[8px] font-mono w-full text-center truncate"
@@ -1398,7 +1450,8 @@ function generarHtmlPdf(ev, sel) {
     const campos = [
       ["Fecha", fmtD(ev.fecha)],
       ["Categoría", ev.categoria || "—"],
-      ["Estudio", ev.estudio ? `Estudio ${ev.estudio}` : "—"],
+      ["Estudio", (() => { const a = Array.isArray(ev.estudio) ? ev.estudio : ev.estudio ? [ev.estudio] : []; return a.length ? a.map(s => `Estudio ${s}`).join(", ") : "—"; })()],
+      ["Modalidad", ev.modalidadRodaje || "—"],
       ["Tipo producción", ev.tipoProd || "—"],
       ["Trackeo", ev.trackeo || "—"],
       ["Equipamiento", ev.equipamiento ? `Sí — ${ev.equipamientoDetalle || ""}` : "No"],
@@ -1814,7 +1867,7 @@ function Home({ eventos, onVer }) {
 
   const estStats = ESTUDIOS.map((s) => ({
     estudio: s,
-    count: eventosMes.filter((e) => e.estudio === s).length,
+    count: eventosMes.filter((e) => normEstudio(e.estudio).includes(s)).length,
     color: EST_COLORS[s],
   }));
 
@@ -1825,13 +1878,29 @@ function Home({ eventos, onVer }) {
   }, [eventosMes]);
 
   const finStats = useMemo(() => {
-    const totalMes = eventosMes.reduce((s, e) => s + totalFacturable(e), 0);
-    const facturadoMes = eventosMes.filter((e) => e.facturado).reduce((s, e) => s + totalFacturable(e), 0);
-    const pendienteMes = eventosMes.filter((e) => !e.facturado).reduce((s, e) => s + totalFacturable(e), 0);
+    const evsARS = eventosMes.filter((e) => e.moneda !== "USD");
+    const evsUSD = eventosMes.filter((e) => e.moneda === "USD");
+
+    const totalARS = evsARS.reduce((s, e) => s + totalFacturable(e), 0);
+    const totalUSD = evsUSD.reduce((s, e) => s + totalFacturable(e), 0);
+
+    const facturadoARS = evsARS.filter((e) => e.facturado).reduce((s, e) => s + totalFacturable(e), 0);
+    const facturadoUSD = evsUSD.filter((e) => e.facturado).reduce((s, e) => s + totalFacturable(e), 0);
+
+    const pendienteARS = evsARS.filter((e) => !e.facturado).reduce((s, e) => s + totalFacturable(e), 0);
+    const pendienteUSD = evsUSD.filter((e) => !e.facturado).reduce((s, e) => s + totalFacturable(e), 0);
+
     const m1Mes = eventosMes.reduce((s, e) => s + montoM1(e) * 1.21, 0);
     const m2Mes = eventosMes.reduce((s, e) => s + montoM2(e), 0);
-    const tieneUSD = eventosMes.some((e) => e.moneda === "USD");
-    return { totalMes, facturadoMes, pendienteMes, m1Mes, m2Mes, tieneUSD };
+    const tieneUSD = evsUSD.length > 0;
+
+    // Equivalente total en ARS usando tipo de cambio de cada evento
+    const totalEquivARS = totalARS + evsUSD.reduce((s, e) => {
+      const tc = tipoCambio(e);
+      return s + totalFacturable(e) * (tc || 0);
+    }, 0);
+
+    return { totalARS, totalUSD, facturadoARS, facturadoUSD, pendienteARS, pendienteUSD, m1Mes, m2Mes, tieneUSD, totalEquivARS };
   }, [eventosMes]);
 
   const teamStats = useMemo(() => {
@@ -1925,12 +1994,12 @@ function Home({ eventos, onVer }) {
             <DollarSign size={15} color={C.green} />
             <h2 className="text-sm font-semibold">Facturación — {MESES_ES[mes]} {anio}</h2>
           </div>
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-5">
+          {/* Totales en ARS */}
+          <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 mb-3">
             {[
-              { label: "Total del mes", val: finStats.totalMes, color: C.gold },
-              { label: "Facturado", val: finStats.facturadoMes, color: C.green },
-              { label: "Sin facturar", val: finStats.pendienteMes, color: C.amber },
-              { label: "MG M1 c/IVA", val: finStats.m1Mes, color: C.dim },
+              { label: "Total ARS", val: finStats.totalARS, color: C.gold },
+              { label: "Facturado ARS", val: finStats.facturadoARS, color: C.green },
+              { label: "Sin facturar ARS", val: finStats.pendienteARS, color: C.amber },
             ].map(({ label, val, color }) => (
               <div key={label} className="rounded-xl p-3 flex flex-col gap-1"
                 style={{ background: C.panel2, border: `1px solid ${C.border}` }}>
@@ -1941,6 +2010,35 @@ function Home({ eventos, onVer }) {
               </div>
             ))}
           </div>
+          {/* Totales en USD */}
+          {finStats.tieneUSD && (
+            <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 mb-3">
+              {[
+                { label: "Total USD", val: finStats.totalUSD, color: C.gold },
+                { label: "Facturado USD", val: finStats.facturadoUSD, color: C.green },
+                { label: "Sin facturar USD", val: finStats.pendienteUSD, color: C.amber },
+              ].map(({ label, val, color }) => (
+                <div key={label} className="rounded-xl p-3 flex flex-col gap-1"
+                  style={{ background: C.panel2, border: `1px solid ${C.border}` }}>
+                  <span className="text-[10px] font-semibold uppercase tracking-wide" style={{ color }}>{label}</span>
+                  <span className="font-mono font-bold text-sm" style={{ color }}>
+                    {fmtMoneda(val, "USD")}
+                  </span>
+                </div>
+              ))}
+            </div>
+          )}
+          {/* Equivalente total en ARS (si hay USD con tipo de cambio) */}
+          {finStats.tieneUSD && finStats.totalEquivARS > 0 && (
+            <div className="rounded-xl p-3 flex items-center justify-between mb-5"
+              style={{ background: C.panel2, border: `1px solid ${C.gold}40` }}>
+              <span className="text-[10px] font-semibold uppercase tracking-wide" style={{ color: C.gold }}>Total equiv. ARS (con tipo de cambio)</span>
+              <span className="font-mono font-bold text-sm" style={{ color: C.gold }}>
+                {fmtMoneda(finStats.totalEquivARS, "ARS")}
+              </span>
+            </div>
+          )}
+          {!finStats.tieneUSD && <div className="mb-5" />}
           <BarChart12Meses eventos={eventos} mesActual={mes} anioActual={anio} />
         </div>
       )}
@@ -2704,6 +2802,8 @@ function Detalle({ ev, onBack, onEdit, onDelete, onUpdate, onDuplicate, perms = 
 
       <div className="flex flex-wrap gap-1.5 mb-4">
         {ev.categoria && <Badge color={C.gold}><Film size={11} />{ev.categoria}</Badge>}
+        {ev.modalidadRodaje && <Badge color="#64B5F6">{ev.modalidadRodaje}</Badge>}
+        {normEstudio(ev.estudio).length > 0 && <Badge color={C.amber}><Building2 size={11} />{estudioLabel(ev.estudio)}</Badge>}
         {ev.tipoProd && <Badge color="#9b8cff">{ev.tipoProd}</Badge>}
         {ev.trackeo && <Badge color={ev.trackeo === "Con trackeo" ? C.green : C.dim}><Crosshair size={11} />{ev.trackeo}</Badge>}
         {ev.equipamiento ? <Badge color={C.green}><Wrench size={11} />Con equipamiento</Badge> : <Badge color={C.dim}><Wrench size={11} />Sin equipamiento</Badge>}
@@ -2932,11 +3032,19 @@ function ProduccionCard({ ev, onUpdate, perms }) {
   const startEdit = () => {
     setF({
       fecha: ev.fecha || "", categoria: ev.categoria || "",
-      estudio: ev.estudio || "", tipoProd: ev.tipoProd || "",
+      estudio: normEstudio(ev.estudio), modalidadRodaje: ev.modalidadRodaje || "",
+      tipoProd: ev.tipoProd || "",
       trackeo: ev.trackeo || "", equipamiento: !!ev.equipamiento,
       equipamientoDetalle: ev.equipamientoDetalle || "",
     });
     setEditando(true);
+  };
+
+  const toggleEstudio = (est) => {
+    setF((p) => {
+      const arr = p.estudio || [];
+      return { ...p, estudio: arr.includes(est) ? arr.filter((s) => s !== est) : [...arr, est] };
+    });
   };
 
   return (
@@ -2948,8 +3056,21 @@ function ProduccionCard({ ev, onUpdate, perms }) {
             <Input type="date" value={f.fecha} onChange={(v) => set("fecha", v)} /></div>
           <div><label className="text-[11px] block mb-1" style={{ color: C.dim }}>Categoría</label>
             <Select value={f.categoria} onChange={(v) => set("categoria", v)} options={CATEGORIAS} placeholder="Elegir" /></div>
-          <div><label className="text-[11px] block mb-1" style={{ color: C.dim }}>Estudio</label>
-            <Select value={f.estudio} onChange={(v) => set("estudio", v)} options={ESTUDIOS} placeholder="Elegir" /></div>
+          <div><label className="text-[11px] block mb-1" style={{ color: C.dim }}>Estudios (se puede elegir más de uno)</label>
+            <div className="flex flex-wrap gap-1.5">
+              {ESTUDIOS.map((est) => {
+                const sel = (f.estudio || []).includes(est);
+                return (
+                  <button key={est} type="button" onClick={() => toggleEstudio(est)}
+                    className="text-sm px-3 py-1.5 rounded-md transition-colors"
+                    style={{ background: sel ? C.gold : C.panel2, color: sel ? C.onGold : C.dim, border: `1px solid ${sel ? C.gold : C.border}` }}>
+                    Est. {est}
+                  </button>
+                );
+              })}
+            </div></div>
+          <div><label className="text-[11px] block mb-1" style={{ color: C.dim }}>Modalidad de rodaje</label>
+            <Select value={f.modalidadRodaje} onChange={(v) => set("modalidadRodaje", v)} options={MODALIDAD_RODAJE} placeholder="Elegir" /></div>
           <div><label className="text-[11px] block mb-1" style={{ color: C.dim }}>Tipo de producción</label>
             <Select value={f.tipoProd} onChange={(v) => set("tipoProd", v)} options={TIPO_PROD} placeholder="Elegir" /></div>
           <div><label className="text-[11px] block mb-1" style={{ color: C.dim }}>Trackeo</label>
@@ -2965,7 +3086,8 @@ function ProduccionCard({ ev, onUpdate, perms }) {
         <>
           <Dato k="Fecha" v={fmtFecha(ev.fecha)} mono />
           <Dato k="Categoría" v={ev.categoria || "—"} />
-          <Dato k="Estudio" v={ev.estudio || "—"} />
+          <Dato k="Estudios" v={estudioLabel(ev.estudio)} />
+          <Dato k="Modalidad" v={ev.modalidadRodaje || "—"} />
           <Dato k="Tipo" v={ev.tipoProd || "—"} />
           <Dato k="Trackeo" v={ev.trackeo || "—"} />
           {ev.equipamiento && ev.equipamientoDetalle && <Dato k="Equipamiento" v={ev.equipamientoDetalle} />}
@@ -2981,14 +3103,61 @@ function FacturacionCard({ ev, onUpdate, perms }) {
   const set = (k, v) => setF((p) => ({ ...p, [k]: v }));
 
   const startEdit = () => {
+    const cant = Number(ev.cantFacturas) || 1;
+    const desg = Array.isArray(ev.facturasDesglose) && ev.facturasDesglose.length > 0
+      ? ev.facturasDesglose
+      : cant > 1
+        ? Array.from({ length: cant }, () => ({ montoM1: "", montoM2: "" }))
+        : [];
     setF({
       distribucion: ev.distribucion || "M1", moneda: ev.moneda || "ARS",
       razonSocial: ev.razonSocial || "", montoM1: ev.montoM1 ?? "",
       montoM2: ev.montoM2 ?? "", cantFacturas: ev.cantFacturas ?? "",
+      facturasDesglose: desg, tipoCambio: ev.tipoCambio ?? "",
       medioPago: ev.medioPago || "", formaPago: ev.formaPago || "",
     });
     setEditando(true);
   };
+
+  const onCantFacturasChange = (v) => {
+    const n = Number(v) || 0;
+    set("cantFacturas", v);
+    if (n > 1) {
+      setF((p) => {
+        const prev = p.facturasDesglose || [];
+        const arr = Array.from({ length: n }, (_, i) => prev[i] || { montoM1: "", montoM2: "" });
+        return { ...p, facturasDesglose: arr };
+      });
+    } else {
+      set("facturasDesglose", []);
+    }
+  };
+
+  const setDesglose = (idx, campo, val) => {
+    setF((p) => {
+      const arr = [...(p.facturasDesglose || [])];
+      arr[idx] = { ...arr[idx], [campo]: val };
+      return { ...p, facturasDesglose: arr };
+    });
+  };
+
+  const guardarFact = () => {
+    const data = { ...f };
+    const cant = Number(data.cantFacturas) || 0;
+    if (cant > 1 && data.facturasDesglose?.length > 0) {
+      const sumM1 = data.facturasDesglose.reduce((s, d) => s + (Number(d.montoM1) || 0), 0);
+      const sumM2 = data.facturasDesglose.reduce((s, d) => s + (Number(d.montoM2) || 0), 0);
+      data.montoM1 = String(sumM1);
+      data.montoM2 = String(sumM2);
+    } else {
+      data.facturasDesglose = [];
+    }
+    onUpdate(data);
+    setEditando(false);
+  };
+
+  const cantNum = Number(f.cantFacturas) || 0;
+  const usaDesglose = cantNum > 1;
 
   return (
     <Card titulo="Facturación" icon={<DollarSign size={15} color={C.green} />}
@@ -2999,29 +3168,86 @@ function FacturacionCard({ ev, onUpdate, perms }) {
             <SelectKV value={f.distribucion} onChange={(v) => set("distribucion", v)} options={DISTRIBUCION_OPCIONES} /></div>
           <div><label className="text-[11px] block mb-1" style={{ color: C.dim }}>Moneda</label>
             <Select value={f.moneda} onChange={(v) => set("moneda", v)} options={MONEDAS} /></div>
+          {f.moneda === "USD" && (
+            <div><label className="text-[11px] block mb-1" style={{ color: C.dim }}>Tipo de cambio USD → ARS</label>
+              <Input type="number" value={f.tipoCambio} onChange={(v) => set("tipoCambio", v)} placeholder="Ej: 1200" />
+              <span className="text-[10px] mt-1 block" style={{ color: C.dim }}>Valor del dólar en pesos al momento del evento</span></div>
+          )}
           <div><label className="text-[11px] block mb-1" style={{ color: C.dim }}>Razón social</label>
             <Input value={f.razonSocial} onChange={(v) => set("razonSocial", v)} placeholder="Razón social…" /></div>
-          {(f.distribucion === "M1" || f.distribucion === "MIXTO") && (
-            <div><label className="text-[11px] block mb-1" style={{ color: C.dim }}>Monto M1 (neto)</label>
-              <Input type="number" value={f.montoM1} onChange={(v) => set("montoM1", v)} placeholder="0" /></div>
-          )}
-          {(f.distribucion === "M2" || f.distribucion === "MIXTO") && (
-            <div><label className="text-[11px] block mb-1" style={{ color: C.dim }}>Monto M2 (efectivo)</label>
-              <Input type="number" value={f.montoM2} onChange={(v) => set("montoM2", v)} placeholder="0" /></div>
-          )}
           <div><label className="text-[11px] block mb-1" style={{ color: C.dim }}>Cant. facturas</label>
-            <Input type="number" value={f.cantFacturas} onChange={(v) => set("cantFacturas", v)} placeholder="0" /></div>
+            <Input type="number" value={f.cantFacturas} onChange={onCantFacturasChange} placeholder="1" /></div>
+
+          {/* Montos: si hay más de 1 factura, desglose por factura */}
+          {usaDesglose ? (
+            <div className="grid gap-2">
+              <p className="text-[10px]" style={{ color: C.dim }}>Ingresá el monto de cada factura:</p>
+              {(f.facturasDesglose || []).map((d, idx) => (
+                <div key={idx} className="rounded-lg p-2.5" style={{ background: C.panel2, border: `1px solid ${C.border}` }}>
+                  <span className="text-[11px] font-semibold block mb-1.5" style={{ color: C.amber }}>Factura {idx + 1}</span>
+                  <div className="grid gap-1.5">
+                    {(f.distribucion === "M1" || f.distribucion === "MIXTO") && (
+                      <div className="flex items-center gap-2">
+                        <span className="text-[11px] w-20 shrink-0" style={{ color: C.dim }}>M1 (neto)</span>
+                        <Input type="number" value={d.montoM1} onChange={(v) => setDesglose(idx, "montoM1", v)} placeholder="0" />
+                      </div>
+                    )}
+                    {(f.distribucion === "M2" || f.distribucion === "MIXTO") && (
+                      <div className="flex items-center gap-2">
+                        <span className="text-[11px] w-20 shrink-0" style={{ color: C.dim }}>M2 (efect.)</span>
+                        <Input type="number" value={d.montoM2} onChange={(v) => setDesglose(idx, "montoM2", v)} placeholder="0" />
+                      </div>
+                    )}
+                  </div>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <>
+              {(f.distribucion === "M1" || f.distribucion === "MIXTO") && (
+                <>
+                  <div><label className="text-[11px] block mb-1" style={{ color: C.dim }}>Monto M1 (neto)</label>
+                    <Input type="number" value={f.montoM1} onChange={(v) => set("montoM1", v)} placeholder="0" /></div>
+                </>
+              )}
+              {(f.distribucion === "M2" || f.distribucion === "MIXTO") && (
+                <div><label className="text-[11px] block mb-1" style={{ color: C.dim }}>Monto M2 (efectivo)</label>
+                  <Input type="number" value={f.montoM2} onChange={(v) => set("montoM2", v)} placeholder="0" /></div>
+              )}
+            </>
+          )}
+
           <div><label className="text-[11px] block mb-1" style={{ color: C.dim }}>Medio de pago</label>
             <Input value={f.medioPago} onChange={(v) => set("medioPago", v)} placeholder="Transferencia, efectivo…" /></div>
           <div><label className="text-[11px] block mb-1" style={{ color: C.dim }}>Forma de pago</label>
             <Input value={f.formaPago} onChange={(v) => set("formaPago", v)} placeholder="Contado, 30 días, 2 semanas…" />
             <span className="text-[10px] mt-1 block" style={{ color: C.dim }}>Escribí los días/semanas/meses para activar alertas de vencimiento (ej: 30 días, 2 semanas, 1 mes)</span></div>
-          <EditCardFooter onSave={() => { onUpdate(f); setEditando(false); }} onCancel={() => setEditando(false)} />
+          <EditCardFooter onSave={guardarFact} onCancel={() => setEditando(false)} />
         </div>
       ) : (
         <>
           <Dato k="Distribución" v={empresaLabel(ev.distribucion)} />
+          <Dato k="Moneda" v={ev.moneda || "ARS"} />
+          {ev.moneda === "USD" && tipoCambio(ev) > 0 && (
+            <Dato k="Tipo de cambio" v={`1 USD = ${fmtMoneda(tipoCambio(ev), "ARS")}`} mono />
+          )}
           <Dato k="Razón social" v={ev.razonSocial || "—"} />
+          {/* Desglose por factura si hay más de 1 */}
+          {Array.isArray(ev.facturasDesglose) && ev.facturasDesglose.length > 1 && (
+            <div className="rounded-lg p-2.5 grid gap-1" style={{ background: C.panel2, border: `1px solid ${C.border}` }}>
+              <span className="text-[10px] font-semibold uppercase tracking-wide" style={{ color: C.dim }}>Desglose por factura</span>
+              {ev.facturasDesglose.map((d, idx) => (
+                <div key={idx} className="flex items-center justify-between text-[12px]">
+                  <span style={{ color: C.dim }}>Factura {idx + 1}</span>
+                  <span className="font-mono" style={{ color: C.text }}>
+                    {(ev.distribucion === "M1" || ev.distribucion === "MIXTO") && `M1: ${fmtMoneda(Number(d.montoM1) || 0, ev.moneda)}`}
+                    {ev.distribucion === "MIXTO" && " · "}
+                    {(ev.distribucion === "M2" || ev.distribucion === "MIXTO") && `M2: ${fmtMoneda(Number(d.montoM2) || 0, ev.moneda)}`}
+                  </span>
+                </div>
+              ))}
+            </div>
+          )}
           {(ev.distribucion === "M1" || ev.distribucion === "MIXTO") && (
             <><Dato k="Monto M1 (neto)" v={fmtMoneda(montoM1(ev), ev.moneda)} mono />
               <Dato k="Monto M1 + IVA" v={fmtMoneda(montoM1(ev) * 1.21, ev.moneda)} mono accent /></>
@@ -3030,6 +3256,9 @@ function FacturacionCard({ ev, onUpdate, perms }) {
             <Dato k="Monto M2 (efectivo)" v={fmtMoneda(montoM2(ev), ev.moneda)} mono />
           )}
           <Dato k="Total facturable" v={fmtMoneda(totalFacturable(ev), ev.moneda)} mono accent />
+          {ev.moneda === "USD" && tipoCambio(ev) > 0 && (
+            <Dato k="Equiv. ARS" v={fmtMoneda(totalFacturable(ev) * tipoCambio(ev), "ARS")} mono />
+          )}
           <Dato k="Cant. facturas" v={ev.cantFacturas || "—"} />
           <Dato k="Medio de pago" v={ev.medioPago || "—"} />
           <Dato k="Forma de pago" v={ev.formaPago || "—"} />
@@ -3300,9 +3529,12 @@ function EquipoExternoCard({ ev, onUpdate, perms }) {
               <input value={item.nombre} onChange={(e) => setItem(idx, "nombre", e.target.value)} placeholder="Nombre"
                 className="flex-1 text-sm px-2 py-1 rounded outline-none"
                 style={{ background: C.panel2, border: `1px solid ${C.border}`, color: C.text }} />
-              <input value={item.rol} onChange={(e) => setItem(idx, "rol", e.target.value)} placeholder="Rol"
-                className="text-sm px-2 py-1 rounded w-28 outline-none"
-                style={{ background: C.panel2, border: `1px solid ${C.border}`, color: C.text }} />
+              <select value={item.rol} onChange={(e) => setItem(idx, "rol", e.target.value)}
+                className="text-sm px-2 py-1 rounded w-48"
+                style={{ background: C.panel2, border: `1px solid ${C.border}`, color: item.rol ? C.text : C.dim, colorScheme: "dark" }}>
+                <option value="" style={{ color: C.dim }}>Rol…</option>
+                {ROLES_EQUIPO_TECNICO.map((r) => <option key={r} value={r} style={{ background: C.panel2, color: C.text }}>{r}</option>)}
+              </select>
               <button type="button" onClick={() => delItem(idx)}
                 className="p-1 rounded" style={{ color: C.rose }} title="Quitar"><X size={14} /></button>
             </div>
@@ -3645,13 +3877,12 @@ function Dato({ k, v, mono, accent }) {
 /* ====================== FORMULARIO ====================== */
 function FormEvento({ base, onCancel, onSave, guardando, personas = [], eventos = [], onLiberarPersona, onReemplazarEnEvento, onIrAPersonal, perms = {} }) {
   const [f, setF] = useState(() => {
-    // Garantiza que partes siempre tiene los 5 tipos, incluso en eventos viejos
     const partesExistentes = Array.isArray(base.partes) ? base.partes : [];
     const partes = PARTES_PROD.map((tipo) => {
       const existente = partesExistentes.find((p) => p.tipo === tipo);
       return existente || { tipo, fechas: [] };
     });
-    return { ...base, partes };
+    return { ...base, partes, estudio: normEstudio(base.estudio) };
   });
   const set = (k, v) => setF((p) => ({ ...p, [k]: v }));
   const setDir = (k, v) => setF((p) => ({ ...p, director: { ...p.director, [k]: v } }));
@@ -3796,7 +4027,16 @@ function FormEvento({ base, onCancel, onSave, guardando, personas = [], eventos 
       );
       return;
     }
-    onSave(f);
+    // Si hay desglose por factura, computar totales
+    const datos = { ...f };
+    const cant = Number(datos.cantFacturas) || 0;
+    if (cant > 1 && datos.facturasDesglose?.length > 0) {
+      datos.montoM1 = String(datos.facturasDesglose.reduce((s, d) => s + (Number(d.montoM1) || 0), 0));
+      datos.montoM2 = String(datos.facturasDesglose.reduce((s, d) => s + (Number(d.montoM2) || 0), 0));
+    } else {
+      datos.facturasDesglose = [];
+    }
+    onSave(datos);
   };
 
   return (
@@ -3818,8 +4058,23 @@ function FormEvento({ base, onCancel, onSave, guardando, personas = [], eventos 
           <Field label="Categoría">
             <Select value={f.categoria} onChange={(v) => set("categoria", v)} options={CATEGORIAS} placeholder="Elegir" />
           </Field>
-          <Field label="Estudio">
-            <Select value={f.estudio} onChange={(v) => set("estudio", v)} options={ESTUDIOS} placeholder="Elegir" />
+          <Field label="Estudios (se puede elegir más de uno)" full>
+            <div className="flex flex-wrap gap-2">
+              {ESTUDIOS.map((est) => {
+                const sel = (f.estudio || []).includes(est);
+                return (
+                  <button key={est} type="button"
+                    onClick={() => set("estudio", sel ? f.estudio.filter((s) => s !== est) : [...(f.estudio || []), est])}
+                    className="text-sm px-4 py-2 rounded-md transition-colors"
+                    style={{ background: sel ? C.gold : C.panel2, color: sel ? C.onGold : C.dim, border: `1px solid ${sel ? C.gold : C.border}` }}>
+                    Estudio {est}
+                  </button>
+                );
+              })}
+            </div>
+          </Field>
+          <Field label="Modalidad de rodaje">
+            <Select value={f.modalidadRodaje || ""} onChange={(v) => set("modalidadRodaje", v)} options={MODALIDAD_RODAJE} placeholder="Elegir" />
           </Field>
           <Field label="Tipo de producción">
             <Select value={f.tipoProd} onChange={(v) => set("tipoProd", v)} options={TIPO_PROD} placeholder="Elegir" />
@@ -4091,7 +4346,12 @@ function FormEvento({ base, onCancel, onSave, guardando, personas = [], eventos 
             {equipoExterno.map((i, idx) => (
               <div key={idx} className="flex flex-col sm:flex-row gap-2 sm:items-center">
                 <Input value={i.nombre} onChange={(v) => setExterno(idx, "nombre", v)} placeholder="Nombre y apellido" />
-                <Input value={i.rol} onChange={(v) => setExterno(idx, "rol", v)} placeholder="Rol en el evento" />
+                <select value={i.rol || ""} onChange={(e) => setExterno(idx, "rol", e.target.value)}
+                  className="text-sm px-3 py-2 rounded-md"
+                  style={{ background: C.panel2, border: `1px solid ${C.border}`, color: i.rol ? C.text : C.dim, colorScheme: "dark" }}>
+                  <option value="" style={{ color: C.dim }}>Rol…</option>
+                  {ROLES_EQUIPO_TECNICO.map((r) => <option key={r} value={r} style={{ background: C.panel2, color: C.text }}>{r}</option>)}
+                </select>
                 <IconBtn onClick={() => delExterno(idx)} title="Quitar" danger><X size={16} /></IconBtn>
               </div>
             ))}
@@ -4148,37 +4408,108 @@ function FormEvento({ base, onCancel, onSave, guardando, personas = [], eventos 
           <Field label="Moneda">
             <Select value={f.moneda} onChange={(v) => set("moneda", v)} options={MONEDAS} />
           </Field>
+          {f.moneda === "USD" && (
+            <Field label="Tipo de cambio USD → ARS">
+              <Input type="number" value={f.tipoCambio || ""} onChange={(v) => set("tipoCambio", v)} placeholder="Ej: 1200" />
+              <span className="text-[10px] mt-1 block" style={{ color: C.dim }}>Valor del dólar en pesos al momento del evento</span>
+            </Field>
+          )}
           <Field label="Cant. facturas a emitir">
-            <Input type="number" value={f.cantFacturas} onChange={(v) => set("cantFacturas", v)} placeholder="0" />
+            <Input type="number" value={f.cantFacturas} onChange={(v) => {
+              const n = Number(v) || 0;
+              set("cantFacturas", v);
+              if (n > 1) {
+                setF((p) => {
+                  const prev = p.facturasDesglose || [];
+                  const arr = Array.from({ length: n }, (_, i) => prev[i] || { montoM1: "", montoM2: "" });
+                  return { ...p, facturasDesglose: arr };
+                });
+              } else {
+                set("facturasDesglose", []);
+              }
+            }} placeholder="1" />
           </Field>
 
-          {(f.distribucion === "M1" || f.distribucion === "MIXTO") && (
-            <>
-              <Field label="Monto M1 (neto, sin IVA)">
-                <Input type="number" value={f.montoM1} onChange={(v) => set("montoM1", v)} placeholder="0" />
-              </Field>
-              <Field label="Monto M1 + IVA (auto)">
-                <div className="font-mono text-sm px-3 py-2 rounded-md" style={{ background: C.panel2, border: `1px solid ${C.border}`, color: C.gold }}>
-                  {fmtMoneda(conIva(f.montoM1), f.moneda)}
+          {/* Montos: si hay más de 1 factura, desglose por factura */}
+          {(Number(f.cantFacturas) || 0) > 1 ? (
+            <div className="sm:col-span-2 grid gap-2">
+              <p className="text-[10px]" style={{ color: C.dim }}>Ingresá el monto de cada factura por separado:</p>
+              {(f.facturasDesglose || []).map((d, idx) => (
+                <div key={idx} className="rounded-lg p-3" style={{ background: C.panel2, border: `1px solid ${C.border}` }}>
+                  <span className="text-[11px] font-semibold block mb-1.5" style={{ color: C.amber }}>Factura {idx + 1}</span>
+                  <div className="grid sm:grid-cols-2 gap-2">
+                    {(f.distribucion === "M1" || f.distribucion === "MIXTO") && (
+                      <div>
+                        <label className="text-[10px] block mb-1" style={{ color: C.dim }}>M1 (neto, sin IVA)</label>
+                        <Input type="number" value={d.montoM1} onChange={(v) => {
+                          setF((p) => {
+                            const arr = [...(p.facturasDesglose || [])];
+                            arr[idx] = { ...arr[idx], montoM1: v };
+                            return { ...p, facturasDesglose: arr };
+                          });
+                        }} placeholder="0" />
+                      </div>
+                    )}
+                    {(f.distribucion === "M2" || f.distribucion === "MIXTO") && (
+                      <div>
+                        <label className="text-[10px] block mb-1" style={{ color: C.dim }}>M2 (efectivo)</label>
+                        <Input type="number" value={d.montoM2} onChange={(v) => {
+                          setF((p) => {
+                            const arr = [...(p.facturasDesglose || [])];
+                            arr[idx] = { ...arr[idx], montoM2: v };
+                            return { ...p, facturasDesglose: arr };
+                          });
+                        }} placeholder="0" />
+                      </div>
+                    )}
+                  </div>
                 </div>
-              </Field>
-            </>
-          )}
+              ))}
+            </div>
+          ) : (
+            <>
+              {(f.distribucion === "M1" || f.distribucion === "MIXTO") && (
+                <>
+                  <Field label="Monto M1 (neto, sin IVA)">
+                    <Input type="number" value={f.montoM1} onChange={(v) => set("montoM1", v)} placeholder="0" />
+                  </Field>
+                  <Field label="Monto M1 + IVA (auto)">
+                    <div className="font-mono text-sm px-3 py-2 rounded-md" style={{ background: C.panel2, border: `1px solid ${C.border}`, color: C.gold }}>
+                      {fmtMoneda(conIva(f.montoM1), f.moneda)}
+                    </div>
+                  </Field>
+                </>
+              )}
 
-          {(f.distribucion === "M2" || f.distribucion === "MIXTO") && (
-            <Field label="Monto M2 (efectivo, sin IVA)" full={f.distribucion === "M2"}>
-              <Input type="number" value={f.montoM2} onChange={(v) => set("montoM2", v)} placeholder="0" />
-            </Field>
+              {(f.distribucion === "M2" || f.distribucion === "MIXTO") && (
+                <Field label="Monto M2 (efectivo, sin IVA)" full={f.distribucion === "M2"}>
+                  <Input type="number" value={f.montoM2} onChange={(v) => set("montoM2", v)} placeholder="0" />
+                </Field>
+              )}
+            </>
           )}
 
           <Field label="Total facturable (auto)" full>
             <div className="font-mono text-sm px-3 py-2 rounded-md flex items-center justify-between" style={{ background: C.panel2, border: `1px solid ${C.border}`, color: C.gold }}>
-              <span>{fmtMoneda(totalFacturable(f), f.moneda)}</span>
-              <span className="text-[11px]" style={{ color: C.dim }}>
-                {f.distribucion === "M1" && "= M1 + IVA"}
-                {f.distribucion === "M2" && "= efectivo M2"}
-                {f.distribucion === "MIXTO" && "= (M1 + IVA) + efectivo M2"}
-              </span>
+              {(() => {
+                let m1 = Number(f.montoM1) || 0;
+                let m2 = Number(f.montoM2) || 0;
+                if ((Number(f.cantFacturas) || 0) > 1 && f.facturasDesglose?.length > 0) {
+                  m1 = f.facturasDesglose.reduce((s, d) => s + (Number(d.montoM1) || 0), 0);
+                  m2 = f.facturasDesglose.reduce((s, d) => s + (Number(d.montoM2) || 0), 0);
+                }
+                const total = m1 * 1.21 + m2;
+                return (
+                  <>
+                    <span>{fmtMoneda(total, f.moneda)}</span>
+                    <span className="text-[11px]" style={{ color: C.dim }}>
+                      {f.distribucion === "M1" && "= M1 + IVA"}
+                      {f.distribucion === "M2" && "= efectivo M2"}
+                      {f.distribucion === "MIXTO" && "= (M1 + IVA) + efectivo M2"}
+                    </span>
+                  </>
+                );
+              })()}
             </div>
           </Field>
 
