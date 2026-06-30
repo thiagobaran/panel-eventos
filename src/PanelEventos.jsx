@@ -698,7 +698,7 @@ export default function PanelEventos() {
         <div className="flex items-center gap-2.5">
           <img src="/logo.png" alt="Cacodelphia" style={{ height: 34 }} className="object-contain" />
           <div className="leading-tight">
-            <div className="font-semibold tracking-tight text-sm sm:text-base">DEV Sistema eventos Cacodelphia</div>
+            <div className="font-semibold tracking-tight text-sm sm:text-base">Sistema eventos Cacodelphia</div>
             <div style={{ color: C.dim }} className="text-[11px] font-mono">Estudios</div>
           </div>
         </div>
@@ -4980,7 +4980,7 @@ function Login({ onLogin, bootError, seedInfo, hayUsuarios }) {
         <div className="flex items-center gap-3 mb-6 justify-center">
           <img src="/logo.png" alt="Cacodelphia" style={{ height: 44 }} className="object-contain" />
           <div className="leading-tight">
-            <div className="font-semibold tracking-tight">DEV Sistema eventos Cacodelphia</div>
+            <div className="font-semibold tracking-tight">Sistema eventos Cacodelphia</div>
             <div style={{ color: C.dim }} className="text-[11px] font-mono">Estudios</div>
           </div>
         </div>
