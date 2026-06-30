@@ -224,7 +224,7 @@ export function perms(rol) {
     case "admin":
       return {
         eventoCrear: true, eventoEditar: true, eventoBorrar: true,
-        eventoFacturar: true, archivos: true,
+        eventoConfirmar: true, eventoFacturar: true, archivos: true,
         personalAgregar: true, personalEditar: true, personalBorrar: true,
         categoriaAgregar: true, categoriaEditar: true, categoriaBorrar: true,
         importarExportar: true,
@@ -234,7 +234,7 @@ export function perms(rol) {
     case "contabilidad":
       return {
         eventoCrear: false, eventoEditar: true, eventoBorrar: true,
-        eventoFacturar: true, archivos: true,
+        eventoConfirmar: false, eventoFacturar: true, archivos: true,
         personalAgregar: false, personalEditar: true, personalBorrar: true,
         categoriaAgregar: false, categoriaEditar: true, categoriaBorrar: true,
         importarExportar: true,
@@ -244,7 +244,7 @@ export function perms(rol) {
     case "produccion":
       return {
         eventoCrear: true, eventoEditar: true, eventoBorrar: false,
-        eventoFacturar: false, archivos: false,
+        eventoConfirmar: true, eventoFacturar: false, archivos: false,
         personalAgregar: false, personalEditar: false, personalBorrar: false,
         categoriaAgregar: false, categoriaEditar: false, categoriaBorrar: false,
         importarExportar: true,
@@ -255,7 +255,7 @@ export function perms(rol) {
     default:
       return {
         eventoCrear: false, eventoEditar: false, eventoBorrar: false,
-        eventoFacturar: false, archivos: false,
+        eventoConfirmar: false, eventoFacturar: false, archivos: false,
         personalAgregar: false, personalEditar: false, personalBorrar: false,
         categoriaAgregar: false, categoriaEditar: false, categoriaBorrar: false,
         importarExportar: false,

@@ -2953,7 +2953,7 @@ function Detalle({ ev, onBack, onEdit, onDelete, onUpdate, onDuplicate, perms = 
               Este evento está en modo borrador. Cuando esté todo listo, confirmalo para que contabilidad pueda facturarlo.
             </p>
           </div>
-          {perms.eventoEditar && (
+          {perms.eventoConfirmar && (
             <button onClick={() => onUpdate({ confirmado: true, confirmadoAt: new Date().toISOString() })}
               className="text-sm font-semibold px-4 py-2 rounded-md flex items-center gap-1.5 shrink-0"
               style={{ background: C.green, color: "#000" }}>
@@ -2970,7 +2970,7 @@ function Detalle({ ev, onBack, onEdit, onDelete, onUpdate, onDuplicate, perms = 
             <span className="font-medium">Confirmado</span>
             <span className="text-xs" style={{ color: C.dim }}>— pendiente de facturación</span>
           </div>
-          {perms.eventoEditar && !perms.eventoFacturar && (
+          {perms.eventoConfirmar && (
             <button onClick={() => { if (confirm("¿Volver a modo borrador?")) onUpdate({ confirmado: false, confirmadoAt: null }); }}
               className="text-[11px] px-2 py-1 rounded hover:opacity-80" style={{ color: C.dim, border: `1px solid ${C.border}` }}>
               Deshacer confirmación
