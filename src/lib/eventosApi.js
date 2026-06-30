@@ -54,6 +54,9 @@ const toDb = (e) => {
     facturado: !!e.facturado,
     comprobante_pago: !!e.comprobantePago,
     facturado_total: !!e.facturadoTotal,
+    confirmado: !!e.confirmado,
+    confirmado_at: e.confirmadoAt || null,
+    facturado_at: e.facturadoAt || null,
     observaciones: e.observaciones || null,
   };
 };
@@ -110,6 +113,9 @@ const fromDb = (r) => {
     facturado: !!r.facturado,
     comprobantePago: !!r.comprobante_pago,
     facturadoTotal: !!r.facturado_total,
+    confirmado: !!r.confirmado,
+    confirmadoAt: r.confirmado_at || null,
+    facturadoAt: r.facturado_at || null,
     observaciones: r.observaciones || "",
   };
 };

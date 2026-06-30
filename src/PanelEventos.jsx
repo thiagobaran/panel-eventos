@@ -5,7 +5,7 @@ import {
   Wrench, Users, Building2, Phone, FileText, Check, X,
   Trash2, Pencil, AlertTriangle, Clock, DollarSign, ChevronLeft,
   Download, Upload, WifiOff, RefreshCw, Paperclip, Receipt, Eye, EyeOff,
-  LogOut, KeyRound, UserCog, ShieldCheck, Lock,
+  LogOut, KeyRound, UserCog, ShieldCheck, Lock, Bell, CheckCircle,
   BarChart2, ChevronRight, MessageSquare, Send, Printer, Copy,
 } from "lucide-react";
 import { listEventos, upsertEvento, deleteEvento, subscribeEventos } from "./lib/eventosApi";
@@ -136,6 +136,9 @@ const nuevoEvento = () => ({
   facturado: false,
   comprobantePago: false,
   facturadoTotal: false,
+  confirmado: false,
+  confirmadoAt: null,
+  facturadoAt: null,
   observaciones: "",
 });
 
@@ -186,6 +189,19 @@ const getFechasTrabajo = (eventPartes, integrantePartes) => {
   if (!eventPartes || eventPartes.length === 0) return new Set();
   const filtro = (integrantePartes || []).length > 0 ? integrantePartes : PARTES_PROD;
   return new Set(eventPartes.filter((p) => filtro.includes(p.tipo)).flatMap((p) => p.fechas || []));
+};
+
+// Notificaciones: guardamos en localStorage la última vez que cada usuario vio las notificaciones.
+const NOTIF_KEY = "panel-eventos-notif-v1";
+const getLastNotifSeen = (userId) => {
+  try { return JSON.parse(localStorage.getItem(NOTIF_KEY) || "{}")[userId]?.lastSeen || null; } catch { return null; }
+};
+const setLastNotifSeen = (userId) => {
+  try {
+    const data = JSON.parse(localStorage.getItem(NOTIF_KEY) || "{}");
+    data[userId] = { lastSeen: new Date().toISOString() };
+    localStorage.setItem(NOTIF_KEY, JSON.stringify(data));
+  } catch {}
 };
 
 // Lectura de mensajes: guardamos en localStorage la última vez que cada usuario
@@ -430,6 +446,9 @@ export default function PanelEventos() {
       facturado: false,
       comprobantePago: false,
       facturadoTotal: false,
+      confirmado: false,
+      confirmadoAt: null,
+      facturadoAt: null,
     };
     setDuplicandoBase(copia);
     setEditId(null);
@@ -580,11 +599,37 @@ export default function PanelEventos() {
     });
   }, [eventos, busqueda, filtroCat, filtroEmp, filtroTiempo, hoyISO]);
 
-  const pendFact = eventos.filter((e) => e.nombre && !e.facturado);
+  const pendFact = eventos.filter((e) => e.nombre && e.confirmado && !e.facturado);
   const pendComp = eventos.filter(
     (e) => e.nombre && e.facturado && !e.comprobantePago
   );
   const pendVenc = eventos.filter((e) => { const d = diasVencimientoPago(e); return d !== null && d < 0; });
+
+  // Notificaciones
+  const [showNotif, setShowNotif] = useState(false);
+  const [lastNotifSeenTs, setLastNotifSeenTs] = useState(() => getLastNotifSeen(usuario?.id));
+
+  const notifItems = useMemo(() => {
+    if (!usuario) return [];
+    const rol = usuario.rol;
+    if (rol === "contabilidad" || rol === "admin") {
+      return eventos.filter((e) => e.confirmado && !e.facturado && e.nombre)
+        .map((e) => ({ ...e, notifTipo: "listo" }));
+    }
+    if (rol === "produccion") {
+      return eventos.filter((e) => e.facturado && e.facturadoAt && e.nombre && (!lastNotifSeenTs || e.facturadoAt > lastNotifSeenTs))
+        .map((e) => ({ ...e, notifTipo: "facturado" }));
+    }
+    return [];
+  }, [eventos, usuario, lastNotifSeenTs]);
+
+  const markNotifsRead = () => {
+    if (usuario?.id) {
+      setLastNotifSeen(usuario.id);
+      setLastNotifSeenTs(new Date().toISOString());
+    }
+    setShowNotif(false);
+  };
 
   const eventoEdit = editId ? eventos.find((e) => e.id === editId) : null;
   const eventoVer = verId ? eventos.find((e) => e.id === verId) : null;
@@ -677,6 +722,67 @@ export default function PanelEventos() {
             </Tab>
           )}
           <div className="ml-2 flex items-center gap-2 pl-2" style={{ borderLeft: `1px solid ${C.border}` }}>
+            {/* Notificaciones */}
+            <div className="relative">
+              <button onClick={() => setShowNotif((v) => !v)} title="Notificaciones"
+                className="p-1.5 rounded-md relative hover:opacity-80"
+                style={{ background: showNotif ? `${C.gold}22` : "transparent", color: C.text }}>
+                <Bell size={16} />
+                {notifItems.length > 0 && (
+                  <span className="absolute -top-1 -right-1 text-[9px] font-bold min-w-[16px] text-center px-1 rounded-full"
+                    style={{ background: C.rose, color: "#fff" }}>
+                    {notifItems.length}
+                  </span>
+                )}
+              </button>
+              {showNotif && (
+                <div className="absolute right-0 top-full mt-1 w-80 rounded-lg shadow-2xl z-50 overflow-hidden"
+                  style={{ background: C.panel, border: `1px solid ${C.border}` }}>
+                  <div className="px-3 py-2 flex items-center justify-between" style={{ borderBottom: `1px solid ${C.border}` }}>
+                    <span className="text-xs font-semibold">Notificaciones</span>
+                    {notifItems.length > 0 && (
+                      <button onClick={markNotifsRead} className="text-[10px] px-2 py-0.5 rounded hover:opacity-80" style={{ color: C.gold }}>
+                        Marcar leídas
+                      </button>
+                    )}
+                  </div>
+                  <div className="max-h-72 overflow-auto">
+                    {notifItems.length === 0 ? (
+                      <div className="px-3 py-4 text-center text-xs" style={{ color: C.dim }}>
+                        Sin notificaciones nuevas
+                      </div>
+                    ) : (
+                      notifItems.map((e) => (
+                        <button key={e.id}
+                          onClick={() => { setShowNotif(false); setVerId(e.id); setVista("detalle"); }}
+                          className="w-full text-left px-3 py-2 flex items-start gap-2 hover:opacity-80 transition-opacity"
+                          style={{ borderBottom: `1px solid ${C.border}` }}>
+                          <div className="mt-0.5 shrink-0">
+                            {e.notifTipo === "listo"
+                              ? <CheckCircle size={14} color={C.amber} />
+                              : <DollarSign size={14} color={C.green} />}
+                          </div>
+                          <div className="min-w-0">
+                            <div className="text-xs font-medium truncate">{e.nombre}</div>
+                            <div className="text-[10px]" style={{ color: C.dim }}>
+                              {e.notifTipo === "listo"
+                                ? "Confirmado — listo para facturar"
+                                : `Facturado — ${fmtMoneda(totalFacturable(e), e.moneda)}`}
+                            </div>
+                          </div>
+                          <span className="text-[10px] font-mono shrink-0 mt-0.5" style={{ color: C.dim }}>{fmtFecha(e.fecha)}</span>
+                        </button>
+                      ))
+                    )}
+                  </div>
+                  <div className="px-3 py-1.5 text-[10px]" style={{ color: C.dim, borderTop: `1px solid ${C.border}` }}>
+                    {(usuario.rol === "contabilidad" || usuario.rol === "admin")
+                      ? "Eventos confirmados pendientes de facturación"
+                      : "Eventos facturados desde tu última visita"}
+                  </div>
+                </div>
+              )}
+            </div>
             <div className="hidden sm:flex flex-col leading-tight items-end">
               <span className="text-xs font-medium">{usuario.nombre}</span>
               <span className="text-[10px] font-mono uppercase tracking-wide" style={{ color: C.gold }}>{usuario.rol}</span>
@@ -840,7 +946,7 @@ function generarHtmlEventos(evs) {
     if (ev.razonSocial) filas += `<tr><td class="lbl">Razón social</td><td>${esc(ev.razonSocial)}</td></tr>`;
     filas += `<tr><td class="lbl">Empresa</td><td>${dist}</td></tr>`;
     filas += `<tr><td class="lbl">Total facturable</td><td><strong>${fmtM(total, ev.moneda)}</strong></td></tr>`;
-    filas += `<tr><td class="lbl">Facturado</td><td>${ev.facturado ? "✓ Sí" : "✗ Pendiente"}</td></tr>`;
+    filas += `<tr><td class="lbl">Estado</td><td>${ev.facturado ? "✓ Facturado" : ev.confirmado ? "Listo para facturar" : "Borrador"}</td></tr>`;
     if (ev.director?.nombre) filas += `<tr><td class="lbl">Director/a</td><td>${esc(ev.director.nombre)}</td></tr>`;
 
     let parteHtml = "";
@@ -1170,7 +1276,9 @@ function Lista({ eventos, total, busqueda, setBusqueda, filtroCat, setFiltroCat,
                   <div className="font-mono text-sm">{fmtMoneda(totalFacturable(e), e.moneda)}</div>
                   <div className="flex gap-1 justify-end mt-1 flex-wrap">
                     {finalizado && <Badge color={C.dim}>Finalizado</Badge>}
-                    {e.facturado ? <Badge solid color={C.green}>Facturado</Badge> : <Badge color={C.amber}>S/ facturar</Badge>}
+                    {!e.confirmado && <Badge color={C.dim}>Borrador</Badge>}
+                    {e.confirmado && !e.facturado && <Badge color={C.amber}>Listo p/ facturar</Badge>}
+                    {e.facturado && <Badge solid color={C.green}>Facturado</Badge>}
                     {e.facturado && !e.comprobantePago && <Badge color={C.rose}>S/ comprob.</Badge>}
                     {(() => {
                       const d = diasVencimientoPago(e);
@@ -1499,7 +1607,7 @@ function generarHtmlPdf(ev, sel) {
       ["Medio de pago", ev.medioPago || "—"],
       ["Forma de pago", ev.formaPago || "—"],
       ["Cant. facturas", ev.cantFacturas || "—"],
-      ["Facturado", ev.facturado ? "Sí" : "No"],
+      ["Estado", ev.facturado ? "Facturado" : ev.confirmado ? "Listo p/ facturar" : "Borrador"],
       ["Comprobante de pago", ev.comprobantePago ? "Adjunto" : "Pendiente"],
     ];
     campos.forEach(([l, v]) => { rows += `<tr><td class="lbl">${l}</td><td>${v}</td></tr>`; });
@@ -2833,6 +2941,44 @@ function Detalle({ ev, onBack, onEdit, onDelete, onUpdate, onDuplicate, perms = 
         {ev.equipamiento ? <Badge color={C.green}><Wrench size={11} />Con equipamiento</Badge> : <Badge color={C.dim}><Wrench size={11} />Sin equipamiento</Badge>}
       </div>
 
+      {/* Banner borrador / confirmación */}
+      {!ev.confirmado && (
+        <div className="rounded-xl p-4 mb-4 flex items-center gap-3 flex-wrap"
+          style={{ background: `${C.amber}10`, border: `1px dashed ${C.amber}50` }}>
+          <div className="flex-1 min-w-0">
+            <div className="text-sm font-semibold flex items-center gap-1.5" style={{ color: C.amber }}>
+              <Pencil size={14} /> Borrador
+            </div>
+            <p className="text-xs mt-0.5" style={{ color: C.dim }}>
+              Este evento está en modo borrador. Cuando esté todo listo, confirmalo para que contabilidad pueda facturarlo.
+            </p>
+          </div>
+          {perms.eventoEditar && (
+            <button onClick={() => onUpdate({ confirmado: true, confirmadoAt: new Date().toISOString() })}
+              className="text-sm font-semibold px-4 py-2 rounded-md flex items-center gap-1.5 shrink-0"
+              style={{ background: C.green, color: "#000" }}>
+              <Check size={15} /> Confirmar listo para facturar
+            </button>
+          )}
+        </div>
+      )}
+      {ev.confirmado && !ev.facturado && (
+        <div className="rounded-xl px-4 py-2.5 mb-4 flex items-center gap-2 justify-between flex-wrap"
+          style={{ background: `${C.green}12`, border: `1px solid ${C.green}40` }}>
+          <div className="flex items-center gap-2 text-sm" style={{ color: C.green }}>
+            <CheckCircle size={15} />
+            <span className="font-medium">Confirmado</span>
+            <span className="text-xs" style={{ color: C.dim }}>— pendiente de facturación</span>
+          </div>
+          {perms.eventoEditar && !perms.eventoFacturar && (
+            <button onClick={() => { if (confirm("¿Volver a modo borrador?")) onUpdate({ confirmado: false, confirmadoAt: null }); }}
+              className="text-[11px] px-2 py-1 rounded hover:opacity-80" style={{ color: C.dim, border: `1px solid ${C.border}` }}>
+              Deshacer confirmación
+            </button>
+          )}
+        </div>
+      )}
+
       <div className="grid sm:grid-cols-2 gap-4">
         <MensajesEquipo ev={ev} usuario={usuario} onUpdate={onUpdate} />
 
@@ -2846,7 +2992,7 @@ function Detalle({ ev, onBack, onEdit, onDelete, onUpdate, onDuplicate, perms = 
               ? "Editable solo por administración una vez creado el evento."
               : "Solo administración / contabilidad puede modificar este estado."}
           </p>
-          <Toggle checked={ev.facturado} onChange={(v) => onUpdate({ facturado: v })} label="Facturado" disabled={!perms.eventoFacturar} />
+          <Toggle checked={ev.facturado} onChange={(v) => onUpdate({ facturado: v, ...(v ? { facturadoAt: new Date().toISOString() } : { facturadoAt: null }) })} label="Facturado" disabled={!perms.eventoFacturar} />
           <Toggle checked={ev.comprobantePago} onChange={(v) => onUpdate({ comprobantePago: v })} label="Comprobante de pago adjunto" disabled={!perms.eventoFacturar} />
           <Toggle checked={ev.facturadoTotal} onChange={(v) => onUpdate({ facturadoTotal: v })} label="Facturado total" disabled={!perms.eventoFacturar} />
           <p className="text-[11px] mt-2" style={{ color: C.dim }}>
@@ -3841,8 +3987,10 @@ function ArchivoLista({ ev, tipo, titulo, icono, archivos, max, textoVacio, onUp
         if (max && lista.length >= max) {
           patch.facturado = true;
           patch.facturadoTotal = true;
+          patch.facturadoAt = new Date().toISOString();
         } else if (lista.length > 0) {
           patch.facturado = true;
+          patch.facturadoAt = new Date().toISOString();
         }
       }
       if (tipo === "comprobantes" && lista.length > 0) patch.comprobantePago = true;
@@ -3864,6 +4012,7 @@ function ArchivoLista({ ev, tipo, titulo, icono, archivos, max, textoVacio, onUp
       if (tipo === "facturas" && lista.length === 0) {
         patch.facturado = false;
         patch.facturadoTotal = false;
+        patch.facturadoAt = null;
       } else if (tipo === "facturas" && max && lista.length < max) {
         patch.facturadoTotal = false;
       }
