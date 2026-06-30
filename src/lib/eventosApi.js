@@ -18,12 +18,15 @@ const toDb = (e) => {
   const montoM2 = distribucion === "M1" ? null : num(e.montoM2);
   const importe = (Number(montoM1) || 0) + (Number(montoM2) || 0);
 
+  const estudioVal = Array.isArray(e.estudio) ? JSON.stringify(e.estudio) : (e.estudio || null);
+
   return {
     id: e.id,
     fecha: e.fecha || null,
     nombre: e.nombre || "",
     categoria: e.categoria || null,
-    estudio: e.estudio || null,
+    estudio: estudioVal,
+    modalidad_rodaje: e.modalidadRodaje || null,
     tipo_prod: e.tipoProd || null,
     trackeo: e.trackeo || null,
     equipamiento: !!e.equipamiento,
@@ -38,6 +41,8 @@ const toDb = (e) => {
     monto_m1: montoM1,
     monto_m2: montoM2,
     cant_facturas: num(e.cantFacturas),
+    facturas_desglose: Array.isArray(e.facturasDesglose) ? e.facturasDesglose : [],
+    tipo_cambio: num(e.tipoCambio),
     medio_pago: e.medioPago || null,
     forma_pago: e.formaPago || null,
     facturas_links: e.facturasLinks || null,
@@ -63,12 +68,21 @@ const fromDb = (r) => {
     if (distribucion === "M1" && montoM1 == null) montoM1 = r.importe ?? null;
     if (distribucion === "M2" && montoM2 == null) montoM2 = r.importe ?? null;
   }
+  // estudio: parse JSON-stringified array from text column, or legacy single string
+  let estudio = [];
+  if (Array.isArray(r.estudio)) {
+    estudio = r.estudio;
+  } else if (typeof r.estudio === "string" && r.estudio) {
+    try { const p = JSON.parse(r.estudio); if (Array.isArray(p)) estudio = p; else estudio = [r.estudio]; } catch { estudio = [r.estudio]; }
+  }
+
   return {
     id: r.id,
     fecha: r.fecha || "",
     nombre: r.nombre || "",
     categoria: r.categoria || "",
-    estudio: r.estudio || "",
+    estudio,
+    modalidadRodaje: r.modalidad_rodaje || "",
     tipoProd: r.tipo_prod || "",
     trackeo: r.trackeo || "",
     equipamiento: !!r.equipamiento,
@@ -83,6 +97,8 @@ const fromDb = (r) => {
     montoM1: montoM1 ?? "",
     montoM2: montoM2 ?? "",
     cantFacturas: r.cant_facturas ?? "",
+    facturasDesglose: Array.isArray(r.facturas_desglose) ? r.facturas_desglose : [],
+    tipoCambio: r.tipo_cambio ?? "",
     medioPago: r.medio_pago || "",
     formaPago: r.forma_pago || "",
     facturasLinks: r.facturas_links || "",

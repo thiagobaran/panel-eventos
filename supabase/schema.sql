@@ -59,6 +59,11 @@ alter table public.eventos add column if not exists partes jsonb not null defaul
 -- Observaciones/mensajes internos del equipo por evento
 alter table public.eventos add column if not exists mensajes jsonb not null default '[]'::jsonb;
 
+-- Nuevos campos: modalidad de rodaje, desglose por factura, tipo de cambio USD→ARS
+alter table public.eventos add column if not exists modalidad_rodaje text;
+alter table public.eventos add column if not exists facturas_desglose jsonb not null default '[]'::jsonb;
+alter table public.eventos add column if not exists tipo_cambio numeric;
+
 -- Mantiene "updated_at" al día en cada modificación
 create or replace function public.set_updated_at()
 returns trigger as $$

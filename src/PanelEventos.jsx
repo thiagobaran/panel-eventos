@@ -142,7 +142,10 @@ const nuevoEvento = () => ({
 // Normaliza estudio: eventos viejos tienen string, nuevos tienen array.
 const normEstudio = (est) => {
   if (Array.isArray(est)) return est;
-  if (est) return [est];
+  if (typeof est === "string" && est) {
+    try { const p = JSON.parse(est); if (Array.isArray(p)) return p; } catch {}
+    return [est];
+  }
   return [];
 };
 const estudioLabel = (est) => {
@@ -2883,19 +2886,35 @@ function PartesDetalle({ ev, onUpdate, perms }) {
   };
   const cancelEdit = () => { setEditandoIdx(null); setPartesTmp(null); setFechaInput(""); };
 
+  const estudiosEvento = normEstudio(ev.estudio);
+
+  const toggleEstudioFecha = (fecha, est) => {
+    setPartesTmp((prev) => prev.map((p, i) => {
+      if (i !== editandoIdx) return p;
+      const map = { ...(p.estudiosXFecha || {}) };
+      const arr = map[fecha] || [];
+      map[fecha] = arr.includes(est) ? arr.filter((s) => s !== est) : [...arr, est];
+      return { ...p, estudiosXFecha: map };
+    }));
+  };
+
   const addFecha = () => {
     if (!fechaInput || editandoIdx === null) return;
     setPartesTmp((prev) => prev.map((p, i) => {
       if (i !== editandoIdx) return p;
       if ((p.fechas || []).includes(fechaInput)) return p;
-      return { ...p, fechas: [...(p.fechas || []), fechaInput].sort() };
+      const map = { ...(p.estudiosXFecha || {}) };
+      map[fechaInput] = estudiosEvento.length > 0 ? [...estudiosEvento] : [];
+      return { ...p, fechas: [...(p.fechas || []), fechaInput].sort(), estudiosXFecha: map };
     }));
     setFechaInput("");
   };
   const delFecha = (fecha) => {
     setPartesTmp((prev) => prev.map((p, i) => {
       if (i !== editandoIdx) return p;
-      return { ...p, fechas: (p.fechas || []).filter((d) => d !== fecha) };
+      const map = { ...(p.estudiosXFecha || {}) };
+      delete map[fecha];
+      return { ...p, fechas: (p.fechas || []).filter((d) => d !== fecha), estudiosXFecha: map };
     }));
   };
   const guardar = () => {
@@ -2927,24 +2946,40 @@ function PartesDetalle({ ev, onUpdate, perms }) {
                 )}
               </div>
               {/* Chips */}
-              <div className="flex flex-wrap gap-1 flex-1">
+              <div className="grid gap-1 flex-1">
                 {fechas.length === 0 && !isEditing && (
                   <span className="text-[10px]" style={{ color: C.dim }}>Sin fechas</span>
                 )}
-                {fechas.map((fecha) =>
-                  isEditing ? (
-                    <button key={fecha} type="button" onClick={() => delFecha(fecha)}
-                      className="inline-flex items-center gap-0.5 text-[10px] font-mono px-1.5 py-0.5 rounded"
-                      style={{ background: `${C.rose}22`, border: `1px solid ${C.rose}55`, color: C.rose }} title="Quitar">
-                      {fmtFecha(fecha)} <X size={8} />
-                    </button>
+                {fechas.map((fecha) => {
+                  const estDelDia = (parte.estudiosXFecha || {})[fecha] || [];
+                  const estTag = estudiosEvento.length >= 2 && estDelDia.length > 0
+                    ? ` · ${estDelDia.map((s) => `E${s}`).join("+")}`
+                    : "";
+                  return isEditing ? (
+                    <div key={fecha} className="flex items-center gap-1 flex-wrap">
+                      <button type="button" onClick={() => delFecha(fecha)}
+                        className="inline-flex items-center gap-0.5 text-[10px] font-mono px-1.5 py-0.5 rounded"
+                        style={{ background: `${C.rose}22`, border: `1px solid ${C.rose}55`, color: C.rose }} title="Quitar">
+                        {fmtFecha(fecha)} <X size={8} />
+                      </button>
+                      {estudiosEvento.length >= 2 && estudiosEvento.map((est) => {
+                        const activo = estDelDia.includes(est);
+                        return (
+                          <button key={est} type="button" onClick={() => toggleEstudioFecha(fecha, est)}
+                            className="text-[9px] px-1 py-0.5 rounded transition-colors"
+                            style={{ background: activo ? EST_COLORS[est] || C.gold : C.panel, color: activo ? "#000" : C.dim, border: `1px solid ${activo ? (EST_COLORS[est] || C.gold) : C.border}` }}>
+                            E{est}
+                          </button>
+                        );
+                      })}
+                    </div>
                   ) : (
                     <span key={fecha} className="text-[10px] font-mono px-1.5 py-0.5 rounded"
                       style={{ background: `${C.amber}18`, color: C.text }}>
-                      {fmtFecha(fecha)}
+                      {fmtFecha(fecha)}{estTag}
                     </span>
-                  )
-                )}
+                  );
+                })}
               </div>
               {/* Input agregar (solo editando) */}
               {isEditing && (
@@ -3056,6 +3091,9 @@ function ProduccionCard({ ev, onUpdate, perms }) {
             <Input type="date" value={f.fecha} onChange={(v) => set("fecha", v)} /></div>
           <div><label className="text-[11px] block mb-1" style={{ color: C.dim }}>Categoría</label>
             <Select value={f.categoria} onChange={(v) => set("categoria", v)} options={CATEGORIAS} placeholder="Elegir" /></div>
+          <div><label className="text-[11px] block mb-1" style={{ color: C.dim }}>Modalidad de rodaje</label>
+            <Select value={f.modalidadRodaje} onChange={(v) => { set("modalidadRodaje", v); if (v && v !== "En estudio") set("estudio", []); }} options={MODALIDAD_RODAJE} placeholder="Elegir" /></div>
+          {(!f.modalidadRodaje || f.modalidadRodaje === "En estudio") && (
           <div><label className="text-[11px] block mb-1" style={{ color: C.dim }}>Estudios (se puede elegir más de uno)</label>
             <div className="flex flex-wrap gap-1.5">
               {ESTUDIOS.map((est) => {
@@ -3069,8 +3107,7 @@ function ProduccionCard({ ev, onUpdate, perms }) {
                 );
               })}
             </div></div>
-          <div><label className="text-[11px] block mb-1" style={{ color: C.dim }}>Modalidad de rodaje</label>
-            <Select value={f.modalidadRodaje} onChange={(v) => set("modalidadRodaje", v)} options={MODALIDAD_RODAJE} placeholder="Elegir" /></div>
+          )}
           <div><label className="text-[11px] block mb-1" style={{ color: C.dim }}>Tipo de producción</label>
             <Select value={f.tipoProd} onChange={(v) => set("tipoProd", v)} options={TIPO_PROD} placeholder="Elegir" /></div>
           <div><label className="text-[11px] block mb-1" style={{ color: C.dim }}>Trackeo</label>
@@ -3892,12 +3929,28 @@ function FormEvento({ base, onCancel, onSave, guardando, personas = [], eventos 
   // Reemplazo de integrante en otro evento: { eventoId, personaId, nuevoId }
   const [reemplazando, setReemplazando] = useState(null);
 
+  const toggleEstudioFecha = (tipoIdx, fecha, est) => {
+    setF((prev) => ({
+      ...prev,
+      partes: prev.partes.map((p, i) => {
+        if (i !== tipoIdx) return p;
+        const map = { ...(p.estudiosXFecha || {}) };
+        const arr = map[fecha] || [];
+        map[fecha] = arr.includes(est) ? arr.filter((s) => s !== est) : [...arr, est];
+        return { ...p, estudiosXFecha: map };
+      }),
+    }));
+  };
+
   const addFecha = (tipoIdx, fecha) => {
     if (!fecha) return;
+    const estudiosEvento = normEstudio(f.estudio);
     const nuevasPartes = f.partes.map((p, i) => {
       if (i !== tipoIdx) return p;
       if ((p.fechas || []).includes(fecha)) return p;
-      return { ...p, fechas: [...(p.fechas || []), fecha].sort() };
+      const map = { ...(p.estudiosXFecha || {}) };
+      map[fecha] = estudiosEvento.length > 0 ? [...estudiosEvento] : [];
+      return { ...p, fechas: [...(p.fechas || []), fecha].sort(), estudiosXFecha: map };
     });
     const allFechas = nuevasPartes.flatMap((p) => p.fechas || []).filter(Boolean).sort();
     setF((prev) => ({
@@ -3911,7 +3964,9 @@ function FormEvento({ base, onCancel, onSave, guardando, personas = [], eventos 
   const delFecha = (tipoIdx, fecha) => {
     const nuevasPartes = f.partes.map((p, i) => {
       if (i !== tipoIdx) return p;
-      return { ...p, fechas: (p.fechas || []).filter((d) => d !== fecha) };
+      const map = { ...(p.estudiosXFecha || {}) };
+      delete map[fecha];
+      return { ...p, fechas: (p.fechas || []).filter((d) => d !== fecha), estudiosXFecha: map };
     });
     const allFechas = nuevasPartes.flatMap((p) => p.fechas || []).filter(Boolean).sort();
     setF((prev) => ({
@@ -4058,6 +4113,10 @@ function FormEvento({ base, onCancel, onSave, guardando, personas = [], eventos 
           <Field label="Categoría">
             <Select value={f.categoria} onChange={(v) => set("categoria", v)} options={CATEGORIAS} placeholder="Elegir" />
           </Field>
+          <Field label="Modalidad de rodaje">
+            <Select value={f.modalidadRodaje || ""} onChange={(v) => { set("modalidadRodaje", v); if (v && v !== "En estudio") set("estudio", []); }} options={MODALIDAD_RODAJE} placeholder="Elegir" />
+          </Field>
+          {(!f.modalidadRodaje || f.modalidadRodaje === "En estudio") && (
           <Field label="Estudios (se puede elegir más de uno)" full>
             <div className="flex flex-wrap gap-2">
               {ESTUDIOS.map((est) => {
@@ -4073,9 +4132,7 @@ function FormEvento({ base, onCancel, onSave, guardando, personas = [], eventos 
               })}
             </div>
           </Field>
-          <Field label="Modalidad de rodaje">
-            <Select value={f.modalidadRodaje || ""} onChange={(v) => set("modalidadRodaje", v)} options={MODALIDAD_RODAJE} placeholder="Elegir" />
-          </Field>
+          )}
           <Field label="Tipo de producción">
             <Select value={f.tipoProd} onChange={(v) => set("tipoProd", v)} options={TIPO_PROD} placeholder="Elegir" />
           </Field>
@@ -4113,19 +4170,34 @@ function FormEvento({ base, onCancel, onSave, guardando, personas = [], eventos 
                     )}
                   </div>
                   {parte.fechas.length > 0 && (
-                    <div className="flex flex-wrap gap-1.5 mb-2">
-                      {parte.fechas.map((fecha) => (
-                        <button
-                          key={fecha}
-                          type="button"
-                          onClick={() => delFecha(idx, fecha)}
-                          className="inline-flex items-center gap-1 text-[11px] font-mono px-2 py-0.5 rounded-md"
-                          style={{ background: `${C.amber}22`, border: `1px solid ${C.amber}55`, color: C.amber }}
-                          title="Click para quitar"
-                        >
-                          {fmtFecha(fecha)} <X size={9} />
-                        </button>
-                      ))}
+                    <div className="grid gap-1.5 mb-2">
+                      {parte.fechas.map((fecha) => {
+                        const estudiosEvento = normEstudio(f.estudio);
+                        const estudiosDelDia = (parte.estudiosXFecha || {})[fecha] || [];
+                        return (
+                          <div key={fecha} className="flex items-center gap-1.5 flex-wrap">
+                            <button
+                              type="button"
+                              onClick={() => delFecha(idx, fecha)}
+                              className="inline-flex items-center gap-1 text-[11px] font-mono px-2 py-0.5 rounded-md"
+                              style={{ background: `${C.amber}22`, border: `1px solid ${C.amber}55`, color: C.amber }}
+                              title="Click para quitar"
+                            >
+                              {fmtFecha(fecha)} <X size={9} />
+                            </button>
+                            {estudiosEvento.length >= 2 && estudiosEvento.map((est) => {
+                              const activo = estudiosDelDia.includes(est);
+                              return (
+                                <button key={est} type="button" onClick={() => toggleEstudioFecha(idx, fecha, est)}
+                                  className="text-[10px] px-1.5 py-0.5 rounded transition-colors"
+                                  style={{ background: activo ? EST_COLORS[est] || C.gold : C.panel, color: activo ? "#000" : C.dim, border: `1px solid ${activo ? (EST_COLORS[est] || C.gold) : C.border}` }}>
+                                  E{est}
+                                </button>
+                              );
+                            })}
+                          </div>
+                        );
+                      })}
                     </div>
                   )}
                   <div className="flex gap-2 items-center">
