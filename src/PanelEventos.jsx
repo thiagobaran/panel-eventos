@@ -1331,7 +1331,7 @@ function Dashboard({ pendFact, pendComp, pagosVencidos, onVer }) {
         color={C.amber}
         rows={pendFact}
         onVer={onVer}
-        vacio="Nada pendiente de facturar. 🎬"
+        vacio="Nada pendiente de facturar."
       />
       <TablaPend
         titulo="Pendientes de comprobante de pago"
