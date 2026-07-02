@@ -2134,12 +2134,12 @@ function Home({ eventos, onVer }) {
             {[
               { label: "Total ARS", val: finStats.totalARS, color: C.gold },
               { label: "Facturado ARS", val: finStats.facturadoARS, color: C.amber },
-              { label: "Sin facturar ARS", val: finStats.pendienteARS, color: C.rose },
-            ].map(({ label, val, color }) => (
+              { label: "Sin facturar ARS", val: finStats.pendienteARS, color: C.gold, bold: true },
+            ].map(({ label, val, color, bold }) => (
               <div key={label} className="rounded-xl p-3 flex flex-col gap-1"
-                style={{ background: C.panel2, border: `1px solid ${C.border}` }}>
-                <span className="text-[10px] font-semibold uppercase tracking-wide" style={{ color }}>{label}</span>
-                <span className="font-mono font-bold text-sm" style={{ color }}>
+                style={{ background: C.panel2, border: `1px solid ${bold ? color + "60" : C.border}` }}>
+                <span className={`text-[10px] font-semibold uppercase tracking-wide ${bold ? "font-extrabold" : ""}`} style={{ color }}>{label}</span>
+                <span className={`font-mono text-sm ${bold ? "font-extrabold text-base" : "font-bold"}`} style={{ color }}>
                   {fmtMoneda(val, "ARS")}
                 </span>
               </div>
@@ -2151,12 +2151,12 @@ function Home({ eventos, onVer }) {
               {[
                 { label: "Total USD", val: finStats.totalUSD, color: C.cyan },
                 { label: "Facturado USD", val: finStats.facturadoUSD, color: C.cyanMid },
-                { label: "Sin facturar USD", val: finStats.pendienteUSD, color: C.cyanLight },
-              ].map(({ label, val, color }) => (
+                { label: "Sin facturar USD", val: finStats.pendienteUSD, color: C.cyan, bold: true },
+              ].map(({ label, val, color, bold }) => (
                 <div key={label} className="rounded-xl p-3 flex flex-col gap-1"
-                  style={{ background: C.panel2, border: `1px solid ${C.border}` }}>
-                  <span className="text-[10px] font-semibold uppercase tracking-wide" style={{ color }}>{label}</span>
-                  <span className="font-mono font-bold text-sm" style={{ color }}>
+                  style={{ background: C.panel2, border: `1px solid ${bold ? color + "60" : C.border}` }}>
+                  <span className={`text-[10px] font-semibold uppercase tracking-wide ${bold ? "font-extrabold" : ""}`} style={{ color }}>{label}</span>
+                  <span className={`font-mono text-sm ${bold ? "font-extrabold text-base" : "font-bold"}`} style={{ color }}>
                     {fmtMoneda(val, "USD")}
                   </span>
                 </div>
