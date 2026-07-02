@@ -1515,13 +1515,6 @@ function CalendarioMes({ anio, mes, eventos, onVer }) {
 
 /* ====================== BARCHART 12 MESES ====================== */
 function BarChart6Meses({ eventos, mesActual, anioActual }) {
-  const fmtCorto = (n) => {
-    const abs = Math.abs(n);
-    if (abs >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`;
-    if (abs >= 1_000) return `${(n / 1_000).toFixed(0)}K`;
-    return String(n);
-  };
-
   const meses = useMemo(() => {
     const arr = [];
     for (let i = 5; i >= 0; i--) {
@@ -1546,7 +1539,7 @@ function BarChart6Meses({ eventos, mesActual, anioActual }) {
   return (
     <div>
       <p className="text-[11px] font-semibold uppercase tracking-wide mb-3" style={{ color: C.dim }}>
-        Últimos 6 meses {tieneUSD ? "— importes en equiv. ARS" : ""}
+        Últimos 6 meses
       </p>
       <div className="flex items-end gap-3">
         {meses.map((m, i) => {
@@ -1555,11 +1548,6 @@ function BarChart6Meses({ eventos, mesActual, anioActual }) {
           const isActual = m.mes === mesActual && m.anio === anioActual;
           return (
             <div key={i} className="flex-1 flex flex-col items-center gap-1">
-              {val > 0 && (
-                <span className="text-[10px] font-mono font-bold" style={{ color: isActual ? C.gold : C.dim }}>
-                  ${fmtCorto(val)}
-                </span>
-              )}
               <div className="w-full flex items-end" style={{ height: 120 }}>
                 <div className="w-full rounded-t transition-all duration-700"
                   style={{
@@ -1572,18 +1560,29 @@ function BarChart6Meses({ eventos, mesActual, anioActual }) {
                 style={{ color: isActual ? C.gold : C.dim }}>
                 {m.label}
               </span>
-              {tieneUSD && m.totalUSD > 0 ? (
-                <div className="text-center leading-tight">
-                  <span className="text-[9px] font-mono block" style={{ color: C.gold }}>${fmtCorto(m.totalARS)}</span>
-                  <span className="text-[9px] font-mono block" style={{ color: C.cyan }}>US${fmtCorto(m.totalUSD)}</span>
-                </div>
-              ) : (
-                <div className="text-center">
-                  <span className="text-[9px] font-mono" style={{ color: C.dim }}>
-                    {val > 0 ? `${m.count} ev.` : "—"}
-                  </span>
-                </div>
-              )}
+              <div className="text-center leading-snug mt-0.5">
+                {tieneUSD && val > 0 && (
+                  <>
+                    <span className="text-[8px] uppercase block" style={{ color: C.dim }}>Total en pesos</span>
+                    <span className="text-[10px] font-mono font-bold block" style={{ color: C.gold }}>{fmtMoneda(m.equivARS, "ARS")}</span>
+                  </>
+                )}
+                {m.totalARS > 0 && (
+                  <>
+                    <span className="text-[8px] uppercase block mt-0.5" style={{ color: C.dim }}>{tieneUSD ? "Facturado ARS" : "Total ARS"}</span>
+                    <span className="text-[10px] font-mono font-bold block" style={{ color: C.gold }}>{fmtMoneda(m.totalARS, "ARS")}</span>
+                  </>
+                )}
+                {m.totalUSD > 0 && (
+                  <>
+                    <span className="text-[8px] uppercase block mt-0.5" style={{ color: C.dim }}>Facturado USD</span>
+                    <span className="text-[10px] font-mono font-bold block" style={{ color: C.cyan }}>{fmtMoneda(m.totalUSD, "USD")}</span>
+                  </>
+                )}
+                {val === 0 && (
+                  <span className="text-[9px] font-mono" style={{ color: C.dim }}>—</span>
+                )}
+              </div>
             </div>
           );
         })}
