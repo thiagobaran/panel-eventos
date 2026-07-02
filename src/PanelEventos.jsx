@@ -101,6 +101,9 @@ const C = {
   amber: "#F0B429",
   rose: "#F2557A",
   green: "#4FD18B",
+  cyan: "#22D3EE",
+  cyanDark: "#0E7490",
+  cyanLight: "#67E8F9",
 };
 
 const nuevoEvento = () => ({
@@ -2146,9 +2149,9 @@ function Home({ eventos, onVer }) {
           {finStats.tieneUSD && (
             <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 mb-3">
               {[
-                { label: "Total USD", val: finStats.totalUSD, color: C.gold },
-                { label: "Facturado USD", val: finStats.facturadoUSD, color: C.green },
-                { label: "Sin facturar USD", val: finStats.pendienteUSD, color: C.amber },
+                { label: "Total USD", val: finStats.totalUSD, color: C.cyan },
+                { label: "Facturado USD", val: finStats.facturadoUSD, color: C.cyanDark },
+                { label: "Sin facturar USD", val: finStats.pendienteUSD, color: C.cyanLight },
               ].map(({ label, val, color }) => (
                 <div key={label} className="rounded-xl p-3 flex flex-col gap-1"
                   style={{ background: C.panel2, border: `1px solid ${C.border}` }}>
