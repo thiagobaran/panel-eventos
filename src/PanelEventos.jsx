@@ -1514,22 +1514,28 @@ function CalendarioMes({ anio, mes, eventos, onVer }) {
 }
 
 /* ====================== BARCHART 12 MESES ====================== */
-function BarChart12Meses({ eventos, mesActual, anioActual }) {
+function BarChart6Meses({ eventos, mesActual, anioActual }) {
+  const fmtCorto = (n) => {
+    const abs = Math.abs(n);
+    if (abs >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`;
+    if (abs >= 1_000) return `${(n / 1_000).toFixed(0)}K`;
+    return String(n);
+  };
+
   const meses = useMemo(() => {
     const arr = [];
-    for (let i = 11; i >= 0; i--) {
+    for (let i = 5; i >= 0; i--) {
       let m = mesActual - i, a = anioActual;
       while (m < 0) { m += 12; a--; }
       const pref = `${a}-${String(m + 1).padStart(2, "0")}`;
       const evs = eventos.filter((e) => e.fecha?.startsWith(pref));
       const totalARS = evs.filter((e) => e.moneda !== "USD").reduce((s, e) => s + totalFacturable(e), 0);
       const totalUSD = evs.filter((e) => e.moneda === "USD").reduce((s, e) => s + totalFacturable(e), 0);
-      // Equivalente en ARS usando tipo de cambio de cada evento USD
       const equivARS = totalARS + evs.filter((e) => e.moneda === "USD").reduce((s, e) => {
         const tc = tipoCambio(e);
         return s + totalFacturable(e) * (tc || 0);
       }, 0);
-      arr.push({ mes: m, anio: a, totalARS, totalUSD, equivARS, label: MESES_ES[m].slice(0, 3) });
+      arr.push({ mes: m, anio: a, totalARS, totalUSD, equivARS, label: MESES_ES[m].slice(0, 3), count: evs.length });
     }
     return arr;
   }, [eventos, mesActual, anioActual]);
@@ -1539,32 +1545,45 @@ function BarChart12Meses({ eventos, mesActual, anioActual }) {
 
   return (
     <div>
-      <p className="text-[11px] font-semibold uppercase tracking-wide mb-2" style={{ color: C.dim }}>
-        Últimos 12 meses {tieneUSD ? "(equiv. ARS con tipo de cambio)" : ""}
+      <p className="text-[11px] font-semibold uppercase tracking-wide mb-3" style={{ color: C.dim }}>
+        Últimos 6 meses {tieneUSD ? "— importes en equiv. ARS" : ""}
       </p>
-      <div className="flex items-end gap-1" style={{ height: 72 }}>
+      <div className="flex items-end gap-3">
         {meses.map((m, i) => {
           const val = tieneUSD ? m.equivARS : m.totalARS;
           const pct = val / maxVal;
           const isActual = m.mes === mesActual && m.anio === anioActual;
-          const tooltip = tieneUSD
-            ? `${m.label} ${m.anio}: ${fmtMoneda(m.totalARS, "ARS")} + ${fmtMoneda(m.totalUSD, "USD")} = ${fmtMoneda(m.equivARS, "ARS")} equiv.`
-            : `${m.label} ${m.anio}: ${fmtMoneda(m.totalARS, "ARS")}`;
           return (
-            <div key={i} className="flex-1 flex flex-col items-center gap-0.5">
-              <div className="w-full flex items-end" style={{ height: 56 }}>
+            <div key={i} className="flex-1 flex flex-col items-center gap-1">
+              {val > 0 && (
+                <span className="text-[10px] font-mono font-bold" style={{ color: isActual ? C.gold : C.dim }}>
+                  ${fmtCorto(val)}
+                </span>
+              )}
+              <div className="w-full flex items-end" style={{ height: 120 }}>
                 <div className="w-full rounded-t transition-all duration-700"
-                  title={tooltip}
                   style={{
-                    height: `${Math.max(pct * 100, val > 0 ? 5 : 0)}%`,
-                    background: isActual ? C.gold : `${C.gold}35`,
-                    minHeight: val > 0 ? 2 : 0,
+                    height: `${Math.max(pct * 100, val > 0 ? 4 : 0)}%`,
+                    background: isActual ? C.gold : `${C.gold}40`,
+                    minHeight: val > 0 ? 4 : 0,
                   }} />
               </div>
-              <span className="text-[8px] font-mono w-full text-center truncate"
+              <span className="text-[11px] font-semibold w-full text-center"
                 style={{ color: isActual ? C.gold : C.dim }}>
                 {m.label}
               </span>
+              {tieneUSD && m.totalUSD > 0 ? (
+                <div className="text-center leading-tight">
+                  <span className="text-[9px] font-mono block" style={{ color: C.gold }}>${fmtCorto(m.totalARS)}</span>
+                  <span className="text-[9px] font-mono block" style={{ color: C.cyan }}>US${fmtCorto(m.totalUSD)}</span>
+                </div>
+              ) : (
+                <div className="text-center">
+                  <span className="text-[9px] font-mono" style={{ color: C.dim }}>
+                    {val > 0 ? `${m.count} ev.` : "—"}
+                  </span>
+                </div>
+              )}
             </div>
           );
         })}
@@ -2163,18 +2182,8 @@ function Home({ eventos, onVer }) {
               ))}
             </div>
           )}
-          {/* Equivalente total en ARS (si hay USD con tipo de cambio) */}
-          {finStats.tieneUSD && finStats.totalEquivARS > 0 && (
-            <div className="rounded-xl p-3 flex items-center justify-between mb-5"
-              style={{ background: C.panel2, border: `1px solid ${C.gold}40` }}>
-              <span className="text-[10px] font-semibold uppercase tracking-wide" style={{ color: C.gold }}>Total equiv. ARS (con tipo de cambio)</span>
-              <span className="font-mono font-bold text-sm" style={{ color: C.gold }}>
-                {fmtMoneda(finStats.totalEquivARS, "ARS")}
-              </span>
-            </div>
-          )}
-          {!finStats.tieneUSD && <div className="mb-5" />}
-          <BarChart12Meses eventos={eventos} mesActual={mes} anioActual={anio} />
+          <div className="mb-5" />
+          <BarChart6Meses eventos={eventos} mesActual={mes} anioActual={anio} />
         </div>
       )}
 
