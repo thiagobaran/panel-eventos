@@ -1517,9 +1517,10 @@ function CalendarioMes({ anio, mes, eventos, onVer }) {
 function BarChart6Meses({ eventos, mesActual, anioActual, onMesClick }) {
   const meses = useMemo(() => {
     const arr = [];
-    for (let i = 5; i >= 0; i--) {
+    for (let i = 4; i >= -1; i--) {
       let m = mesActual - i, a = anioActual;
       while (m < 0) { m += 12; a--; }
+      while (m > 11) { m -= 12; a++; }
       const pref = `${a}-${String(m + 1).padStart(2, "0")}`;
       const evs = eventos.filter((e) => e.fecha?.startsWith(pref));
       const totalARS = evs.filter((e) => e.moneda !== "USD").reduce((s, e) => s + totalFacturable(e), 0);
