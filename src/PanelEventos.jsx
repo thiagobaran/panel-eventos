@@ -347,8 +347,9 @@ export default function PanelEventos() {
   const [duplicandoBase, setDuplicandoBase] = useState(null);
   const [verId, setVerId] = useState(null);
   const [busqueda, setBusqueda] = useState("");
-  const [filtroCat, setFiltroCat] = useState("");
-  const [filtroEmp, setFiltroEmp] = useState("");
+  const [filtroCats, setFiltroCats] = useState([]);
+  const [filtroEmps, setFiltroEmps] = useState([]);
+  const [filtroMods, setFiltroMods] = useState([]);
   const [filtroTiempo, setFiltroTiempo] = useState("proximos"); // proximos | finalizados | todos
 
   const recargar = useCallback(async () => {
@@ -588,8 +589,9 @@ export default function PanelEventos() {
     return eventos.filter((e) => {
       if (filtroTiempo === "proximos" && (!e.fecha || e.fecha < hoyISO)) return false;
       if (filtroTiempo === "finalizados" && (!e.fecha || e.fecha >= hoyISO)) return false;
-      if (filtroCat && e.categoria !== filtroCat) return false;
-      if (filtroEmp && (e.distribucion || "M1") !== filtroEmp) return false;
+      if (filtroCats.length > 0 && !filtroCats.includes(e.categoria)) return false;
+      if (filtroEmps.length > 0 && !filtroEmps.includes(e.distribucion || "M1")) return false;
+      if (filtroMods.length > 0 && !filtroMods.includes(e.modalidadRodaje || "")) return false;
       if (!q) return true;
       return (
         (e.nombre || "").toLowerCase().includes(q) ||
@@ -600,7 +602,7 @@ export default function PanelEventos() {
         )
       );
     });
-  }, [eventos, busqueda, filtroCat, filtroEmp, filtroTiempo, hoyISO]);
+  }, [eventos, busqueda, filtroCats, filtroEmps, filtroMods, filtroTiempo, hoyISO]);
 
   const pendFact = eventos.filter((e) => e.nombre && e.confirmado && !e.facturado);
   const pendComp = eventos.filter(
@@ -875,8 +877,9 @@ export default function PanelEventos() {
             eventos={filtrados}
             total={eventos.length}
             busqueda={busqueda} setBusqueda={setBusqueda}
-            filtroCat={filtroCat} setFiltroCat={setFiltroCat}
-            filtroEmp={filtroEmp} setFiltroEmp={setFiltroEmp}
+            filtroCats={filtroCats} setFiltroCats={setFiltroCats}
+            filtroEmps={filtroEmps} setFiltroEmps={setFiltroEmps}
+            filtroMods={filtroMods} setFiltroMods={setFiltroMods}
             filtroTiempo={filtroTiempo} setFiltroTiempo={setFiltroTiempo}
             conteosTiempo={conteosTiempo}
             onVer={(id) => { setVerId(id); setVista("detalle"); }}
@@ -1143,8 +1146,92 @@ function ExportEventosModal({ eventos, onClose }) {
   );
 }
 
+/* ====================== FILTROS LISTA ====================== */
+function FiltrosLista({ busqueda, setBusqueda, filtroCats, setFiltroCats, filtroEmps, setFiltroEmps, filtroMods, setFiltroMods }) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef(null);
+  const activeCount = filtroCats.length + filtroEmps.length + filtroMods.length;
+
+  useEffect(() => {
+    if (!open) return;
+    const handler = (e) => { if (ref.current && !ref.current.contains(e.target)) setOpen(false); };
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, [open]);
+
+  const toggle = (arr, setArr, val) => {
+    setArr(arr.includes(val) ? arr.filter((v) => v !== val) : [...arr, val]);
+  };
+
+  const limpiar = () => { setFiltroCats([]); setFiltroEmps([]); setFiltroMods([]); };
+
+  const CheckItem = ({ checked, label, onChange }) => (
+    <label className="flex items-center gap-2 px-3 py-1.5 text-sm cursor-pointer hover:opacity-80 transition-opacity">
+      <input type="checkbox" checked={checked} onChange={onChange}
+        className="accent-[#D4AF37] rounded" style={{ width: 14, height: 14 }} />
+      <span style={{ color: checked ? C.text : C.dim }}>{label}</span>
+    </label>
+  );
+
+  const GroupLabel = ({ children }) => (
+    <div className="px-3 pt-2.5 pb-1 text-[10px] font-semibold uppercase tracking-wide" style={{ color: C.gold }}>{children}</div>
+  );
+
+  return (
+    <div className="flex flex-wrap gap-2 mb-4 items-center">
+      <div className="relative flex-1 min-w-[180px]">
+        <Search size={15} color={C.dim} className="absolute left-3 top-1/2 -translate-y-1/2" />
+        <input
+          value={busqueda} onChange={(e) => setBusqueda(e.target.value)}
+          placeholder="Buscar evento, director, razón social, integrante…"
+          className="w-full text-sm pl-9 pr-3 py-2 rounded-md"
+          style={{ background: C.panel, border: `1px solid ${C.border}`, color: C.text }}
+        />
+      </div>
+      <div className="relative" ref={ref}>
+        <button onClick={() => setOpen(!open)}
+          className="flex items-center gap-1.5 text-sm px-3 py-2 rounded-md transition-colors"
+          style={{ background: activeCount > 0 ? C.panel2 : C.panel, border: `1px solid ${activeCount > 0 ? C.gold : C.border}`, color: activeCount > 0 ? C.gold : C.dim }}>
+          <Layers size={14} />
+          Filtros
+          {activeCount > 0 && (
+            <span className="text-[10px] font-mono px-1.5 rounded-full" style={{ background: C.gold, color: C.onGold }}>{activeCount}</span>
+          )}
+        </button>
+        {open && (
+          <div className="absolute right-0 top-full mt-1 z-50 rounded-xl shadow-2xl overflow-hidden"
+            style={{ background: C.panel, border: `1px solid ${C.border}`, minWidth: 220 }}>
+            <GroupLabel>Categoría</GroupLabel>
+            {CATEGORIAS.map((cat) => (
+              <CheckItem key={cat} label={cat} checked={filtroCats.includes(cat)} onChange={() => toggle(filtroCats, setFiltroCats, cat)} />
+            ))}
+            <div style={{ borderTop: `1px solid ${C.border}` }} />
+            <GroupLabel>Modalidad de rodaje</GroupLabel>
+            {MODALIDAD_RODAJE.map((mod) => (
+              <CheckItem key={mod} label={mod} checked={filtroMods.includes(mod)} onChange={() => toggle(filtroMods, setFiltroMods, mod)} />
+            ))}
+            <div style={{ borderTop: `1px solid ${C.border}` }} />
+            <GroupLabel>Empresa</GroupLabel>
+            {DISTRIBUCION_FILTRO.map((d) => (
+              <CheckItem key={d.value} label={d.label} checked={filtroEmps.includes(d.value)} onChange={() => toggle(filtroEmps, setFiltroEmps, d.value)} />
+            ))}
+            {activeCount > 0 && (
+              <>
+                <div style={{ borderTop: `1px solid ${C.border}` }} />
+                <button onClick={limpiar} className="w-full text-center text-[11px] py-2 hover:opacity-80" style={{ color: C.amber }}>
+                  Limpiar filtros
+                </button>
+              </>
+            )}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 /* ====================== LISTA ====================== */
-function Lista({ eventos, total, busqueda, setBusqueda, filtroCat, setFiltroCat, filtroEmp, setFiltroEmp, filtroTiempo, setFiltroTiempo, conteosTiempo, onVer, onEdit, onDelete, onNuevo, onExportar, todosEventos = [], perms = {}, usuario = {} }) {
+function Lista({ eventos, total, busqueda, setBusqueda, filtroCats, setFiltroCats, filtroEmps, setFiltroEmps, filtroMods, setFiltroMods, filtroTiempo, setFiltroTiempo, conteosTiempo, onVer, onEdit, onDelete, onNuevo, onExportar, todosEventos = [], perms = {}, usuario = {} }) {
   const hoyISO = new Date().toISOString().slice(0, 10);
   const [exportModal, setExportModal] = useState(false);
   const tabs = [
@@ -1203,19 +1290,12 @@ function Lista({ eventos, total, busqueda, setBusqueda, filtroCat, setFiltroCat,
       </div>
 
       {/* filtros */}
-      <div className="flex flex-wrap gap-2 mb-4 items-center">
-        <div className="relative flex-1 min-w-[180px]">
-          <Search size={15} color={C.dim} className="absolute left-3 top-1/2 -translate-y-1/2" />
-          <input
-            value={busqueda} onChange={(e) => setBusqueda(e.target.value)}
-            placeholder="Buscar evento, director, razón social, integrante…"
-            className="w-full text-sm pl-9 pr-3 py-2 rounded-md"
-            style={{ background: C.panel, border: `1px solid ${C.border}`, color: C.text }}
-          />
-        </div>
-        <Select value={filtroCat} onChange={setFiltroCat} placeholder="Categoría" options={CATEGORIAS} compact />
-        <SelectKV value={filtroEmp} onChange={setFiltroEmp} placeholder="Empresa" options={DISTRIBUCION_FILTRO} compact />
-      </div>
+      <FiltrosLista
+        busqueda={busqueda} setBusqueda={setBusqueda}
+        filtroCats={filtroCats} setFiltroCats={setFiltroCats}
+        filtroEmps={filtroEmps} setFiltroEmps={setFiltroEmps}
+        filtroMods={filtroMods} setFiltroMods={setFiltroMods}
+      />
 
       {eventos.length === 0 ? (
         <div className="rounded-xl text-center py-16 px-4" style={{ background: C.panel, border: `1px dashed ${C.border}` }}>
