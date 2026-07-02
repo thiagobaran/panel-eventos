@@ -1546,8 +1546,36 @@ function BarChart6Meses({ eventos, mesActual, anioActual }) {
           const val = tieneUSD ? m.equivARS : m.totalARS;
           const pct = val / maxVal;
           const isActual = m.mes === mesActual && m.anio === anioActual;
+          const barColor = isActual ? C.gold : C.dim;
           return (
             <div key={i} className="flex-1 flex flex-col items-center gap-1">
+              {val > 0 && (
+                <div className="text-center leading-snug">
+                  {tieneUSD ? (
+                    <>
+                      <span className="text-[8px] uppercase block" style={{ color: barColor }}>Equiv. ARS</span>
+                      <span className="text-[10px] font-mono font-bold block" style={{ color: barColor }}>{fmtMoneda(m.equivARS, "ARS")}</span>
+                      {m.totalARS > 0 && (
+                        <>
+                          <span className="text-[8px] uppercase block mt-0.5" style={{ color: C.gold }}>ARS</span>
+                          <span className="text-[10px] font-mono font-bold block" style={{ color: C.gold }}>{fmtMoneda(m.totalARS, "ARS")}</span>
+                        </>
+                      )}
+                      {m.totalUSD > 0 && (
+                        <>
+                          <span className="text-[8px] uppercase block mt-0.5" style={{ color: C.cyan }}>USD</span>
+                          <span className="text-[10px] font-mono font-bold block" style={{ color: C.cyan }}>{fmtMoneda(m.totalUSD, "USD")}</span>
+                        </>
+                      )}
+                    </>
+                  ) : (
+                    <>
+                      <span className="text-[8px] uppercase block" style={{ color: barColor }}>Total</span>
+                      <span className="text-[10px] font-mono font-bold block" style={{ color: barColor }}>{fmtMoneda(m.totalARS, "ARS")}</span>
+                    </>
+                  )}
+                </div>
+              )}
               <div className="w-full flex items-end" style={{ height: 120 }}>
                 <div className="w-full rounded-t transition-all duration-700"
                   style={{
@@ -1560,29 +1588,6 @@ function BarChart6Meses({ eventos, mesActual, anioActual }) {
                 style={{ color: isActual ? C.gold : C.dim }}>
                 {m.label}
               </span>
-              <div className="text-center leading-snug mt-0.5">
-                {tieneUSD && val > 0 && (
-                  <>
-                    <span className="text-[8px] uppercase block" style={{ color: C.dim }}>Total en pesos</span>
-                    <span className="text-[10px] font-mono font-bold block" style={{ color: C.gold }}>{fmtMoneda(m.equivARS, "ARS")}</span>
-                  </>
-                )}
-                {m.totalARS > 0 && (
-                  <>
-                    <span className="text-[8px] uppercase block mt-0.5" style={{ color: C.dim }}>{tieneUSD ? "Facturado ARS" : "Total ARS"}</span>
-                    <span className="text-[10px] font-mono font-bold block" style={{ color: C.gold }}>{fmtMoneda(m.totalARS, "ARS")}</span>
-                  </>
-                )}
-                {m.totalUSD > 0 && (
-                  <>
-                    <span className="text-[8px] uppercase block mt-0.5" style={{ color: C.dim }}>Facturado USD</span>
-                    <span className="text-[10px] font-mono font-bold block" style={{ color: C.cyan }}>{fmtMoneda(m.totalUSD, "USD")}</span>
-                  </>
-                )}
-                {val === 0 && (
-                  <span className="text-[9px] font-mono" style={{ color: C.dim }}>—</span>
-                )}
-              </div>
             </div>
           );
         })}
