@@ -1514,7 +1514,7 @@ function CalendarioMes({ anio, mes, eventos, onVer }) {
 }
 
 /* ====================== BARCHART 12 MESES ====================== */
-function BarChart6Meses({ eventos, mesActual, anioActual }) {
+function BarChart6Meses({ eventos, mesActual, anioActual, onMesClick }) {
   const meses = useMemo(() => {
     const arr = [];
     for (let i = 5; i >= 0; i--) {
@@ -1541,31 +1541,33 @@ function BarChart6Meses({ eventos, mesActual, anioActual }) {
       <p className="text-[11px] font-semibold uppercase tracking-wide mb-3" style={{ color: C.dim }}>
         Últimos 6 meses
       </p>
-      <div className="flex items-end gap-3">
+      <div className="flex gap-3">
         {meses.map((m, i) => {
           const val = tieneUSD ? m.equivARS : m.totalARS;
           const pct = val / maxVal;
           const isActual = m.mes === mesActual && m.anio === anioActual;
           const barColor = isActual ? C.gold : C.dim;
+          const clickable = !isActual && onMesClick;
           return (
-            <div key={i} className="flex-1 flex flex-col items-center gap-1">
-              {val > 0 && (
-                <div className="text-center leading-snug">
-                  {tieneUSD ? (
+            <div key={i} className={`flex-1 flex flex-col items-center gap-1 ${clickable ? "cursor-pointer" : ""}`}
+              onClick={() => clickable && onMesClick(m.mes, m.anio)}>
+              <div className="text-center leading-snug" style={{ minHeight: 28 }}>
+                {val > 0 && (
+                  tieneUSD ? (
                     <>
-                      <span className="text-[8px] uppercase block" style={{ color: barColor }}>Total equiv. en ARS</span>
+                      <span className="text-[8px] uppercase font-bold block" style={{ color: barColor }}>Total equiv. en ARS</span>
                       <span className="text-[11px] font-mono font-extrabold block" style={{ color: barColor }}>{fmtMoneda(m.equivARS, "ARS")}</span>
                     </>
                   ) : (
                     <>
-                      <span className="text-[8px] uppercase block" style={{ color: barColor }}>Total</span>
+                      <span className="text-[8px] uppercase font-bold block" style={{ color: barColor }}>Total</span>
                       <span className="text-[11px] font-mono font-extrabold block" style={{ color: barColor }}>{fmtMoneda(m.totalARS, "ARS")}</span>
                     </>
-                  )}
-                </div>
-              )}
+                  )
+                )}
+              </div>
               <div className="w-full flex items-end" style={{ height: 120 }}>
-                <div className="w-full rounded-t transition-all duration-700"
+                <div className={`w-full rounded-t transition-all duration-700 ${clickable ? "hover:opacity-80" : ""}`}
                   style={{
                     height: `${Math.max(pct * 100, val > 0 ? 4 : 0)}%`,
                     background: isActual ? C.gold : `${C.gold}40`,
@@ -1576,14 +1578,16 @@ function BarChart6Meses({ eventos, mesActual, anioActual }) {
                 style={{ color: isActual ? C.gold : C.dim }}>
                 {m.label}
               </span>
-              {val > 0 && (
-                <div className="text-center leading-snug mt-0.5">
-                  <span className="text-[9px] block" style={{ color: C.gold }}>Facturado ARS: <span className="font-mono font-bold">{fmtMoneda(m.totalARS, "ARS")}</span></span>
-                  {m.totalUSD > 0 && (
-                    <span className="text-[9px] block" style={{ color: C.cyan }}>Facturado USD: <span className="font-mono font-bold">{fmtMoneda(m.totalUSD, "USD")}</span></span>
-                  )}
-                </div>
-              )}
+              <div className="text-center leading-snug mt-0.5" style={{ minHeight: 24 }}>
+                {val > 0 && (
+                  <>
+                    <span className="text-[9px] block" style={{ color: C.gold }}>Facturado ARS: <span className="font-mono font-bold">{fmtMoneda(m.totalARS, "ARS")}</span></span>
+                    {m.totalUSD > 0 && (
+                      <span className="text-[9px] block" style={{ color: C.cyan }}>Facturado USD: <span className="font-mono font-bold">{fmtMoneda(m.totalUSD, "USD")}</span></span>
+                    )}
+                  </>
+                )}
+              </div>
             </div>
           );
         })}
@@ -2183,7 +2187,7 @@ function Home({ eventos, onVer }) {
             </div>
           )}
           <div className="mb-5" />
-          <BarChart6Meses eventos={eventos} mesActual={mes} anioActual={anio} />
+          <BarChart6Meses eventos={eventos} mesActual={mes} anioActual={anio} onMesClick={(m, a) => { setMes(m); setAnio(a); }} />
         </div>
       )}
 
