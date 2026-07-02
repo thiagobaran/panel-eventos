@@ -1582,9 +1582,9 @@ function BarChart6Meses({ eventos, mesActual, anioActual, onMesClick }) {
               <div className="text-center leading-snug mt-0.5" style={{ minHeight: 24 }}>
                 {val > 0 && (
                   <>
-                    <span className="text-[9px] block" style={{ color: C.gold }}>Facturado ARS: <span className="font-mono font-bold">{fmtMoneda(m.totalARS, "ARS")}</span></span>
+                    <span className="text-[9px] block" style={{ color: C.gold }}>Total ARS: <span className="font-mono font-bold">{fmtMoneda(m.totalARS, "ARS")}</span></span>
                     {m.totalUSD > 0 && (
-                      <span className="text-[9px] block" style={{ color: C.cyan }}>Facturado USD: <span className="font-mono font-bold">{fmtMoneda(m.totalUSD, "USD")}</span></span>
+                      <span className="text-[9px] block" style={{ color: C.cyan }}>Total USD: <span className="font-mono font-bold">{fmtMoneda(m.totalUSD, "USD")}</span></span>
                     )}
                   </>
                 )}
