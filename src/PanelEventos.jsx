@@ -2147,7 +2147,7 @@ function Home({ eventos, onVer }) {
       </div>
 
       {/* Estadísticas financieras */}
-      {eventosMes.length > 0 && (
+      {(
         <div className="rounded-xl p-4 mb-6" style={{ background: C.panel, border: `1px solid ${C.border}` }}>
           <div className="flex items-center gap-2 mb-4">
             <DollarSign size={15} color={C.green} />
