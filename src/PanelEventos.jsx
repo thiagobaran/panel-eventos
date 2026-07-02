@@ -1535,7 +1535,11 @@ function BarChart6Meses({ eventos, mesActual, anioActual, onMesClick }) {
   }, [eventos, mesActual, anioActual]);
 
   const tieneUSD = meses.some((m) => m.totalUSD > 0);
-  const maxVal = Math.max(...meses.map((m) => tieneUSD ? m.equivARS : m.totalARS), 1);
+  const barVal = (m) => {
+    const eq = tieneUSD ? m.equivARS : m.totalARS;
+    return eq > 0 ? eq : m.totalARS + m.totalUSD;
+  };
+  const maxVal = Math.max(...meses.map((m) => barVal(m)), 1);
 
   return (
     <div>
@@ -1544,7 +1548,8 @@ function BarChart6Meses({ eventos, mesActual, anioActual, onMesClick }) {
       </p>
       <div className="flex gap-3">
         {meses.map((m, i) => {
-          const val = tieneUSD ? m.equivARS : m.totalARS;
+          const val = barVal(m);
+          const hasData = m.totalARS > 0 || m.totalUSD > 0;
           const pct = val / maxVal;
           const isActual = m.mes === mesActual && m.anio === anioActual;
           const barColor = isActual ? C.gold : C.dim;
@@ -1553,7 +1558,7 @@ function BarChart6Meses({ eventos, mesActual, anioActual, onMesClick }) {
             <div key={i} className={`flex-1 flex flex-col items-center gap-1 ${clickable ? "cursor-pointer" : ""}`}
               onClick={() => clickable && onMesClick(m.mes, m.anio)}>
               <div className="text-center leading-snug" style={{ minHeight: 28 }}>
-                {val > 0 && (
+                {hasData && (
                   tieneUSD ? (
                     <>
                       <span className="text-[8px] uppercase font-bold block" style={{ color: barColor }}>Total equiv. en ARS</span>
@@ -1570,9 +1575,9 @@ function BarChart6Meses({ eventos, mesActual, anioActual, onMesClick }) {
               <div className="w-full flex items-end" style={{ height: 120 }}>
                 <div className={`w-full rounded-t transition-all duration-700 ${clickable ? "hover:opacity-80" : ""}`}
                   style={{
-                    height: `${Math.max(pct * 100, val > 0 ? 4 : 0)}%`,
+                    height: `${Math.max(pct * 100, hasData ? 4 : 0)}%`,
                     background: isActual ? C.gold : `${C.gold}40`,
-                    minHeight: val > 0 ? 4 : 0,
+                    minHeight: hasData ? 4 : 0,
                   }} />
               </div>
               <span className="text-[11px] font-semibold w-full text-center"
@@ -1580,9 +1585,11 @@ function BarChart6Meses({ eventos, mesActual, anioActual, onMesClick }) {
                 {m.label}
               </span>
               <div className="text-center leading-snug mt-0.5" style={{ minHeight: 24 }}>
-                {val > 0 && (
+                {hasData && (
                   <>
-                    <span className="text-[9px] block" style={{ color: C.gold }}>Total ARS: <span className="font-mono font-bold">{fmtMoneda(m.totalARS, "ARS")}</span></span>
+                    {m.totalARS > 0 && (
+                      <span className="text-[9px] block" style={{ color: C.gold }}>Total ARS: <span className="font-mono font-bold">{fmtMoneda(m.totalARS, "ARS")}</span></span>
+                    )}
                     {m.totalUSD > 0 && (
                       <span className="text-[9px] block" style={{ color: C.cyan }}>Total USD: <span className="font-mono font-bold">{fmtMoneda(m.totalUSD, "USD")}</span></span>
                     )}
