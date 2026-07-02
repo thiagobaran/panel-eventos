@@ -102,7 +102,7 @@ const C = {
   rose: "#F2557A",
   green: "#4FD18B",
   cyan: "#22D3EE",
-  cyanDark: "#0E7490",
+  cyanMid: "#06B6D4",
   cyanLight: "#67E8F9",
 };
 
@@ -2133,8 +2133,8 @@ function Home({ eventos, onVer }) {
           <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 mb-3">
             {[
               { label: "Total ARS", val: finStats.totalARS, color: C.gold },
-              { label: "Facturado ARS", val: finStats.facturadoARS, color: C.green },
-              { label: "Sin facturar ARS", val: finStats.pendienteARS, color: C.amber },
+              { label: "Facturado ARS", val: finStats.facturadoARS, color: C.amber },
+              { label: "Sin facturar ARS", val: finStats.pendienteARS, color: C.rose },
             ].map(({ label, val, color }) => (
               <div key={label} className="rounded-xl p-3 flex flex-col gap-1"
                 style={{ background: C.panel2, border: `1px solid ${C.border}` }}>
@@ -2150,7 +2150,7 @@ function Home({ eventos, onVer }) {
             <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 mb-3">
               {[
                 { label: "Total USD", val: finStats.totalUSD, color: C.cyan },
-                { label: "Facturado USD", val: finStats.facturadoUSD, color: C.cyanDark },
+                { label: "Facturado USD", val: finStats.facturadoUSD, color: C.cyanMid },
                 { label: "Sin facturar USD", val: finStats.pendienteUSD, color: C.cyanLight },
               ].map(({ label, val, color }) => (
                 <div key={label} className="rounded-xl p-3 flex flex-col gap-1"
