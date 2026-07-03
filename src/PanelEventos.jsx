@@ -3523,7 +3523,7 @@ function FacturacionCard({ ev, onUpdate, perms }) {
           <div><label className="text-[11px] block mb-1" style={{ color: C.dim }}>Razón social</label>
             <Input value={f.razonSocial} onChange={(v) => set("razonSocial", v)} placeholder="Razón social…" /></div>
           <div><label className="text-[11px] block mb-1" style={{ color: C.dim }}>Cant. facturas</label>
-            <Input type="number" value={f.cantFacturas} onChange={onCantFacturasChange} placeholder="1" /></div>
+            <Input type="number" value={f.cantFacturas} onChange={onCantFacturasChange} placeholder="1" min="1" /></div>
 
           {/* Montos: si hay más de 1 factura, desglose por factura */}
           {usaDesglose ? (
@@ -4840,7 +4840,7 @@ function FormEvento({ base, onCancel, onSave, guardando, personas = [], eventos 
             </Field>
           )}
           <Field label="Cant. facturas a emitir">
-            <Input type="number" value={f.cantFacturas} onChange={(v) => {
+            <Input type="number" min="1" value={f.cantFacturas} onChange={(v) => {
               const n = Number(v) || 0;
               set("cantFacturas", v);
               if (n > 1) {
@@ -4995,11 +4995,12 @@ function Field({ label, full, children }) {
     </div>
   );
 }
-function Input({ value, onChange, onKeyDown, placeholder, type = "text" }) {
+function Input({ value, onChange, onKeyDown, placeholder, type = "text", min }) {
   return (
     <input type={type} value={value} onChange={(e) => onChange(e.target.value)}
       onKeyDown={onKeyDown}
       placeholder={placeholder}
+      min={min}
       className="w-full text-sm px-3 py-2 rounded-md"
       style={{ background: C.panel2, border: `1px solid ${C.border}`, color: C.text, colorScheme: "dark" }} />
   );
