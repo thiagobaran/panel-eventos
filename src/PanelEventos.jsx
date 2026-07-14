@@ -612,7 +612,15 @@ export default function PanelEventos() {
 
   // Notificaciones
   const [showNotif, setShowNotif] = useState(false);
+  const notifRef = useRef(null);
   const [lastNotifSeenTs, setLastNotifSeenTs] = useState(() => getLastNotifSeen(usuario?.id));
+
+  useEffect(() => {
+    if (!showNotif) return;
+    const handler = (e) => { if (notifRef.current && !notifRef.current.contains(e.target)) setShowNotif(false); };
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, [showNotif]);
 
   const notifItems = useMemo(() => {
     if (!usuario) return [];
@@ -728,7 +736,7 @@ export default function PanelEventos() {
           )}
           <div className="ml-2 flex items-center gap-2 pl-2" style={{ borderLeft: `1px solid ${C.border}` }}>
             {/* Notificaciones */}
-            <div className="relative">
+            <div className="relative" ref={notifRef}>
               <button onClick={() => setShowNotif((v) => !v)} title="Notificaciones"
                 className="p-1.5 rounded-md relative hover:opacity-80"
                 style={{ background: showNotif ? `${C.gold}22` : "transparent", color: C.text }}>
