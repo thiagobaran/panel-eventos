@@ -618,7 +618,7 @@ export default function PanelEventos() {
     if (!usuario) return [];
     const rol = usuario.rol;
     if (rol === "contabilidad" || rol === "admin") {
-      return eventos.filter((e) => e.confirmado && !e.facturado && e.nombre)
+      return eventos.filter((e) => e.confirmado && !e.facturado && e.nombre && (!lastNotifSeenTs || (e.confirmadoAt && e.confirmadoAt > lastNotifSeenTs)))
         .map((e) => ({ ...e, notifTipo: "listo" }));
     }
     if (rol === "produccion") {
