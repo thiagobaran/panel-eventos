@@ -68,6 +68,7 @@ alter table public.eventos add column if not exists tipo_cambio numeric;
 alter table public.eventos add column if not exists confirmado boolean not null default false;
 alter table public.eventos add column if not exists confirmado_at timestamptz;
 alter table public.eventos add column if not exists facturado_at timestamptz;
+alter table public.eventos add column if not exists comprobante_pago_at timestamptz;
 
 -- Mantiene "updated_at" al día en cada modificación
 create or replace function public.set_updated_at()

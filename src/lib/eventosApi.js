@@ -57,6 +57,7 @@ const toDb = (e) => {
     confirmado: !!e.confirmado,
     confirmado_at: e.confirmadoAt || null,
     facturado_at: e.facturadoAt || null,
+    comprobante_pago_at: e.comprobantePagoAt || null,
     observaciones: e.observaciones || null,
   };
 };
@@ -116,6 +117,7 @@ const fromDb = (r) => {
     confirmado: !!r.confirmado,
     confirmadoAt: r.confirmado_at || null,
     facturadoAt: r.facturado_at || null,
+    comprobantePagoAt: r.comprobante_pago_at || null,
     observaciones: r.observaciones || "",
   };
 };

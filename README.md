@@ -167,6 +167,11 @@ traduzca a un **filtro estructurado**. Ese filtro se aplica a los eventos
 **localmente en el navegador** — los montos y razones sociales nunca se envían a
 la IA. El gasto de tokens por consulta es mínimo.
 
+Soporta: totales de facturación (ARS/USD), conteos, listados, desglose por
+proyecto/persona/categoría/estudio/mes/empresa, días trabajados por persona, y
+demoras de facturación o de comprobante de pago. Para medir la demora del
+comprobante se agregó la columna `comprobante_pago_at` (ver `schema.sql`).
+
 **Activación:** el asistente queda inactivo hasta cargar la API key. En Vercel:
 
 1. Crear una cuenta en <https://console.anthropic.com> y generar una API key.

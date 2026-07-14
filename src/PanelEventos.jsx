@@ -143,6 +143,7 @@ const nuevoEvento = () => ({
   confirmado: false,
   confirmadoAt: null,
   facturadoAt: null,
+  comprobantePagoAt: null,
   observaciones: "",
 });
 
@@ -327,15 +328,82 @@ const aplicarSpecAsistente = (spec, eventos) => {
     return true;
   });
 
-  const out = { intencion: spec?.intencion || "listar", explicacion: spec?.explicacion || "", resultados };
+  // Helpers de agregación
+  const sumaMon = (evs, m) => evs.filter((e) => (e.moneda || "ARS") === m).reduce((s, e) => s + totalFacturable(e), 0);
+  const diasUnicos = (evs) => {
+    const set = new Set();
+    evs.forEach((ev) => getFechasEvento(ev).forEach((d) => {
+      if ((!f.desde || d >= f.desde) && (!f.hasta || d <= f.hasta)) set.add(d);
+    }));
+    return set.size;
+  };
+  const diasEntre = (a, b) => {
+    if (!a || !b) return null;
+    return Math.max(0, Math.round((new Date(b) - new Date(a)) / 86400000));
+  };
+  const grupoDe = (ev, por) => {
+    switch (por) {
+      case "proyecto": return ev.nombre || "(sin nombre)";
+      case "categoria": return ev.categoria || "(sin categoría)";
+      case "estudio": { const es = normEstudio(ev.estudio); return es.length ? es.map((e) => `Est. ${e}`).join(", ") : "(sin estudio)"; }
+      case "modalidad": return ev.modalidadRodaje || "(sin modalidad)";
+      case "empresa": return empresaLabel(ev.distribucion);
+      case "mes": { const fs = [...getFechasEvento(ev)].sort(); return fs.length ? fs[0].slice(0, 7) : "(sin fecha)"; }
+      default: return "(todos)";
+    }
+  };
 
-  if (spec?.intencion === "contar") {
+  const intencion = spec?.intencion || "listar";
+  const out = { intencion, explicacion: spec?.explicacion || "", resultados };
+  const por = spec?.agrupar_por || null;
+
+  // Agrupaciones (breakdown)
+  if (por) {
+    const map = new Map();
+    if (por === "persona") {
+      resultados.forEach((ev) => {
+        const nombres = new Set();
+        if (ev.director?.nombre) nombres.add(ev.director.nombre);
+        (ev.integrantes || []).forEach((i) => i.nombre && nombres.add(i.nombre));
+        nombres.forEach((n) => { if (!map.has(n)) map.set(n, []); map.get(n).push(ev); });
+      });
+    } else {
+      resultados.forEach((ev) => { const k = grupoDe(ev, por); if (!map.has(k)) map.set(k, []); map.get(k).push(ev); });
+    }
+    out.grupos = [...map.entries()].map(([clave, evs]) => ({
+      clave,
+      cantidad: evs.length,
+      dias: diasUnicos(evs),
+      sumaARS: sumaMon(evs, "ARS"),
+      sumaUSD: sumaMon(evs, "USD"),
+    }));
+    // Orden según la intención
+    if (intencion === "sumar") out.grupos.sort((a, b) => (b.sumaARS + b.sumaUSD) - (a.sumaARS + a.sumaUSD));
+    else if (intencion === "dias_persona") out.grupos.sort((a, b) => b.dias - a.dias);
+    else out.grupos.sort((a, b) => b.cantidad - a.cantidad);
+  }
+
+  if (intencion === "contar") {
     out.valor = resultados.length;
-  } else if (spec?.intencion === "sumar") {
+  } else if (intencion === "sumar") {
     const mon = spec?.moneda_metrica || "ambas";
-    const sumaMon = (m) => resultados.filter((e) => (e.moneda || "ARS") === m).reduce((s, e) => s + totalFacturable(e), 0);
-    out.sumaARS = (mon === "ARS" || mon === "ambas") ? sumaMon("ARS") : null;
-    out.sumaUSD = (mon === "USD" || mon === "ambas") ? sumaMon("USD") : null;
+    out.sumaARS = (mon === "ARS" || mon === "ambas") ? sumaMon(resultados, "ARS") : null;
+    out.sumaUSD = (mon === "USD" || mon === "ambas") ? sumaMon(resultados, "USD") : null;
+  } else if (intencion === "dias_persona") {
+    out.valor = diasUnicos(resultados);
+  } else if (intencion === "demora") {
+    const metrica = spec?.metrica_demora || "facturacion";
+    out.metricaDemora = metrica;
+    const detalle = resultados.map((ev) => {
+      const dias = metrica === "comprobante"
+        ? diasEntre(ev.facturadoAt, ev.comprobantePagoAt)
+        : diasEntre(ev.confirmadoAt, ev.facturadoAt);
+      return { ev, dias };
+    }).filter((x) => x.dias !== null);
+    detalle.sort((a, b) => b.dias - a.dias);
+    out.demoraDetalle = detalle;
+    out.demoraProm = detalle.length ? Math.round(detalle.reduce((s, x) => s + x.dias, 0) / detalle.length) : null;
+    out.demoraSinDato = resultados.length - detalle.length;
   }
   return out;
 };
@@ -519,6 +587,7 @@ export default function PanelEventos() {
       confirmado: false,
       confirmadoAt: null,
       facturadoAt: null,
+      comprobantePagoAt: null,
     };
     setDuplicandoBase(copia);
     setEditId(null);
@@ -1249,8 +1318,10 @@ function AsistenteModal({ eventos, onClose, onVer }) {
 
   const ejemplos = [
     "¿Cuánto facturamos en USD este mes?",
+    "Facturación por proyecto este mes",
+    "¿Cuántos días trabajó Pablo este mes?",
+    "¿Cuánto se demoró la facturación en promedio?",
     "Eventos confirmados sin facturar",
-    "¿Qué eventos usan el estudio 2 este mes?",
     "Pagos vencidos",
   ];
 
@@ -1335,6 +1406,7 @@ function AsistenteModal({ eventos, onClose, onVer }) {
                 <p className="text-[11px] mb-2" style={{ color: C.dim }}>{resultado.explicacion}</p>
               )}
 
+              {/* Headline según intención */}
               {resultado.intencion === "sumar" && (
                 <div className="grid gap-2 mb-3">
                   {resultado.sumaARS != null && (
@@ -1359,34 +1431,109 @@ function AsistenteModal({ eventos, onClose, onVer }) {
                 </div>
               )}
 
-              {/* lista de eventos que matchean */}
-              <div className="text-[10px] font-semibold uppercase tracking-wide mb-1.5" style={{ color: C.dim }}>
-                {resultado.resultados.length} evento{resultado.resultados.length === 1 ? "" : "s"}
-              </div>
-              <div className="max-h-64 overflow-auto grid gap-1.5">
-                {resultado.resultados.length === 0 ? (
-                  <p className="text-xs py-4 text-center" style={{ color: C.dim }}>Ningún evento coincide.</p>
-                ) : (
-                  resultado.resultados.map((e) => {
-                    const finalizado = e.fecha && e.fecha < hoyISO;
-                    return (
-                      <button key={e.id} onClick={() => onVer(e.id)}
-                        className="w-full text-left rounded-lg px-3 py-2 flex items-center justify-between gap-2 hover:opacity-80"
+              {resultado.intencion === "dias_persona" && (
+                <div className="rounded-xl p-3 mb-3 flex items-center justify-between" style={{ background: C.panel2, border: `1px solid ${C.gold}40` }}>
+                  <span className="text-[10px] font-semibold uppercase" style={{ color: C.gold }}>Días trabajados</span>
+                  <span className="font-mono font-extrabold text-lg" style={{ color: C.gold }}>{resultado.valor} día{resultado.valor === 1 ? "" : "s"}</span>
+                </div>
+              )}
+
+              {resultado.intencion === "demora" && (
+                <div className="rounded-xl p-3 mb-3" style={{ background: C.panel2, border: `1px solid ${C.gold}40` }}>
+                  <div className="flex items-center justify-between">
+                    <span className="text-[10px] font-semibold uppercase" style={{ color: C.gold }}>
+                      Demora promedio {resultado.metricaDemora === "comprobante" ? "de comprobante" : "de facturación"}
+                    </span>
+                    <span className="font-mono font-extrabold text-lg" style={{ color: C.gold }}>
+                      {resultado.demoraProm == null ? "—" : `${resultado.demoraProm} día${resultado.demoraProm === 1 ? "" : "s"}`}
+                    </span>
+                  </div>
+                  {resultado.demoraSinDato > 0 && (
+                    <p className="text-[10px] mt-1" style={{ color: C.dim }}>
+                      {resultado.demoraSinDato} evento{resultado.demoraSinDato === 1 ? "" : "s"} sin datos de fecha para calcular la demora.
+                    </p>
+                  )}
+                </div>
+              )}
+
+              {/* Desglose por grupo */}
+              {resultado.grupos && resultado.grupos.length > 0 && (
+                <div className="mb-3">
+                  <div className="text-[10px] font-semibold uppercase tracking-wide mb-1.5" style={{ color: C.dim }}>Desglose</div>
+                  <div className="max-h-56 overflow-auto grid gap-1">
+                    {resultado.grupos.map((g) => (
+                      <div key={g.clave} className="rounded-lg px-3 py-1.5 flex items-center justify-between gap-2"
                         style={{ background: C.panel2, border: `1px solid ${C.border}` }}>
-                        <div className="min-w-0">
-                          <div className="text-xs font-medium truncate" style={{ color: C.text }}>{e.nombre}</div>
-                          <div className="text-[10px] font-mono" style={{ color: C.dim }}>
-                            {fmtFecha(e.fecha)}{e.categoria ? ` · ${e.categoria}` : ""}{finalizado ? " · finalizado" : ""}
-                          </div>
-                        </div>
-                        <span className="text-[11px] font-mono shrink-0" style={{ color: e.moneda === "USD" ? C.cyan : C.gold }}>
-                          {fmtMoneda(totalFacturable(e), e.moneda)}
+                        <span className="text-xs truncate" style={{ color: C.text }}>{g.clave}</span>
+                        <span className="text-[11px] font-mono shrink-0" style={{ color: C.gold }}>
+                          {resultado.intencion === "dias_persona" ? `${g.dias} día${g.dias === 1 ? "" : "s"}`
+                            : resultado.intencion === "sumar"
+                              ? [g.sumaARS ? fmtMoneda(g.sumaARS, "ARS") : null, g.sumaUSD ? fmtMoneda(g.sumaUSD, "USD") : null].filter(Boolean).join(" · ") || "$ 0"
+                              : `${g.cantidad} ev.`}
                         </span>
-                      </button>
-                    );
-                  })
-                )}
-              </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* lista de eventos */}
+              {resultado.intencion === "demora" ? (
+                <>
+                  <div className="text-[10px] font-semibold uppercase tracking-wide mb-1.5" style={{ color: C.dim }}>
+                    Detalle por evento
+                  </div>
+                  <div className="max-h-64 overflow-auto grid gap-1.5">
+                    {resultado.demoraDetalle.length === 0 ? (
+                      <p className="text-xs py-4 text-center" style={{ color: C.dim }}>Sin datos suficientes para calcular demoras.</p>
+                    ) : (
+                      resultado.demoraDetalle.map(({ ev, dias }) => (
+                        <button key={ev.id} onClick={() => onVer(ev.id)}
+                          className="w-full text-left rounded-lg px-3 py-2 flex items-center justify-between gap-2 hover:opacity-80"
+                          style={{ background: C.panel2, border: `1px solid ${C.border}` }}>
+                          <div className="min-w-0">
+                            <div className="text-xs font-medium truncate" style={{ color: C.text }}>{ev.nombre}</div>
+                            <div className="text-[10px] font-mono" style={{ color: C.dim }}>{fmtFecha(ev.fecha)}</div>
+                          </div>
+                          <span className="text-[11px] font-mono shrink-0" style={{ color: dias > 30 ? C.rose : C.gold }}>
+                            {dias} día{dias === 1 ? "" : "s"}
+                          </span>
+                        </button>
+                      ))
+                    )}
+                  </div>
+                </>
+              ) : (
+                <>
+                  <div className="text-[10px] font-semibold uppercase tracking-wide mb-1.5" style={{ color: C.dim }}>
+                    {resultado.resultados.length} evento{resultado.resultados.length === 1 ? "" : "s"}
+                  </div>
+                  <div className="max-h-64 overflow-auto grid gap-1.5">
+                    {resultado.resultados.length === 0 ? (
+                      <p className="text-xs py-4 text-center" style={{ color: C.dim }}>Ningún evento coincide.</p>
+                    ) : (
+                      resultado.resultados.map((e) => {
+                        const finalizado = e.fecha && e.fecha < hoyISO;
+                        return (
+                          <button key={e.id} onClick={() => onVer(e.id)}
+                            className="w-full text-left rounded-lg px-3 py-2 flex items-center justify-between gap-2 hover:opacity-80"
+                            style={{ background: C.panel2, border: `1px solid ${C.border}` }}>
+                            <div className="min-w-0">
+                              <div className="text-xs font-medium truncate" style={{ color: C.text }}>{e.nombre}</div>
+                              <div className="text-[10px] font-mono" style={{ color: C.dim }}>
+                                {fmtFecha(e.fecha)}{e.categoria ? ` · ${e.categoria}` : ""}{finalizado ? " · finalizado" : ""}
+                              </div>
+                            </div>
+                            <span className="text-[11px] font-mono shrink-0" style={{ color: e.moneda === "USD" ? C.cyan : C.gold }}>
+                              {fmtMoneda(totalFacturable(e), e.moneda)}
+                            </span>
+                          </button>
+                        );
+                      })
+                    )}
+                  </div>
+                </>
+              )}
 
               <button onClick={() => { setResultado(null); setPregunta(""); inputRef.current?.focus(); }}
                 className="mt-3 text-[11px] hover:opacity-80" style={{ color: C.gold }}>
@@ -3356,7 +3503,7 @@ function Detalle({ ev, onBack, onEdit, onDelete, onUpdate, onDuplicate, perms = 
               : "Solo administración / contabilidad puede modificar este estado."}
           </p>
           <Toggle checked={ev.facturado} onChange={(v) => onUpdate({ facturado: v, ...(v ? { facturadoAt: new Date().toISOString() } : { facturadoAt: null }) })} label="Facturado" disabled={!perms.eventoFacturar} />
-          <Toggle checked={ev.comprobantePago} onChange={(v) => onUpdate({ comprobantePago: v })} label="Comprobante de pago adjunto" disabled={!perms.eventoFacturar} />
+          <Toggle checked={ev.comprobantePago} onChange={(v) => onUpdate({ comprobantePago: v, ...(v ? { comprobantePagoAt: new Date().toISOString() } : { comprobantePagoAt: null }) })} label="Comprobante de pago adjunto" disabled={!perms.eventoFacturar} />
           <Toggle checked={ev.facturadoTotal} onChange={(v) => onUpdate({ facturadoTotal: v })} label="Facturado total" disabled={!perms.eventoFacturar} />
           <p className="text-[11px] mt-2" style={{ color: C.dim }}>
             Los marcadores se actualizan automáticamente al subir archivos en la sección de abajo.
@@ -4356,7 +4503,7 @@ function ArchivoLista({ ev, tipo, titulo, icono, archivos, max, textoVacio, onUp
           patch.facturadoAt = new Date().toISOString();
         }
       }
-      if (tipo === "comprobantes" && lista.length > 0) patch.comprobantePago = true;
+      if (tipo === "comprobantes" && lista.length > 0) { patch.comprobantePago = true; patch.comprobantePagoAt = new Date().toISOString(); }
       await onUpdate(patch);
     } catch (e) {
       console.error(e);
@@ -4379,7 +4526,7 @@ function ArchivoLista({ ev, tipo, titulo, icono, archivos, max, textoVacio, onUp
       } else if (tipo === "facturas" && max && lista.length < max) {
         patch.facturadoTotal = false;
       }
-      if (tipo === "comprobantes" && lista.length === 0) patch.comprobantePago = false;
+      if (tipo === "comprobantes" && lista.length === 0) { patch.comprobantePago = false; patch.comprobantePagoAt = null; }
       await onUpdate(patch);
     } catch (e) {
       console.error(e);

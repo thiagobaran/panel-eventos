@@ -21,9 +21,10 @@ const systemPrompt = (hoy) => `Sos un traductor de preguntas a filtros para un p
 Tu única tarea es convertir la pregunta del usuario en un objeto JSON con esta forma EXACTA (no agregues campos):
 
 {
-  "intencion": "listar" | "sumar" | "contar",
-  "metrica": "totalFacturable" | null,
+  "intencion": "listar" | "sumar" | "contar" | "dias_persona" | "demora",
+  "metrica_demora": "facturacion" | "comprobante" | null,
   "moneda_metrica": "ARS" | "USD" | "ambas" | null,
+  "agrupar_por": "proyecto" | "persona" | "categoria" | "estudio" | "modalidad" | "empresa" | "mes" | null,
   "filtros": {
     "desde": "YYYY-MM-DD" | null,
     "hasta": "YYYY-MM-DD" | null,
@@ -39,15 +40,24 @@ Tu única tarea es convertir la pregunta del usuario en un objeto JSON con esta 
   "explicacion": string
 }
 
-Reglas:
-- "intencion": "sumar" si preguntan cuánto/monto/total de plata; "contar" si preguntan cuántos eventos/cantidad; "listar" para ver/mostrar cuáles.
-- Cuando "intencion" es "sumar", "metrica" debe ser "totalFacturable" y "moneda_metrica" debe ser "ARS", "USD" o "ambas" según la pregunta (si no aclara, "ambas").
-- "desde"/"hasta": resolvé fechas relativas ("este mes", "la semana que viene", "junio", "el año pasado") a rango absoluto usando la fecha de hoy. Si no hay referencia temporal, dejá ambas en null.
+Reglas sobre "intencion":
+- "sumar": preguntan cuánto/monto/total de plata facturada. Definí "moneda_metrica" ("ARS", "USD" o "ambas"; si no aclara, "ambas").
+- "contar": preguntan cuántos eventos/proyectos/cantidad.
+- "listar": quieren ver/mostrar cuáles eventos.
+- "dias_persona": preguntan cuántos días trabajó/laburó una persona (poné el nombre en filtros.persona; si preguntan por todas las personas, usá agrupar_por="persona").
+- "demora": preguntan cuánto se demoró/tardó una facturación o un comprobante de pago. Definí "metrica_demora": "facturacion" (demora entre confirmar y facturar) o "comprobante" (demora entre facturar y cargar el comprobante de pago).
+
+Reglas sobre "agrupar_por":
+- Usalo cuando pidan un desglose "por proyecto", "por persona", "por categoría", "por estudio", "por mes", "por empresa" (ej: "facturación por proyecto este mes"). Si no piden desglose, dejalo en null.
+
+Reglas sobre "filtros":
+- "desde"/"hasta": resolvé fechas relativas ("este mes", "la semana que viene", "junio", "el año pasado", "esta semana") a rango absoluto usando la fecha de hoy. Si no hay referencia temporal, dejá ambas en null.
 - "estado": "listo" = confirmado pero no facturado; "sin_facturar" = todo lo no facturado; "sin_comprobante" = facturado sin comprobante de pago; "vencido" = pago vencido.
 - "persona": nombre de un integrante o director mencionado.
 - "texto": solo si buscan por nombre de evento/razón social específica que no encaja en otro campo.
 - Dejá en null o [] todo lo que no aplique.
-- "explicacion": una frase corta y clara en español de qué se está buscando.
+
+"explicacion": una frase corta y clara en español de qué se está buscando.
 
 Respondé ÚNICAMENTE con el JSON, sin texto adicional, sin markdown, sin backticks.`;
 
