@@ -154,3 +154,29 @@ restringir las políticas RLS de `eventos`/`personas` según `auth.uid()` y el
 rol de cada usuario. La UI ya está organizada para que los controles de
 "Facturado / Comprobante de pago / Facturado total" (en el detalle del
 evento) puedan ocultarse o deshabilitarse fácilmente según el rol.
+
+## Asistente de consultas (IA) — opcional
+
+La app incluye un asistente (ícono ✨ en la barra superior) para consultar los
+eventos en lenguaje natural: *"¿cuánto facturamos en USD este mes?"*, *"eventos
+confirmados sin facturar"*, *"pagos vencidos"*, etc.
+
+**Cómo funciona:** la pregunta se envía a una función serverless
+(`api/asistente.js`) que le pide a Claude (modelo Haiku, económico) que la
+traduzca a un **filtro estructurado**. Ese filtro se aplica a los eventos
+**localmente en el navegador** — los montos y razones sociales nunca se envían a
+la IA. El gasto de tokens por consulta es mínimo.
+
+**Activación:** el asistente queda inactivo hasta cargar la API key. En Vercel:
+
+1. Crear una cuenta en <https://console.anthropic.com> y generar una API key.
+   Conviene ponerle un **límite de gasto mensual** para no llevarse sorpresas.
+2. En el proyecto de Vercel → *Settings → Environment Variables*, agregar:
+   - `ANTHROPIC_API_KEY` = la key (⚠️ **sin** el prefijo `VITE_`, así queda solo
+     en el servidor y nunca se expone en el navegador).
+   - (opcional) `ASISTENTE_MODEL` para cambiar el modelo (default:
+     `claude-haiku-4-5-20251001`).
+3. Redeploy. Listo.
+
+Mientras no haya key cargada, el botón funciona pero avisa que el asistente no
+está activado.

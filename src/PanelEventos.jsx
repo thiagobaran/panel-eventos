@@ -6,7 +6,7 @@ import {
   Trash2, Pencil, AlertTriangle, Clock, DollarSign, ChevronLeft,
   Download, Upload, WifiOff, RefreshCw, Paperclip, Receipt, Eye, EyeOff,
   LogOut, KeyRound, UserCog, ShieldCheck, Lock, Bell, CheckCircle,
-  BarChart2, ChevronRight, MessageSquare, Send, Printer, Copy,
+  BarChart2, ChevronRight, MessageSquare, Send, Printer, Copy, Sparkles,
 } from "lucide-react";
 import { listEventos, upsertEvento, deleteEvento, subscribeEventos } from "./lib/eventosApi";
 import { listPersonas, upsertPersona, deletePersona, subscribePersonas } from "./lib/personasApi";
@@ -15,6 +15,7 @@ import {
   subscribeCategoriasPersonal
 } from "./lib/categoriasPersonalApi";
 import { subirArchivo, urlArchivo, borrarArchivo } from "./lib/storageApi";
+import { consultarAsistente } from "./lib/asistenteApi";
 import { isSupabaseConfigured } from "./lib/supabaseClient";
 import {
   listUsuarios, crearUsuario, actualizarUsuario, cambiarPassword, borrarUsuario,
@@ -273,6 +274,71 @@ const totalFacturable = (ev) => montoM1(ev) * 1.21 + montoM2(ev);
 const empresaLabel = (d) =>
   d === "MIXTO" ? "MG M1 + M2" : d === "M2" ? "MG M2" : "MG M1";
 const tipoCambio = (ev) => Number(ev?.tipoCambio) || 0;
+
+// Aplica el "spec" (filtro estructurado que devuelve el asistente) sobre los eventos.
+// Todo el cálculo es local: los datos nunca salen del navegador.
+const aplicarSpecAsistente = (spec, eventos) => {
+  const f = spec?.filtros || {};
+  const norm = (s) => (s || "").toString().toLowerCase();
+
+  const enRango = (ev) => {
+    if (!f.desde && !f.hasta) return true;
+    const fechas = [...getFechasEvento(ev)];
+    if (fechas.length === 0) return false;
+    return fechas.some((d) => (!f.desde || d >= f.desde) && (!f.hasta || d <= f.hasta));
+  };
+
+  const cumpleEstado = (ev) => {
+    switch (f.estado) {
+      case "borrador": return !ev.confirmado;
+      case "listo": return ev.confirmado && !ev.facturado;
+      case "facturado": return !!ev.facturado;
+      case "sin_facturar": return !ev.facturado;
+      case "sin_comprobante": return ev.facturado && !ev.comprobantePago;
+      case "vencido": { const d = diasVencimientoPago(ev); return d !== null && d < 0; }
+      default: return true;
+    }
+  };
+
+  const cumplePersona = (ev) => {
+    if (!f.persona) return true;
+    const p = norm(f.persona);
+    if (norm(ev.director?.nombre).includes(p)) return true;
+    return (ev.integrantes || []).some((i) => norm(i.nombre).includes(p));
+  };
+
+  const cumpleTexto = (ev) => {
+    if (!f.texto) return true;
+    const t = norm(f.texto);
+    return norm(ev.nombre).includes(t) || norm(ev.razonSocial).includes(t);
+  };
+
+  const resultados = eventos.filter((ev) => {
+    if (!ev.nombre) return false;
+    if (!enRango(ev)) return false;
+    if (f.categorias?.length && !f.categorias.includes(ev.categoria)) return false;
+    if (f.modalidades?.length && !f.modalidades.includes(ev.modalidadRodaje)) return false;
+    if (f.estudios?.length && !normEstudio(ev.estudio).some((e) => f.estudios.includes(e))) return false;
+    if (f.empresas?.length && !f.empresas.includes(ev.distribucion || "M1")) return false;
+    if (f.moneda && (ev.moneda || "ARS") !== f.moneda) return false;
+    if (!cumpleEstado(ev)) return false;
+    if (!cumplePersona(ev)) return false;
+    if (!cumpleTexto(ev)) return false;
+    return true;
+  });
+
+  const out = { intencion: spec?.intencion || "listar", explicacion: spec?.explicacion || "", resultados };
+
+  if (spec?.intencion === "contar") {
+    out.valor = resultados.length;
+  } else if (spec?.intencion === "sumar") {
+    const mon = spec?.moneda_metrica || "ambas";
+    const sumaMon = (m) => resultados.filter((e) => (e.moneda || "ARS") === m).reduce((s, e) => s + totalFacturable(e), 0);
+    out.sumaARS = (mon === "ARS" || mon === "ambas") ? sumaMon("ARS") : null;
+    out.sumaUSD = (mon === "USD" || mon === "ambas") ? sumaMon("USD") : null;
+  }
+  return out;
+};
 
 /* ===================================================================== */
 export default function PanelEventos() {
@@ -610,6 +676,9 @@ export default function PanelEventos() {
   );
   const pendVenc = eventos.filter((e) => { const d = diasVencimientoPago(e); return d !== null && d < 0; });
 
+  // Asistente de consultas (IA)
+  const [showAsistente, setShowAsistente] = useState(false);
+
   // Notificaciones
   const [showNotif, setShowNotif] = useState(false);
   const notifRef = useRef(null);
@@ -735,6 +804,12 @@ export default function PanelEventos() {
             </Tab>
           )}
           <div className="ml-2 flex items-center gap-2 pl-2" style={{ borderLeft: `1px solid ${C.border}` }}>
+            {/* Asistente IA */}
+            <button onClick={() => setShowAsistente(true)} title="Asistente de consultas"
+              className="p-1.5 rounded-md hover:opacity-80"
+              style={{ background: "transparent", color: C.gold }}>
+              <Sparkles size={16} />
+            </button>
             {/* Notificaciones */}
             <div className="relative" ref={notifRef}>
               <button onClick={() => setShowNotif((v) => !v)} title="Notificaciones"
@@ -806,6 +881,14 @@ export default function PanelEventos() {
           </div>
         </nav>
       </header>
+
+      {showAsistente && (
+        <AsistenteModal
+          eventos={eventos}
+          onClose={() => setShowAsistente(false)}
+          onVer={(id) => { setShowAsistente(false); setVerId(id); setVista("detalle"); }}
+        />
+      )}
 
       {!isSupabaseConfigured && (
         <div className="px-4 sm:px-6 py-2 text-xs flex items-center gap-2 flex-wrap"
@@ -1147,6 +1230,174 @@ function ExportEventosModal({ eventos, onClose }) {
           <button onClick={exportar} style={{ flex: 1, fontSize: "0.875rem", fontWeight: 600, padding: "8px 12px", borderRadius: "6px", background: C.gold, color: C.onGold, display: "flex", alignItems: "center", justifyContent: "center", gap: "6px" }}>
             <Download size={13} /> Guardar como…
           </button>
+        </div>
+      </div>
+    </div>,
+    document.body
+  );
+}
+
+/* ====================== ASISTENTE IA ====================== */
+function AsistenteModal({ eventos, onClose, onVer }) {
+  const [pregunta, setPregunta] = useState("");
+  const [cargando, setCargando] = useState(false);
+  const [error, setError] = useState("");
+  const [resultado, setResultado] = useState(null);
+  const inputRef = useRef(null);
+
+  useEffect(() => { inputRef.current?.focus(); }, []);
+
+  const ejemplos = [
+    "¿Cuánto facturamos en USD este mes?",
+    "Eventos confirmados sin facturar",
+    "¿Qué eventos usan el estudio 2 este mes?",
+    "Pagos vencidos",
+  ];
+
+  const erroresMsg = {
+    no_configurado: "El asistente todavía no está activado. Falta cargar la API key de Anthropic (ANTHROPIC_API_KEY) en las variables de entorno de Vercel.",
+    sin_conexion: "No se pudo conectar con el servidor.",
+    error_servidor: "El servidor devolvió un error.",
+    error_anthropic: "Error al consultar la IA. Puede ser saldo agotado o límite de gasto alcanzado.",
+    no_entendido: "No pude interpretar la pregunta. Probá reformularla más simple.",
+    respuesta_invalida: "Respuesta inesperada del servidor.",
+  };
+
+  const preguntar = async (texto) => {
+    const q = (texto ?? pregunta).trim();
+    if (!q || cargando) return;
+    setCargando(true); setError(""); setResultado(null);
+    const resp = await consultarAsistente(q);
+    setCargando(false);
+    if (resp.error) { setError(erroresMsg[resp.error] || "Ocurrió un error."); return; }
+    if (!resp.spec) { setError("No pude interpretar la pregunta."); return; }
+    setResultado(aplicarSpecAsistente(resp.spec, eventos));
+  };
+
+  const hoyISO = new Date().toISOString().slice(0, 10);
+
+  return ReactDOM.createPortal(
+    <div className="fixed inset-0 z-[100] flex items-start justify-center p-4 sm:pt-20"
+      style={{ background: "rgba(0,0,0,0.6)" }} onMouseDown={onClose}>
+      <div className="w-full max-w-lg rounded-2xl overflow-hidden shadow-2xl"
+        style={{ background: C.panel, border: `1px solid ${C.border}` }}
+        onMouseDown={(e) => e.stopPropagation()}>
+        {/* header */}
+        <div className="px-4 py-3 flex items-center justify-between" style={{ borderBottom: `1px solid ${C.border}` }}>
+          <div className="flex items-center gap-2">
+            <Sparkles size={16} color={C.gold} />
+            <span className="text-sm font-semibold">Asistente de consultas</span>
+          </div>
+          <button onClick={onClose} className="p-1 rounded hover:opacity-80" style={{ color: C.dim }}><X size={16} /></button>
+        </div>
+
+        {/* input */}
+        <div className="p-4">
+          <div className="flex gap-2">
+            <input ref={inputRef} value={pregunta}
+              onChange={(e) => setPregunta(e.target.value)}
+              onKeyDown={(e) => { if (e.key === "Enter") preguntar(); }}
+              placeholder="Preguntá algo sobre tus eventos…"
+              className="flex-1 text-sm px-3 py-2 rounded-md"
+              style={{ background: C.panel2, border: `1px solid ${C.border}`, color: C.text }} />
+            <button onClick={() => preguntar()} disabled={cargando || !pregunta.trim()}
+              className="px-3 py-2 rounded-md flex items-center gap-1.5 text-sm font-medium disabled:opacity-40"
+              style={{ background: C.gold, color: C.onGold }}>
+              {cargando ? <RefreshCw size={15} className="animate-spin" /> : <Send size={15} />}
+            </button>
+          </div>
+
+          {/* ejemplos */}
+          {!resultado && !error && !cargando && (
+            <div className="flex flex-wrap gap-1.5 mt-3">
+              {ejemplos.map((ej) => (
+                <button key={ej} onClick={() => { setPregunta(ej); preguntar(ej); }}
+                  className="text-[11px] px-2 py-1 rounded-full hover:opacity-80"
+                  style={{ background: C.panel2, border: `1px solid ${C.border}`, color: C.dim }}>
+                  {ej}
+                </button>
+              ))}
+            </div>
+          )}
+
+          {/* error */}
+          {error && (
+            <div className="mt-3 text-xs rounded-lg px-3 py-2 flex items-start gap-2"
+              style={{ background: `${C.amber}14`, border: `1px solid ${C.amber}40`, color: C.amber }}>
+              <AlertTriangle size={14} className="mt-0.5 shrink-0" /> <span>{error}</span>
+            </div>
+          )}
+
+          {/* resultado */}
+          {resultado && (
+            <div className="mt-4">
+              {resultado.explicacion && (
+                <p className="text-[11px] mb-2" style={{ color: C.dim }}>{resultado.explicacion}</p>
+              )}
+
+              {resultado.intencion === "sumar" && (
+                <div className="grid gap-2 mb-3">
+                  {resultado.sumaARS != null && (
+                    <div className="rounded-xl p-3 flex items-center justify-between" style={{ background: C.panel2, border: `1px solid ${C.gold}40` }}>
+                      <span className="text-[10px] font-semibold uppercase" style={{ color: C.gold }}>Total facturable ARS</span>
+                      <span className="font-mono font-extrabold text-sm" style={{ color: C.gold }}>{fmtMoneda(resultado.sumaARS, "ARS")}</span>
+                    </div>
+                  )}
+                  {resultado.sumaUSD != null && (
+                    <div className="rounded-xl p-3 flex items-center justify-between" style={{ background: C.panel2, border: `1px solid ${C.cyan}40` }}>
+                      <span className="text-[10px] font-semibold uppercase" style={{ color: C.cyan }}>Total facturable USD</span>
+                      <span className="font-mono font-extrabold text-sm" style={{ color: C.cyan }}>{fmtMoneda(resultado.sumaUSD, "USD")}</span>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {resultado.intencion === "contar" && (
+                <div className="rounded-xl p-3 mb-3 flex items-center justify-between" style={{ background: C.panel2, border: `1px solid ${C.border}` }}>
+                  <span className="text-[10px] font-semibold uppercase" style={{ color: C.dim }}>Cantidad de eventos</span>
+                  <span className="font-mono font-extrabold text-lg" style={{ color: C.gold }}>{resultado.valor}</span>
+                </div>
+              )}
+
+              {/* lista de eventos que matchean */}
+              <div className="text-[10px] font-semibold uppercase tracking-wide mb-1.5" style={{ color: C.dim }}>
+                {resultado.resultados.length} evento{resultado.resultados.length === 1 ? "" : "s"}
+              </div>
+              <div className="max-h-64 overflow-auto grid gap-1.5">
+                {resultado.resultados.length === 0 ? (
+                  <p className="text-xs py-4 text-center" style={{ color: C.dim }}>Ningún evento coincide.</p>
+                ) : (
+                  resultado.resultados.map((e) => {
+                    const finalizado = e.fecha && e.fecha < hoyISO;
+                    return (
+                      <button key={e.id} onClick={() => onVer(e.id)}
+                        className="w-full text-left rounded-lg px-3 py-2 flex items-center justify-between gap-2 hover:opacity-80"
+                        style={{ background: C.panel2, border: `1px solid ${C.border}` }}>
+                        <div className="min-w-0">
+                          <div className="text-xs font-medium truncate" style={{ color: C.text }}>{e.nombre}</div>
+                          <div className="text-[10px] font-mono" style={{ color: C.dim }}>
+                            {fmtFecha(e.fecha)}{e.categoria ? ` · ${e.categoria}` : ""}{finalizado ? " · finalizado" : ""}
+                          </div>
+                        </div>
+                        <span className="text-[11px] font-mono shrink-0" style={{ color: e.moneda === "USD" ? C.cyan : C.gold }}>
+                          {fmtMoneda(totalFacturable(e), e.moneda)}
+                        </span>
+                      </button>
+                    );
+                  })
+                )}
+              </div>
+
+              <button onClick={() => { setResultado(null); setPregunta(""); inputRef.current?.focus(); }}
+                className="mt-3 text-[11px] hover:opacity-80" style={{ color: C.gold }}>
+                Nueva consulta
+              </button>
+            </div>
+          )}
+
+          <p className="text-[10px] mt-4" style={{ color: C.dim }}>
+            El asistente interpreta tu pregunta y filtra los eventos localmente. Los montos no salen de tu navegador.
+          </p>
         </div>
       </div>
     </div>,
