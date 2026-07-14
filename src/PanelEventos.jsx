@@ -1286,7 +1286,7 @@ function AsistenteModal({ eventos, onClose, onVer }) {
         <div className="px-4 py-3 flex items-center justify-between" style={{ borderBottom: `1px solid ${C.border}` }}>
           <div className="flex items-center gap-2">
             <Sparkles size={16} color={C.gold} />
-            <span className="text-sm font-semibold">Asistente de consultas</span>
+            <span className="text-sm font-semibold" style={{ color: C.text }}>Asistente de consultas</span>
           </div>
           <button onClick={onClose} className="p-1 rounded hover:opacity-80" style={{ color: C.dim }}><X size={16} /></button>
         </div>
