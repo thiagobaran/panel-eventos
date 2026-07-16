@@ -3512,6 +3512,8 @@ function Detalle({ ev, onBack, onEdit, onDelete, onUpdate, onDuplicate, perms = 
 
         {perms.archivos ? (
           <Archivos ev={ev} onUpdate={onUpdate} />
+        ) : perms.archivosVer ? (
+          <Archivos ev={ev} onUpdate={onUpdate} readOnly />
         ) : (
           <div className="sm:col-span-2 rounded-xl p-4 flex items-center gap-2 text-xs"
                style={{ background: C.panel, border: `1px dashed ${C.border}`, color: C.dim }}>
@@ -4422,7 +4424,7 @@ function MensajesEquipo({ ev, usuario, onUpdate }) {
 }
 
 /* ====================== ARCHIVOS (facturas + comprobantes) ====================== */
-function Archivos({ ev, onUpdate }) {
+function Archivos({ ev, onUpdate, readOnly = false }) {
   const facturas = ev.facturas || [];
   const comprobantes = ev.comprobantes || [];
   const maxFact = Number(ev.cantFacturas) || 0;
@@ -4433,6 +4435,11 @@ function Archivos({ ev, onUpdate }) {
       <div className="flex items-center gap-2 mb-3">
         <Paperclip size={15} color={C.gold} />
         <h3 className="text-sm font-semibold">Archivos del evento</h3>
+        {readOnly && (
+          <span className="text-[10px] px-2 py-0.5 rounded-full flex items-center gap-1" style={{ background: C.panel2, color: C.dim, border: `1px solid ${C.border}` }}>
+            <Eye size={11} /> Solo lectura
+          </span>
+        )}
         <span className="ml-auto text-[11px]" style={{ color: C.dim }}>
           {isSupabaseConfigured ? "Guardados en la nube" : "Modo local (este navegador)"}
         </span>
@@ -4447,11 +4454,14 @@ function Archivos({ ev, onUpdate }) {
           archivos={facturas}
           max={maxFact}
           textoVacio={
-            maxFact > 0
+            readOnly
+              ? "No hay facturas cargadas todavía."
+              : maxFact > 0
               ? `Falta cargar ${restantes} de ${maxFact} factura(s).`
               : "Definí cuántas facturas se van a emitir (en Editar → Facturación) y después subilas acá."
           }
           onUpdate={onUpdate}
+          readOnly={readOnly}
         />
         <ArchivoLista
           ev={ev}
@@ -4461,13 +4471,14 @@ function Archivos({ ev, onUpdate }) {
           archivos={comprobantes}
           textoVacio="No hay comprobantes cargados todavía."
           onUpdate={onUpdate}
+          readOnly={readOnly}
         />
       </div>
     </div>
   );
 }
 
-function ArchivoLista({ ev, tipo, titulo, icono, archivos, max, textoVacio, onUpdate }) {
+function ArchivoLista({ ev, tipo, titulo, icono, archivos, max, textoVacio, onUpdate, readOnly = false }) {
   const [subiendo, setSubiendo] = useState(false);
   const inputRef = useRef(null);
   const lleno = max ? archivos.length >= max : false;
@@ -4570,45 +4581,49 @@ function ArchivoLista({ ev, tipo, titulo, icono, archivos, max, textoVacio, onUp
                   {fmtBytes(a.size)} · {a.uploadedAt ? fmtFecha(a.uploadedAt.slice(0, 10)) : "—"}
                 </div>
               </div>
-              <IconBtn onClick={() => abrir(a)} title="Abrir / descargar"><Eye size={14} /></IconBtn>
-              <IconBtn onClick={() => eliminar(a)} title="Borrar" danger><Trash2 size={14} /></IconBtn>
+              <IconBtn onClick={() => abrir(a)} title="Abrir / descargar"><Download size={14} /></IconBtn>
+              {!readOnly && <IconBtn onClick={() => eliminar(a)} title="Borrar" danger><Trash2 size={14} /></IconBtn>}
             </div>
           ))}
         </div>
       )}
 
-      <input
-        ref={inputRef}
-        type="file"
-        multiple
-        accept=".pdf,image/*"
-        className="hidden"
-        onChange={(e) => {
-          const files = Array.from(e.target.files || []);
-          e.target.value = "";
-          subir(files);
-        }}
-      />
-      <button
-        type="button"
-        onClick={() => inputRef.current?.click()}
-        disabled={subiendo || lleno}
-        className="w-full text-xs font-medium px-3 py-2 rounded-md flex items-center justify-center gap-1.5 transition-colors"
-        style={{
-          background: lleno ? C.panel : C.gold,
-          color: lleno ? C.dim : C.onGold,
-          border: `1px solid ${lleno ? C.border : C.gold}`,
-          cursor: subiendo || lleno ? "not-allowed" : "pointer",
-          opacity: subiendo ? 0.7 : 1,
-        }}
-      >
-        <Upload size={13} />
-        {subiendo
-          ? "Subiendo…"
-          : lleno
-          ? "Cant. de facturas completa"
-          : `Subir ${tipo === "facturas" ? "factura" : "comprobante"}`}
-      </button>
+      {!readOnly && (
+        <>
+          <input
+            ref={inputRef}
+            type="file"
+            multiple
+            accept=".pdf,image/*"
+            className="hidden"
+            onChange={(e) => {
+              const files = Array.from(e.target.files || []);
+              e.target.value = "";
+              subir(files);
+            }}
+          />
+          <button
+            type="button"
+            onClick={() => inputRef.current?.click()}
+            disabled={subiendo || lleno}
+            className="w-full text-xs font-medium px-3 py-2 rounded-md flex items-center justify-center gap-1.5 transition-colors"
+            style={{
+              background: lleno ? C.panel : C.gold,
+              color: lleno ? C.dim : C.onGold,
+              border: `1px solid ${lleno ? C.border : C.gold}`,
+              cursor: subiendo || lleno ? "not-allowed" : "pointer",
+              opacity: subiendo ? 0.7 : 1,
+            }}
+          >
+            <Upload size={13} />
+            {subiendo
+              ? "Subiendo…"
+              : lleno
+              ? "Cant. de facturas completa"
+              : `Subir ${tipo === "facturas" ? "factura" : "comprobante"}`}
+          </button>
+        </>
+      )}
     </div>
   );
 }
