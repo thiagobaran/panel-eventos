@@ -2553,12 +2553,15 @@ function ClientesSection({ clientes, eventos, onSave, onDelete, perms = {}, onVe
     const map = {};
     eventos.forEach((e) => {
       if (!e.clienteId) return;
-      if (!map[e.clienteId]) map[e.clienteId] = { eventos: [], ars: { fact: 0, cob: 0 }, usd: { fact: 0, cob: 0 } };
+      if (!map[e.clienteId]) map[e.clienteId] = { eventos: [], ars: { fact: 0, cob: 0, debe: 0, aFavor: 0 }, usd: { fact: 0, cob: 0, debe: 0, aFavor: 0 } };
       const g = map[e.clienteId];
       g.eventos.push(e);
       const mon = e.moneda === "USD" ? "usd" : "ars";
       g[mon].fact += totalFacturable(e);
       g[mon].cob += montoCobrado(e);
+      const s = saldoEvento(e);
+      if (s > 0.005) g[mon].debe += s;
+      else if (s < -0.005) g[mon].aFavor += -s;
     });
     return map;
   }, [eventos]);
@@ -2730,6 +2733,11 @@ function ClientesSection({ clientes, eventos, onSave, onDelete, perms = {}, onVe
                             <span className="font-semibold" style={{ color: saldo > 0.005 ? C.amber : C.green }}>{saldo > 0.005 ? "Saldo (debe)" : saldo < -0.005 ? "A favor" : "Saldado"}</span>
                             <span className="font-mono font-bold" style={{ color: saldo > 0.005 ? C.amber : C.green }}>{fmtMoneda(Math.abs(saldo), label)}</span>
                           </div>
+                          {g.aFavor > 0.005 && g.debe > 0.005 && (
+                            <p className="text-[10px] mt-1.5 leading-snug" style={{ color: C.dim }}>
+                              Incluye <span style={{ color: C.green }}>{fmtMoneda(g.aFavor, label)} a favor</span> en un proyecto, imputado a <span style={{ color: C.amber }}>{fmtMoneda(g.debe, label)} pendiente</span> en otro.
+                            </p>
+                          )}
                         </div>
                       );
                     })}
@@ -2738,8 +2746,10 @@ function ClientesSection({ clientes, eventos, onSave, onDelete, perms = {}, onVe
                   <div className="grid gap-1.5">
                     {cta.eventos.slice().sort((a, b) => (b.fecha || "").localeCompare(a.fecha || "")).map((e) => {
                       const saldoEv = saldoEvento(e);
-                      const est = estadoCobro(e);
-                      const col = est === "cobrado" ? C.green : est === "parcial" ? C.amber : C.rose;
+                      let etiqueta, col;
+                      if (saldoEv > 0.005) { etiqueta = `Debe ${fmtMoneda(saldoEv, e.moneda)}`; col = montoCobrado(e) > 0 ? C.amber : C.rose; }
+                      else if (saldoEv < -0.005) { etiqueta = `A favor ${fmtMoneda(-saldoEv, e.moneda)}`; col = C.cyan; }
+                      else { etiqueta = "Saldado"; col = C.green; }
                       return (
                         <button key={e.id} onClick={() => onVer(e.id)}
                           className="w-full text-left rounded-lg px-3 py-2 flex items-center justify-between gap-2 hover:opacity-80"
@@ -2749,7 +2759,7 @@ function ClientesSection({ clientes, eventos, onSave, onDelete, perms = {}, onVe
                             <div className="text-[10px] font-mono" style={{ color: C.dim }}>{fmtFecha(e.fecha)} · Cobrado {fmtMoneda(montoCobrado(e), e.moneda)} de {fmtMoneda(totalFacturable(e), e.moneda)}</div>
                           </div>
                           <span className="text-[11px] font-mono shrink-0" style={{ color: col }}>
-                            {saldoEv > 0.005 ? `Debe ${fmtMoneda(saldoEv, e.moneda)}` : "Saldado"}
+                            {etiqueta}
                           </span>
                         </button>
                       );
