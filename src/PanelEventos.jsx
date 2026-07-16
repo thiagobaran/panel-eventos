@@ -3840,7 +3840,7 @@ function Detalle({ ev, onBack, onEdit, onDelete, onUpdate, onDuplicate, perms = 
 
         <FacturacionCard ev={ev} onUpdate={onUpdate} perms={perms} />
 
-        <PagosCard ev={ev} onUpdate={onUpdate} perms={perms} />
+        <PagosCard ev={ev} onUpdate={onUpdate} perms={perms} eventos={eventos} />
 
         <Card titulo="Estado administrativo" icon={<DollarSign size={15} color={C.gold} />}>
           <p className="text-xs mb-1" style={{ color: C.dim }}>
@@ -4198,7 +4198,7 @@ function ProduccionCard({ ev, onUpdate, perms, eventos = [] }) {
   );
 }
 
-function PagosCard({ ev, onUpdate, perms }) {
+function PagosCard({ ev, onUpdate, perms, eventos = [] }) {
   const editable = !!perms?.eventoFacturar;
   const hoyISO = new Date().toISOString().slice(0, 10);
   const [nuevo, setNuevo] = useState({ fecha: hoyISO, monto: "", medio: "", nota: "" });
@@ -4208,6 +4208,19 @@ function PagosCard({ ev, onUpdate, perms }) {
   const saldo = saldoEvento(ev);
   const estado = estadoCobro(ev);
   const mon = ev.moneda || "ARS";
+
+  // Contexto del cliente: excedentes ("a favor") y pendientes en OTROS proyectos
+  // del mismo cliente y misma moneda, para el trackeo de dinero entre proyectos.
+  let otrosDebe = 0, otrosAFavor = 0;
+  if (ev.clienteId) {
+    eventos.forEach((e) => {
+      if (e.id === ev.id || e.clienteId !== ev.clienteId) return;
+      if ((e.moneda || "ARS") !== mon) return;
+      const s = saldoEvento(e);
+      if (s > 0.005) otrosDebe += s;
+      else if (s < -0.005) otrosAFavor += -s;
+    });
+  }
 
   const estadoInfo = {
     sin_cobrar: { label: "Sin cobrar", color: C.rose },
@@ -4234,6 +4247,17 @@ function PagosCard({ ev, onUpdate, perms }) {
       <Dato k="Total facturable" v={fmtMoneda(total, mon)} mono />
       <Dato k="Cobrado" v={fmtMoneda(cobrado, mon)} mono accent />
       <Dato k={saldo > 0.005 ? "Saldo pendiente" : saldo < -0.005 ? "A favor del cliente" : "Saldo"} v={fmtMoneda(Math.abs(saldo), mon)} mono />
+
+      {saldo < -0.005 && otrosDebe > 0.005 && (
+        <p className="text-[10px] leading-snug rounded-md px-2 py-1.5" style={{ background: `${C.cyan}12`, color: C.dim, border: `1px solid ${C.cyan}33` }}>
+          Este cliente tiene <span style={{ color: C.amber }}>{fmtMoneda(otrosDebe, mon)} pendiente</span> en otro proyecto. El excedente de acá puede imputarse a ese saldo.
+        </p>
+      )}
+      {saldo > 0.005 && otrosAFavor > 0.005 && (
+        <p className="text-[10px] leading-snug rounded-md px-2 py-1.5" style={{ background: `${C.green}12`, color: C.dim, border: `1px solid ${C.green}33` }}>
+          El cliente tiene <span style={{ color: C.green }}>{fmtMoneda(otrosAFavor, mon)} a favor</span> en otro proyecto, imputable a este saldo pendiente.
+        </p>
+      )}
 
       {pagos.length > 0 && (
         <div className="grid gap-1.5 mt-2">
