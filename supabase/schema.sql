@@ -196,9 +196,13 @@ create table if not exists public.clientes (
   domicilio text,
   director jsonb not null default '{}'::jsonb,        -- {nombre, telefono, email}
   equipo_externo jsonb not null default '[]'::jsonb,  -- [{nombre, rol}]
+  contactos jsonb not null default '[]'::jsonb,       -- [{nombre, email}]
   notas text,
   activo boolean not null default true
 );
+
+-- Columna agregada después: emails/contactos de reclamo del cliente
+alter table public.clientes add column if not exists contactos jsonb not null default '[]'::jsonb;
 
 alter table public.clientes enable row level security;
 

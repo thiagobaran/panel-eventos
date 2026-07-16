@@ -2533,7 +2533,7 @@ function CenterMonthChart({ evs }) {
 
 /* ====================== CLIENTES ====================== */
 function ClientesSection({ clientes, eventos, onSave, onDelete, perms = {}, onVer }) {
-  const vacio = { razonSocial: "", cuit: "", telefono: "", email: "", domicilio: "", director: { nombre: "", telefono: "", email: "" }, equipoExterno: [], notas: "", activo: true };
+  const vacio = { razonSocial: "", cuit: "", telefono: "", email: "", domicilio: "", director: { nombre: "", telefono: "", email: "" }, equipoExterno: [], contactos: [], notas: "", activo: true };
   const [editando, setEditando] = useState(null); // "new" | id | null
   const [f, setF] = useState(vacio);
   const [busqueda, setBusqueda] = useState("");
@@ -2554,12 +2554,13 @@ function ClientesSection({ clientes, eventos, onSave, onDelete, perms = {}, onVe
     const map = {};
     eventos.forEach((e) => {
       if (!e.clienteId) return;
-      if (!map[e.clienteId]) map[e.clienteId] = { eventos: [], ars: { fact: 0, cob: 0, debe: 0, aFavor: 0 }, usd: { fact: 0, cob: 0, debe: 0, aFavor: 0 } };
+      if (!map[e.clienteId]) map[e.clienteId] = { eventos: [], ars: { fact: 0, cob: 0, debe: 0, aFavor: 0, sinFacturar: 0 }, usd: { fact: 0, cob: 0, debe: 0, aFavor: 0, sinFacturar: 0 } };
       const g = map[e.clienteId];
       g.eventos.push(e);
       const mon = e.moneda === "USD" ? "usd" : "ars";
       g[mon].fact += totalFacturable(e);
       g[mon].cob += montoCobrado(e);
+      if (!e.facturado) g[mon].sinFacturar += totalFacturable(e);
       const s = saldoEvento(e);
       if (s > 0.005) g[mon].debe += s;
       else if (s < -0.005) g[mon].aFavor += -s;
@@ -2575,7 +2576,7 @@ function ClientesSection({ clientes, eventos, onSave, onDelete, perms = {}, onVe
   }, [clientes, busqueda]);
 
   const empezarNuevo = () => { setF(vacio); setEditando("new"); };
-  const empezarEditar = (c) => { setF({ ...vacio, ...c, director: { ...vacio.director, ...(c.director || {}) }, equipoExterno: c.equipoExterno || [] }); setEditando(c.id); };
+  const empezarEditar = (c) => { setF({ ...vacio, ...c, director: { ...vacio.director, ...(c.director || {}) }, equipoExterno: c.equipoExterno || [], contactos: c.contactos || [] }); setEditando(c.id); };
   const cancelar = () => { setEditando(null); setF(vacio); };
 
   const guardar = async () => {
@@ -2596,6 +2597,10 @@ function ClientesSection({ clientes, eventos, onSave, onDelete, perms = {}, onVe
   const addExterno = () => setF((p) => ({ ...p, equipoExterno: [...(p.equipoExterno || []), { nombre: "", rol: "" }] }));
   const setExterno = (i, k, v) => setF((p) => ({ ...p, equipoExterno: p.equipoExterno.map((x, idx) => idx === i ? { ...x, [k]: v } : x) }));
   const delExterno = (i) => setF((p) => ({ ...p, equipoExterno: p.equipoExterno.filter((_, idx) => idx !== i) }));
+
+  const addContacto = () => setF((p) => ({ ...p, contactos: [...(p.contactos || []), { nombre: "", email: "" }] }));
+  const setContacto = (i, k, v) => setF((p) => ({ ...p, contactos: p.contactos.map((x, idx) => idx === i ? { ...x, [k]: v } : x) }));
+  const delContacto = (i) => setF((p) => ({ ...p, contactos: p.contactos.filter((_, idx) => idx !== i) }));
 
   return (
     <div className="fade">
@@ -2634,6 +2639,26 @@ function ClientesSection({ clientes, eventos, onSave, onDelete, perms = {}, onVe
               <Input value={f.director.telefono} onChange={(v) => setDir("telefono", v)} placeholder="Teléfono" />
               <Input value={f.director.email} onChange={(v) => setDir("email", v)} placeholder="Email" />
             </div>
+          </div>
+
+          <div className="mt-3 rounded-lg p-3" style={{ background: C.panel2, border: `1px solid ${C.border}` }}>
+            <div className="flex items-center justify-between mb-2">
+              <span className="text-[11px] font-semibold uppercase tracking-wide" style={{ color: C.dim }}>Contactos / emails de reclamo</span>
+              <button onClick={addContacto} className="text-[11px] flex items-center gap-1 hover:opacity-80" style={{ color: C.gold }}><Plus size={12} /> Agregar</button>
+            </div>
+            {(f.contactos || []).length === 0 ? (
+              <p className="text-[11px]" style={{ color: C.dim }}>Sin contactos adicionales. Agregá los emails de las personas con quien hablar o reclamar.</p>
+            ) : (
+              <div className="grid gap-1.5">
+                {f.contactos.map((x, i) => (
+                  <div key={i} className="flex gap-2 items-center">
+                    <Input value={x.nombre} onChange={(v) => setContacto(i, "nombre", v)} placeholder="Nombre / referencia" />
+                    <Input type="email" value={x.email} onChange={(v) => setContacto(i, "email", v)} placeholder="email@…" />
+                    <IconBtn onClick={() => delContacto(i)} title="Quitar" danger><X size={14} /></IconBtn>
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
 
           <div className="mt-3 rounded-lg p-3" style={{ background: C.panel2, border: `1px solid ${C.border}` }}>
@@ -2706,6 +2731,18 @@ function ClientesSection({ clientes, eventos, onSave, onDelete, perms = {}, onVe
                   </div>
                 </button>
                 <div className="flex items-center gap-1.5 shrink-0">
+                  {(() => {
+                    const sf = (cta?.ars.sinFacturar || 0) + (cta?.usd.sinFacturar || 0);
+                    if (sf < 0.005) return null;
+                    const partes = [];
+                    if (cta.ars.sinFacturar > 0.005) partes.push(fmtMoneda(cta.ars.sinFacturar, "ARS"));
+                    if (cta.usd.sinFacturar > 0.005) partes.push(fmtMoneda(cta.usd.sinFacturar, "USD"));
+                    return (
+                      <span className="text-[10px] font-mono px-2 py-0.5 rounded-full whitespace-nowrap" style={{ background: `${C.rose}18`, color: C.rose, border: `1px solid ${C.rose}55` }}>
+                        Sin facturar {partes.join(" + ")}
+                      </span>
+                    );
+                  })()}
                   {saldoChip(saldoARS, "ARS")}
                   {saldoChip(saldoUSD, "USD")}
                   {perms.clienteCrear && <IconBtn onClick={() => empezarEditar(c)} title="Editar"><Pencil size={15} /></IconBtn>}
@@ -2728,7 +2765,10 @@ function ClientesSection({ clientes, eventos, onSave, onDelete, perms = {}, onVe
                       return (
                         <div key={mon} className="rounded-lg p-3" style={{ background: C.panel2, border: `1px solid ${C.border}` }}>
                           <div className="text-[10px] font-semibold uppercase tracking-wide mb-1.5" style={{ color: col }}>Cuenta corriente {label}</div>
-                          <div className="flex items-center justify-between text-xs"><span style={{ color: C.dim }}>Facturado</span><span className="font-mono" style={{ color: C.text }}>{fmtMoneda(g.fact, label)}</span></div>
+                          <div className="flex items-center justify-between text-xs"><span style={{ color: C.dim }}>Total facturable</span><span className="font-mono" style={{ color: C.text }}>{fmtMoneda(g.fact, label)}</span></div>
+                          {g.sinFacturar > 0.005 && (
+                            <div className="flex items-center justify-between text-xs"><span style={{ color: C.rose }}>Pendiente de facturación</span><span className="font-mono" style={{ color: C.rose }}>{fmtMoneda(g.sinFacturar, label)}</span></div>
+                          )}
                           <div className="flex items-center justify-between text-xs"><span style={{ color: C.dim }}>Cobrado</span><span className="font-mono" style={{ color: C.green }}>{fmtMoneda(g.cob, label)}</span></div>
                           <div className="flex items-center justify-between text-xs mt-1 pt-1" style={{ borderTop: `1px solid ${C.border}` }}>
                             <span className="font-semibold" style={{ color: saldo > 0.005 ? C.amber : C.green }}>{saldo > 0.005 ? "Saldo (debe)" : saldo < -0.005 ? "A favor" : "Saldado"}</span>
@@ -2743,6 +2783,24 @@ function ClientesSection({ clientes, eventos, onSave, onDelete, perms = {}, onVe
                       );
                     })}
                   </div>
+                  {/* Contactos / emails */}
+                  {(c.contactos?.length > 0 || c.email) && (
+                    <div className="rounded-lg p-3 mb-3" style={{ background: C.panel2, border: `1px solid ${C.border}` }}>
+                      <div className="text-[10px] font-semibold uppercase tracking-wide mb-1.5" style={{ color: C.dim }}>Contactos</div>
+                      <div className="flex flex-wrap gap-1.5">
+                        {c.email && (
+                          <a href={`mailto:${c.email}`} className="text-[11px] px-2 py-1 rounded-md hover:opacity-80" style={{ background: C.panel, border: `1px solid ${C.border}`, color: C.gold }}>
+                            {c.email}
+                          </a>
+                        )}
+                        {(c.contactos || []).filter((x) => x.email).map((x, i) => (
+                          <a key={i} href={`mailto:${x.email}`} className="text-[11px] px-2 py-1 rounded-md hover:opacity-80" style={{ background: C.panel, border: `1px solid ${C.border}`, color: C.gold }}>
+                            {x.nombre ? `${x.nombre}: ` : ""}{x.email}
+                          </a>
+                        ))}
+                      </div>
+                    </div>
+                  )}
                   {/* Eventos del cliente */}
                   <div className="grid gap-1.5">
                     {cta.eventos.slice().sort((a, b) => (b.fecha || "").localeCompare(a.fecha || "")).map((e) => {

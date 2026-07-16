@@ -13,6 +13,7 @@ const toDb = (c) => ({
   domicilio: c.domicilio || null,
   director: c.director || {},
   equipo_externo: Array.isArray(c.equipoExterno) ? c.equipoExterno : [],
+  contactos: Array.isArray(c.contactos) ? c.contactos : [],
   notas: c.notas || null,
   activo: c.activo !== false,
 });
@@ -26,6 +27,7 @@ const fromDb = (r) => ({
   domicilio: r.domicilio || "",
   director: r.director || { nombre: "", telefono: "", email: "" },
   equipoExterno: Array.isArray(r.equipo_externo) ? r.equipo_externo : [],
+  contactos: Array.isArray(r.contactos) ? r.contactos : [],
   notas: r.notas || "",
   activo: r.activo !== false,
 });
