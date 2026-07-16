@@ -181,6 +181,49 @@ begin
 end $$;
 
 -- ---------------------------------------------------------------------
+-- Clientes (productoras que contratan a la empresa)
+-- ---------------------------------------------------------------------
+-- Cada evento puede asociarse a un cliente. Al elegirlo en el evento se
+-- autocompletan razón social, CUIT, dirección y equipo externo por defecto.
+create table if not exists public.clientes (
+  id uuid primary key default gen_random_uuid(),
+  created_at timestamptz not null default now(),
+
+  razon_social text not null default '',
+  cuit text,
+  telefono text,
+  email text,
+  domicilio text,
+  director jsonb not null default '{}'::jsonb,        -- {nombre, telefono, email}
+  equipo_externo jsonb not null default '[]'::jsonb,  -- [{nombre, rol}]
+  notas text,
+  activo boolean not null default true
+);
+
+alter table public.clientes enable row level security;
+
+drop policy if exists "Acceso interno completo" on public.clientes;
+create policy "Acceso interno completo"
+  on public.clientes
+  for all
+  using (true)
+  with check (true);
+
+do $$
+begin
+  if not exists (
+    select 1 from pg_publication_tables
+    where pubname = 'supabase_realtime' and tablename = 'clientes'
+  ) then
+    alter publication supabase_realtime add table public.clientes;
+  end if;
+end $$;
+
+-- Vínculo del evento con el cliente + CUIT snapshot
+alter table public.eventos add column if not exists cliente_id text;
+alter table public.eventos add column if not exists cuit text;
+
+-- ---------------------------------------------------------------------
 -- Usuarios (login + roles)
 -- ---------------------------------------------------------------------
 -- Tabla simple de usuarios para login interno. Las contraseñas se guardan

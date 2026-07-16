@@ -10,6 +10,7 @@ import {
 } from "lucide-react";
 import { listEventos, upsertEvento, deleteEvento, subscribeEventos } from "./lib/eventosApi";
 import { listPersonas, upsertPersona, deletePersona, subscribePersonas } from "./lib/personasApi";
+import { listClientes, upsertCliente, deleteCliente, subscribeClientes } from "./lib/clientesApi";
 import {
   listCategoriasPersonal, upsertCategoriaPersonal, deleteCategoriaPersonal,
   subscribeCategoriasPersonal
@@ -122,6 +123,8 @@ const nuevoEvento = () => ({
   equipoExterno: [],
   director: { nombre: "", telefono: "", email: "" },
   razonSocial: "",
+  clienteId: "",
+  cuit: "",
   empresa: "",
   moneda: "ARS",
   importe: "",
@@ -472,6 +475,7 @@ export default function PanelEventos() {
   /* ---------- datos del panel ---------- */
   const [eventos, setEventos] = useState([]);
   const [personas, setPersonas] = useState([]);
+  const [clientes, setClientes] = useState([]);
   const [categoriasPersonal, setCategoriasPersonal] = useState([]);
   const [cargando, setCargando] = useState(true);
   const [error, setError] = useState("");
@@ -515,14 +519,23 @@ export default function PanelEventos() {
     }
   }, []);
 
+  const recargarClientes = useCallback(async () => {
+    try {
+      const data = await listClientes();
+      setClientes(data);
+    } catch (e) {
+      console.error(e);
+    }
+  }, []);
+
   /* carga inicial */
   useEffect(() => {
     (async () => {
       setCargando(true);
-      await Promise.all([recargar(), recargarPersonas(), recargarCategoriasPersonal()]);
+      await Promise.all([recargar(), recargarPersonas(), recargarCategoriasPersonal(), recargarClientes()]);
       setCargando(false);
     })();
-  }, [recargar, recargarPersonas, recargarCategoriasPersonal]);
+  }, [recargar, recargarPersonas, recargarCategoriasPersonal, recargarClientes]);
 
   /* tiempo real: refresca si otro usuario carga/edita/borra un evento */
   useEffect(() => {
@@ -541,6 +554,23 @@ export default function PanelEventos() {
     const unsub = subscribeCategoriasPersonal(() => recargarCategoriasPersonal());
     return unsub;
   }, [recargarCategoriasPersonal]);
+
+  /* tiempo real: clientes */
+  useEffect(() => {
+    const unsub = subscribeClientes(() => recargarClientes());
+    return unsub;
+  }, [recargarClientes]);
+
+  /* handlers de clientes */
+  const guardarCliente = async (c) => {
+    const saved = await upsertCliente(c);
+    await recargarClientes();
+    return saved;
+  };
+  const borrarCliente = async (id) => {
+    await deleteCliente(id);
+    await recargarClientes();
+  };
 
   const guardarEvento = async (ev) => {
     setGuardando(true);
@@ -858,6 +888,9 @@ export default function PanelEventos() {
           <Tab active={vista === "home"} onClick={() => setVista("home")} icon={<BarChart2 size={15} />}>Resumen</Tab>
           <Tab active={vista === "lista"} onClick={() => setVista("lista")} icon={<Layers size={15} />}>Eventos</Tab>
           <Tab active={vista === "personal"} onClick={() => setVista("personal")} icon={<Users size={15} />}>Personal</Tab>
+          {p.clientes && (
+            <Tab active={vista === "clientes"} onClick={() => setVista("clientes")} icon={<Building2 size={15} />}>Clientes</Tab>
+          )}
           <Tab active={vista === "dashboard"} onClick={() => setVista("dashboard")} icon={<AlertTriangle size={15} />}>
             Pendientes
             {(pendFact.length + pendComp.length + pendVenc.length) > 0 && (
@@ -985,6 +1018,8 @@ export default function PanelEventos() {
             guardando={guardando}
             personas={personas}
             eventos={eventos}
+            clientes={clientes}
+            onSaveCliente={guardarCliente}
             onLiberarPersona={liberarPersonaDeEvento}
             onReemplazarEnEvento={reemplazarEnEvento}
             onIrAPersonal={() => setVista("personal")}
@@ -1029,6 +1064,15 @@ export default function PanelEventos() {
             onDeleteCategoria={borrarCategoriaPersonal}
             perms={p}
             eventos={eventos}
+          />
+        ) : vista === "clientes" && p.clientes ? (
+          <ClientesSection
+            clientes={clientes}
+            eventos={eventos}
+            onSave={guardarCliente}
+            onDelete={borrarCliente}
+            perms={p}
+            onVer={(id) => { setVerId(id); setVista("detalle"); }}
           />
         ) : vista === "home" ? (
           <Home eventos={eventos} personas={personas} onVer={(id) => { setVerId(id); setVista("detalle"); }} />
@@ -2459,6 +2503,156 @@ function CenterMonthChart({ evs }) {
           </div>
         )}
       </div>
+    </div>
+  );
+}
+
+/* ====================== CLIENTES ====================== */
+function ClientesSection({ clientes, eventos, onSave, onDelete, perms = {}, onVer }) {
+  const vacio = { razonSocial: "", cuit: "", telefono: "", email: "", domicilio: "", director: { nombre: "", telefono: "", email: "" }, equipoExterno: [], notas: "", activo: true };
+  const [editando, setEditando] = useState(null); // "new" | id | null
+  const [f, setF] = useState(vacio);
+  const [busqueda, setBusqueda] = useState("");
+  const [guardando, setGuardando] = useState(false);
+  const set = (k, v) => setF((p) => ({ ...p, [k]: v }));
+  const setDir = (k, v) => setF((p) => ({ ...p, director: { ...p.director, [k]: v } }));
+
+  const eventosPorCliente = useMemo(() => {
+    const map = {};
+    eventos.forEach((e) => { if (e.clienteId) map[e.clienteId] = (map[e.clienteId] || 0) + 1; });
+    return map;
+  }, [eventos]);
+
+  const filtrados = useMemo(() => {
+    const q = busqueda.trim().toLowerCase();
+    if (!q) return clientes;
+    return clientes.filter((c) =>
+      (c.razonSocial + " " + c.cuit + " " + c.email + " " + (c.director?.nombre || "")).toLowerCase().includes(q));
+  }, [clientes, busqueda]);
+
+  const empezarNuevo = () => { setF(vacio); setEditando("new"); };
+  const empezarEditar = (c) => { setF({ ...vacio, ...c, director: { ...vacio.director, ...(c.director || {}) }, equipoExterno: c.equipoExterno || [] }); setEditando(c.id); };
+  const cancelar = () => { setEditando(null); setF(vacio); };
+
+  const guardar = async () => {
+    if (!f.razonSocial.trim()) { alert("Poné la razón social del cliente."); return; }
+    setGuardando(true);
+    try {
+      const payload = editando === "new" ? { ...f } : { ...f, id: editando };
+      await onSave(payload);
+      cancelar();
+    } catch (e) {
+      console.error(e);
+      alert("No se pudo guardar el cliente: " + e.message);
+    } finally {
+      setGuardando(false);
+    }
+  };
+
+  const addExterno = () => setF((p) => ({ ...p, equipoExterno: [...(p.equipoExterno || []), { nombre: "", rol: "" }] }));
+  const setExterno = (i, k, v) => setF((p) => ({ ...p, equipoExterno: p.equipoExterno.map((x, idx) => idx === i ? { ...x, [k]: v } : x) }));
+  const delExterno = (i) => setF((p) => ({ ...p, equipoExterno: p.equipoExterno.filter((_, idx) => idx !== i) }));
+
+  return (
+    <div className="fade">
+      <div className="flex flex-wrap gap-2 mb-4 items-center">
+        <div className="relative flex-1 min-w-[180px]">
+          <Search size={15} color={C.dim} className="absolute left-3 top-1/2 -translate-y-1/2" />
+          <input value={busqueda} onChange={(e) => setBusqueda(e.target.value)}
+            placeholder="Buscar cliente, CUIT, email…"
+            className="w-full text-sm pl-9 pr-3 py-2 rounded-md"
+            style={{ background: C.panel, border: `1px solid ${C.border}`, color: C.text }} />
+        </div>
+        {perms.clienteCrear && !editando && (
+          <button onClick={empezarNuevo}
+            className="flex items-center gap-1.5 text-sm font-medium px-3 py-2 rounded-md"
+            style={{ background: C.gold, color: C.onGold }}>
+            <Plus size={16} /> Nuevo cliente
+          </button>
+        )}
+      </div>
+
+      {editando && (
+        <div className="rounded-xl p-4 mb-4" style={{ background: C.panel, border: `1px solid ${C.gold}55` }}>
+          <h3 className="text-sm font-semibold mb-3">{editando === "new" ? "Nuevo cliente" : "Editar cliente"}</h3>
+          <div className="grid sm:grid-cols-2 gap-3">
+            <Field label="Razón social *"><Input value={f.razonSocial} onChange={(v) => set("razonSocial", v)} placeholder="Razón social" /></Field>
+            <Field label="CUIT"><Input value={f.cuit} onChange={(v) => set("cuit", v)} placeholder="30-12345678-9" /></Field>
+            <Field label="Teléfono"><Input value={f.telefono} onChange={(v) => set("telefono", v)} placeholder="Teléfono" /></Field>
+            <Field label="Email"><Input value={f.email} onChange={(v) => set("email", v)} placeholder="Email" /></Field>
+            <Field label="Domicilio" full><Input value={f.domicilio} onChange={(v) => set("domicilio", v)} placeholder="Domicilio fiscal" /></Field>
+          </div>
+
+          <div className="mt-3 rounded-lg p-3" style={{ background: C.panel2, border: `1px solid ${C.border}` }}>
+            <span className="text-[11px] font-semibold uppercase tracking-wide" style={{ color: C.dim }}>Dirección / contacto por defecto</span>
+            <div className="grid sm:grid-cols-3 gap-2 mt-2">
+              <Input value={f.director.nombre} onChange={(v) => setDir("nombre", v)} placeholder="Nombre" />
+              <Input value={f.director.telefono} onChange={(v) => setDir("telefono", v)} placeholder="Teléfono" />
+              <Input value={f.director.email} onChange={(v) => setDir("email", v)} placeholder="Email" />
+            </div>
+          </div>
+
+          <div className="mt-3 rounded-lg p-3" style={{ background: C.panel2, border: `1px solid ${C.border}` }}>
+            <div className="flex items-center justify-between mb-2">
+              <span className="text-[11px] font-semibold uppercase tracking-wide" style={{ color: C.dim }}>Equipo externo por defecto</span>
+              <button onClick={addExterno} className="text-[11px] flex items-center gap-1 hover:opacity-80" style={{ color: C.gold }}><Plus size={12} /> Agregar</button>
+            </div>
+            {(f.equipoExterno || []).length === 0 ? (
+              <p className="text-[11px]" style={{ color: C.dim }}>Sin equipo externo cargado.</p>
+            ) : (
+              <div className="grid gap-1.5">
+                {f.equipoExterno.map((x, i) => (
+                  <div key={i} className="flex gap-2 items-center">
+                    <Input value={x.nombre} onChange={(v) => setExterno(i, "nombre", v)} placeholder="Nombre" />
+                    <Input value={x.rol} onChange={(v) => setExterno(i, "rol", v)} placeholder="Rol" />
+                    <IconBtn onClick={() => delExterno(i)} title="Quitar" danger><X size={14} /></IconBtn>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+
+          <Field label="Notas" full><Input value={f.notas} onChange={(v) => set("notas", v)} placeholder="Notas internas" /></Field>
+
+          <div className="flex gap-2 mt-3">
+            <button onClick={guardar} disabled={guardando}
+              className="text-sm font-medium px-4 py-2 rounded-md flex items-center gap-1.5 disabled:opacity-50"
+              style={{ background: C.gold, color: C.onGold }}>
+              <Check size={15} /> {guardando ? "Guardando…" : "Guardar"}
+            </button>
+            <button onClick={cancelar} className="text-sm px-4 py-2 rounded-md" style={{ background: C.panel2, border: `1px solid ${C.border}`, color: C.dim }}>Cancelar</button>
+          </div>
+        </div>
+      )}
+
+      {filtrados.length === 0 ? (
+        <div className="rounded-xl text-center py-16 px-4" style={{ background: C.panel, border: `1px dashed ${C.border}` }}>
+          <Building2 size={28} color={C.dim} className="mx-auto mb-3" />
+          <p className="text-sm" style={{ color: C.dim }}>{clientes.length === 0 ? "Todavía no cargaste clientes." : "Ningún cliente coincide."}</p>
+        </div>
+      ) : (
+        <div className="grid gap-2">
+          {filtrados.map((c) => (
+            <div key={c.id} className="rounded-xl px-4 py-3 flex items-center justify-between gap-3"
+              style={{ background: C.panel, border: `1px solid ${C.border}` }}>
+              <div className="min-w-0">
+                <div className="text-sm font-semibold truncate" style={{ color: C.text }}>{c.razonSocial}</div>
+                <div className="text-[11px] font-mono" style={{ color: C.dim }}>
+                  {c.cuit ? `CUIT ${c.cuit}` : "Sin CUIT"}
+                  {c.email ? ` · ${c.email}` : ""}
+                  {eventosPorCliente[c.id] ? ` · ${eventosPorCliente[c.id]} evento(s)` : ""}
+                </div>
+              </div>
+              <div className="flex gap-1 shrink-0">
+                {perms.clienteCrear && <IconBtn onClick={() => empezarEditar(c)} title="Editar"><Pencil size={15} /></IconBtn>}
+                {perms.clienteBorrar && (
+                  <IconBtn onClick={() => { if (confirm(`¿Borrar cliente "${c.razonSocial}"?`)) onDelete(c.id); }} title="Borrar" danger><Trash2 size={15} /></IconBtn>
+                )}
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   );
 }
@@ -3987,6 +4181,7 @@ function FacturacionCard({ ev, onUpdate, perms }) {
             <Dato k="Tipo de cambio" v={`1 USD = ${fmtMoneda(tipoCambio(ev), "ARS")}`} mono />
           )}
           <Dato k="Razón social" v={ev.razonSocial || "—"} />
+          {ev.cuit && <Dato k="CUIT" v={ev.cuit} mono />}
           {/* Desglose por factura si hay más de 1 */}
           {Array.isArray(ev.facturasDesglose) && ev.facturasDesglose.length > 1 && (
             <div className="rounded-lg p-2.5 grid gap-1" style={{ background: C.panel2, border: `1px solid ${C.border}` }}>
@@ -4646,7 +4841,7 @@ function Dato({ k, v, mono, accent }) {
 }
 
 /* ====================== FORMULARIO ====================== */
-function FormEvento({ base, onCancel, onSave, guardando, personas = [], eventos = [], onLiberarPersona, onReemplazarEnEvento, onIrAPersonal, perms = {} }) {
+function FormEvento({ base, onCancel, onSave, guardando, personas = [], eventos = [], clientes = [], onSaveCliente, onLiberarPersona, onReemplazarEnEvento, onIrAPersonal, perms = {} }) {
   const [f, setF] = useState(() => {
     const partesExistentes = Array.isArray(base.partes) ? base.partes : [];
     const partes = PARTES_PROD.map((tipo) => {
@@ -4657,6 +4852,21 @@ function FormEvento({ base, onCancel, onSave, guardando, personas = [], eventos 
   });
   const set = (k, v) => setF((p) => ({ ...p, [k]: v }));
   const setDir = (k, v) => setF((p) => ({ ...p, director: { ...p.director, [k]: v } }));
+
+  // Cliente: al elegir uno del desplegable se autocompletan los datos.
+  const seleccionarCliente = (id) => {
+    if (id === "__nuevo") { setF((p) => ({ ...p, clienteId: "" })); return; }
+    const c = clientes.find((x) => x.id === id);
+    if (!c) { setF((p) => ({ ...p, clienteId: "" })); return; }
+    setF((p) => ({
+      ...p,
+      clienteId: c.id,
+      razonSocial: c.razonSocial || "",
+      cuit: c.cuit || "",
+      director: (c.director && (c.director.nombre || c.director.telefono || c.director.email)) ? { ...c.director } : p.director,
+      equipoExterno: (c.equipoExterno && c.equipoExterno.length > 0) ? c.equipoExterno.map((x) => ({ ...x })) : p.equipoExterno,
+    }));
+  };
 
   // Estado para el input de fecha pendiente por parte (indexado)
   const [fechaInputs, setFechaInputs] = useState(() => Array(PARTES_PROD.length).fill(""));
@@ -4814,7 +5024,7 @@ function FormEvento({ base, onCancel, onSave, guardando, personas = [], eventos 
     return result;
   }, [f.estudio, f.partes, f.fecha, f.id, eventos]);
 
-  const submit = () => {
+  const submit = async () => {
     if (!f.nombre.trim()) { alert("Poné al menos el nombre del evento."); return; }
     // Warning: estudio ocupado por otro evento en la misma fecha
     if (conflictosEstudio.length > 0) {
@@ -4851,6 +5061,20 @@ function FormEvento({ base, onCancel, onSave, guardando, personas = [], eventos 
       datos.montoM2 = String(datos.facturasDesglose.reduce((s, d) => s + (Number(d.montoM2) || 0), 0));
     } else {
       datos.facturasDesglose = [];
+    }
+    // Cliente nuevo escrito a mano: se guarda en la base para futuros eventos.
+    if (!datos.clienteId && datos.razonSocial?.trim() && onSaveCliente && perms.clienteCrear) {
+      try {
+        const nuevo = await onSaveCliente({
+          razonSocial: datos.razonSocial.trim(),
+          cuit: datos.cuit || "",
+          director: datos.director || {},
+          equipoExterno: Array.isArray(datos.equipoExterno) ? datos.equipoExterno : [],
+        });
+        if (nuevo?.id) datos.clienteId = nuevo.id;
+      } catch (e) {
+        console.error("No se pudo guardar el cliente nuevo:", e);
+      }
     }
     onSave(datos);
   };
@@ -5223,8 +5447,30 @@ function FormEvento({ base, onCancel, onSave, guardando, personas = [], eventos 
 
         {/* Facturación */}
         <Seccion titulo="Facturación" icon={<DollarSign size={15} color={C.green} />}>
-          <Field label="Razón social (facturación)" full>
-            <Input value={f.razonSocial} onChange={(v) => set("razonSocial", v)} placeholder="Razón social + CUIT" />
+          <Field label="Cliente" full>
+            <select
+              value={f.clienteId || "__nuevo"}
+              onChange={(e) => seleccionarCliente(e.target.value)}
+              className="w-full text-sm px-3 py-2 rounded-md"
+              style={{ background: C.panel2, border: `1px solid ${C.border}`, color: f.clienteId ? C.text : C.dim, colorScheme: "dark" }}>
+              <option value="__nuevo" style={{ background: C.panel2, color: C.dim }}>➕ Otro / nuevo cliente (escribir a mano)</option>
+              {clientes.map((c) => (
+                <option key={c.id} value={c.id} style={{ background: C.panel2, color: C.text }}>
+                  {c.razonSocial}{c.cuit ? ` — CUIT ${c.cuit}` : ""}
+                </option>
+              ))}
+            </select>
+            {!f.clienteId && (
+              <p className="text-[10px] mt-1" style={{ color: C.dim }}>
+                Si el cliente no está en la lista, completá razón social y CUIT: se guarda solo para futuros eventos.
+              </p>
+            )}
+          </Field>
+          <Field label="Razón social">
+            <Input value={f.razonSocial} onChange={(v) => set("razonSocial", v)} placeholder="Razón social" />
+          </Field>
+          <Field label="CUIT">
+            <Input value={f.cuit} onChange={(v) => set("cuit", v)} placeholder="30-12345678-9" />
           </Field>
 
           <Field label="Distribución" full>
