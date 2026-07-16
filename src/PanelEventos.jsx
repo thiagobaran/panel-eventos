@@ -138,6 +138,7 @@ const nuevoEvento = () => ({
   formaPago: "",
   facturas: [],
   comprobantes: [],
+  pagos: [],
   partes: PARTES_PROD.map((tipo) => ({ tipo, fechas: [] })),
   mensajes: [],
   facturado: false,
@@ -278,6 +279,18 @@ const totalFacturable = (ev) => montoM1(ev) * 1.21 + montoM2(ev);
 const empresaLabel = (d) =>
   d === "MIXTO" ? "MG M1 + M2" : d === "M2" ? "MG M2" : "MG M1";
 const tipoCambio = (ev) => Number(ev?.tipoCambio) || 0;
+
+// Cobros: cada evento tiene una lista de pagos [{id, fecha, monto, medio, nota}].
+// El estado "cobrado" se deriva de cuánto se pagó vs. el total facturable.
+const montoCobrado = (ev) => (Array.isArray(ev?.pagos) ? ev.pagos : []).reduce((s, p) => s + (Number(p.monto) || 0), 0);
+const saldoEvento = (ev) => totalFacturable(ev) - montoCobrado(ev);
+const estadoCobro = (ev) => {
+  const cobrado = montoCobrado(ev);
+  const total = totalFacturable(ev);
+  if (cobrado <= 0) return "sin_cobrar";
+  if (total > 0 && cobrado >= total - 0.005) return "cobrado";
+  return "parcial";
+};
 
 // Aplica el "spec" (filtro estructurado que devuelve el asistente) sobre los eventos.
 // Todo el cálculo es local: los datos nunca salen del navegador.
@@ -610,6 +623,7 @@ export default function PanelEventos() {
       estudio: normEstudio(ev.estudio),
       facturas: [],
       comprobantes: [],
+      pagos: [],
       mensajes: [],
       facturado: false,
       comprobantePago: false,
@@ -1813,6 +1827,12 @@ function Lista({ eventos, total, busqueda, setBusqueda, filtroCats, setFiltroCat
                     {e.confirmado && !e.facturado && <Badge color={C.amber}>Listo p/ facturar</Badge>}
                     {e.facturado && <Badge solid color={C.green}>Facturado</Badge>}
                     {e.facturado && !e.comprobantePago && <Badge color={C.rose}>S/ comprob.</Badge>}
+                    {(() => {
+                      const est = estadoCobro(e);
+                      if (est === "cobrado") return <Badge solid color={C.green}>Cobrado</Badge>;
+                      if (est === "parcial") return <Badge color={C.amber}>Cobro parcial</Badge>;
+                      return null;
+                    })()}
                     {(() => {
                       const d = diasVencimientoPago(e);
                       if (d === null) return null;
@@ -3690,6 +3710,8 @@ function Detalle({ ev, onBack, onEdit, onDelete, onUpdate, onDuplicate, perms = 
 
         <FacturacionCard ev={ev} onUpdate={onUpdate} perms={perms} />
 
+        <PagosCard ev={ev} onUpdate={onUpdate} perms={perms} />
+
         <Card titulo="Estado administrativo" icon={<DollarSign size={15} color={C.gold} />}>
           <p className="text-xs mb-1" style={{ color: C.dim }}>
             {perms.eventoFacturar
@@ -4041,6 +4063,84 @@ function ProduccionCard({ ev, onUpdate, perms, eventos = [] }) {
           <Dato k="Trackeo" v={ev.trackeo || "—"} />
           {ev.equipamiento && ev.equipamientoDetalle && <Dato k="Equipamiento" v={ev.equipamientoDetalle} />}
         </>
+      )}
+    </Card>
+  );
+}
+
+function PagosCard({ ev, onUpdate, perms }) {
+  const editable = !!perms?.eventoFacturar;
+  const hoyISO = new Date().toISOString().slice(0, 10);
+  const [nuevo, setNuevo] = useState({ fecha: hoyISO, monto: "", medio: "", nota: "" });
+  const pagos = Array.isArray(ev.pagos) ? ev.pagos : [];
+  const cobrado = montoCobrado(ev);
+  const total = totalFacturable(ev);
+  const saldo = saldoEvento(ev);
+  const estado = estadoCobro(ev);
+  const mon = ev.moneda || "ARS";
+
+  const estadoInfo = {
+    sin_cobrar: { label: "Sin cobrar", color: C.rose },
+    parcial: { label: "Cobrado parcial", color: C.amber },
+    cobrado: { label: "Cobrado total", color: C.green },
+  }[estado];
+
+  const agregar = () => {
+    const monto = Number(nuevo.monto);
+    if (!monto || monto <= 0) { alert("Ingresá un monto válido."); return; }
+    const pago = { id: crypto.randomUUID(), fecha: nuevo.fecha || hoyISO, monto, medio: nuevo.medio || "", nota: nuevo.nota || "" };
+    onUpdate({ pagos: [...pagos, pago] });
+    setNuevo({ fecha: hoyISO, monto: "", medio: "", nota: "" });
+  };
+  const quitar = (id) => { if (confirm("¿Borrar este pago?")) onUpdate({ pagos: pagos.filter((p) => p.id !== id) }); };
+
+  return (
+    <Card titulo="Cobros / Pagos recibidos" icon={<Receipt size={15} color={C.green} />}>
+      <div className="flex items-center gap-2 mb-1">
+        <span className="text-[11px] font-semibold px-2 py-0.5 rounded-full" style={{ background: `${estadoInfo.color}1e`, color: estadoInfo.color, border: `1px solid ${estadoInfo.color}55` }}>
+          {estadoInfo.label}
+        </span>
+      </div>
+      <Dato k="Total facturable" v={fmtMoneda(total, mon)} mono />
+      <Dato k="Cobrado" v={fmtMoneda(cobrado, mon)} mono accent />
+      <Dato k={saldo > 0.005 ? "Saldo pendiente" : saldo < -0.005 ? "A favor del cliente" : "Saldo"} v={fmtMoneda(Math.abs(saldo), mon)} mono />
+
+      {pagos.length > 0 && (
+        <div className="grid gap-1.5 mt-2">
+          {pagos.slice().sort((a, b) => (a.fecha || "").localeCompare(b.fecha || "")).map((p) => (
+            <div key={p.id} className="flex items-center gap-2 text-xs px-2.5 py-2 rounded" style={{ background: C.panel2, border: `1px solid ${C.border}` }}>
+              <DollarSign size={13} color={C.green} className="shrink-0" />
+              <div className="flex-1 min-w-0">
+                <div className="font-mono" style={{ color: C.text }}>{fmtMoneda(Number(p.monto) || 0, mon)}</div>
+                <div className="text-[10px]" style={{ color: C.dim }}>
+                  {fmtFecha(p.fecha)}{p.medio ? ` · ${p.medio}` : ""}{p.nota ? ` · ${p.nota}` : ""}
+                </div>
+              </div>
+              {editable && <IconBtn onClick={() => quitar(p.id)} title="Borrar" danger><Trash2 size={13} /></IconBtn>}
+            </div>
+          ))}
+        </div>
+      )}
+
+      {editable ? (
+        <div className="mt-3 rounded-lg p-2.5" style={{ background: C.panel2, border: `1px solid ${C.border}` }}>
+          <span className="text-[10px] font-semibold uppercase tracking-wide" style={{ color: C.dim }}>Registrar pago</span>
+          <div className="grid grid-cols-2 gap-2 mt-2">
+            <div><label className="text-[10px] block mb-1" style={{ color: C.dim }}>Fecha</label>
+              <Input type="date" value={nuevo.fecha} onChange={(v) => setNuevo((p) => ({ ...p, fecha: v }))} /></div>
+            <div><label className="text-[10px] block mb-1" style={{ color: C.dim }}>Monto ({mon})</label>
+              <Input type="number" min="0" value={nuevo.monto} onChange={(v) => setNuevo((p) => ({ ...p, monto: v }))} placeholder="0" /></div>
+            <div><label className="text-[10px] block mb-1" style={{ color: C.dim }}>Medio</label>
+              <Input value={nuevo.medio} onChange={(v) => setNuevo((p) => ({ ...p, medio: v }))} placeholder="Transferencia…" /></div>
+            <div><label className="text-[10px] block mb-1" style={{ color: C.dim }}>Nota</label>
+              <Input value={nuevo.nota} onChange={(v) => setNuevo((p) => ({ ...p, nota: v }))} placeholder="Opcional" /></div>
+          </div>
+          <button onClick={agregar} className="w-full mt-2 text-xs font-medium px-3 py-2 rounded-md flex items-center justify-center gap-1.5" style={{ background: C.gold, color: C.onGold }}>
+            <Plus size={13} /> Agregar pago
+          </button>
+        </div>
+      ) : (
+        pagos.length === 0 && <p className="text-xs mt-2" style={{ color: C.dim }}>No hay pagos registrados todavía.</p>
       )}
     </Card>
   );

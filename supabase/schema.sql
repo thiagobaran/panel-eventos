@@ -223,6 +223,9 @@ end $$;
 alter table public.eventos add column if not exists cliente_id text;
 alter table public.eventos add column if not exists cuit text;
 
+-- Registro de pagos/cobros del evento: [{id, fecha, monto, medio, nota}]
+alter table public.eventos add column if not exists pagos jsonb not null default '[]'::jsonb;
+
 -- ---------------------------------------------------------------------
 -- Usuarios (login + roles)
 -- ---------------------------------------------------------------------
