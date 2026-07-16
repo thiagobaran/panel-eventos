@@ -1049,6 +1049,7 @@ export default function PanelEventos() {
             onEdit={() => { setEditId(eventoVer.id); setVista("form"); }}
             onDelete={() => borrarEvento(eventoVer.id)}
             onUpdate={(patch) => actualizarEvento(eventoVer.id, patch)}
+            onUpdateEvento={actualizarEvento}
             onDuplicate={() => duplicarEvento(eventoVer)}
             perms={p}
             usuario={usuario}
@@ -3754,7 +3755,7 @@ function CategoriasPersonal({ categorias, personas, onSave, onDelete, abierto, s
 }
 
 /* ====================== DETALLE ====================== */
-function Detalle({ ev, onBack, onEdit, onDelete, onUpdate, onDuplicate, perms = {}, usuario = {}, personas = [], eventos = [] }) {
+function Detalle({ ev, onBack, onEdit, onDelete, onUpdate, onUpdateEvento, onDuplicate, perms = {}, usuario = {}, personas = [], eventos = [] }) {
   const [pdfModal, setPdfModal] = useState(false);
   useEffect(() => {
     if (usuario?.id && ev?.id) marcarLeido(ev.id, usuario.id);
@@ -3840,7 +3841,7 @@ function Detalle({ ev, onBack, onEdit, onDelete, onUpdate, onDuplicate, perms = 
 
         <FacturacionCard ev={ev} onUpdate={onUpdate} perms={perms} />
 
-        <PagosCard ev={ev} onUpdate={onUpdate} perms={perms} eventos={eventos} />
+        <PagosCard ev={ev} onUpdate={onUpdate} onUpdateEvento={onUpdateEvento} perms={perms} eventos={eventos} />
 
         <Card titulo="Estado administrativo" icon={<DollarSign size={15} color={C.gold} />}>
           <p className="text-xs mb-1" style={{ color: C.dim }}>
@@ -4198,10 +4199,11 @@ function ProduccionCard({ ev, onUpdate, perms, eventos = [] }) {
   );
 }
 
-function PagosCard({ ev, onUpdate, perms, eventos = [] }) {
+function PagosCard({ ev, onUpdate, onUpdateEvento, perms, eventos = [] }) {
   const editable = !!perms?.eventoFacturar;
   const hoyISO = new Date().toISOString().slice(0, 10);
   const [nuevo, setNuevo] = useState({ fecha: hoyISO, monto: "", medio: "", nota: "" });
+  const [imputando, setImputando] = useState(false);
   const pagos = Array.isArray(ev.pagos) ? ev.pagos : [];
   const cobrado = montoCobrado(ev);
   const total = totalFacturable(ev);
@@ -4237,6 +4239,44 @@ function PagosCard({ ev, onUpdate, perms, eventos = [] }) {
   };
   const quitar = (id) => { if (confirm("¿Borrar este pago?")) onUpdate({ pagos: pagos.filter((p) => p.id !== id) }); };
 
+  // Imputa el excedente ("a favor") de otros proyectos del cliente a este saldo pendiente.
+  // Deja registro: pago negativo en el proyecto origen y positivo acá.
+  const imputar = async () => {
+    const aImputar = Math.min(saldo, otrosAFavor);
+    if (aImputar <= 0.005) return;
+    if (!confirm(`¿Imputar ${fmtMoneda(aImputar, mon)} a favor de otros proyectos a este saldo pendiente?`)) return;
+    setImputando(true);
+    try {
+      const fuentes = eventos
+        .filter((e) => e.id !== ev.id && e.clienteId === ev.clienteId && (e.moneda || "ARS") === mon && saldoEvento(e) < -0.005)
+        .map((e) => ({ e, disp: -saldoEvento(e) }))
+        .sort((a, b) => (a.e.fecha || "").localeCompare(b.e.fecha || ""));
+      let restante = aImputar;
+      for (const { e, disp } of fuentes) {
+        if (restante <= 0.005) break;
+        const take = Math.min(disp, restante);
+        const pagosOrigen = [...(Array.isArray(e.pagos) ? e.pagos : []), {
+          id: crypto.randomUUID(), fecha: hoyISO, monto: -take, medio: "Imputación",
+          nota: `Imputado a "${ev.nombre}"`,
+        }];
+        await onUpdateEvento(e.id, { pagos: pagosOrigen });
+        restante -= take;
+      }
+      const imputado = aImputar - restante;
+      if (imputado > 0.005) {
+        await onUpdate({ pagos: [...pagos, {
+          id: crypto.randomUUID(), fecha: hoyISO, monto: imputado, medio: "Imputación",
+          nota: "Imputación de saldo a favor de otro proyecto",
+        }] });
+      }
+    } catch (e) {
+      console.error(e);
+      alert("No se pudo imputar el saldo: " + e.message);
+    } finally {
+      setImputando(false);
+    }
+  };
+
   return (
     <Card titulo="Cobros / Pagos recibidos" icon={<Receipt size={15} color={C.green} />}>
       <div className="flex items-center gap-2 mb-1">
@@ -4254,9 +4294,18 @@ function PagosCard({ ev, onUpdate, perms, eventos = [] }) {
         </p>
       )}
       {saldo > 0.005 && otrosAFavor > 0.005 && (
-        <p className="text-[10px] leading-snug rounded-md px-2 py-1.5" style={{ background: `${C.green}12`, color: C.dim, border: `1px solid ${C.green}33` }}>
-          El cliente tiene <span style={{ color: C.green }}>{fmtMoneda(otrosAFavor, mon)} a favor</span> en otro proyecto, imputable a este saldo pendiente.
-        </p>
+        <div className="rounded-md px-2 py-1.5" style={{ background: `${C.green}12`, border: `1px solid ${C.green}33` }}>
+          <p className="text-[10px] leading-snug" style={{ color: C.dim }}>
+            El cliente tiene <span style={{ color: C.green }}>{fmtMoneda(otrosAFavor, mon)} a favor</span> en otro proyecto, imputable a este saldo pendiente.
+          </p>
+          {editable && (
+            <button onClick={imputar} disabled={imputando}
+              className="mt-1.5 text-[11px] font-semibold px-2.5 py-1 rounded-md flex items-center gap-1 disabled:opacity-50"
+              style={{ background: C.green, color: "#04120b" }}>
+              <Check size={12} /> {imputando ? "Imputando…" : `Imputar ${fmtMoneda(Math.min(saldo, otrosAFavor), mon)}`}
+            </button>
+          )}
+        </div>
       )}
 
       {pagos.length > 0 && (
