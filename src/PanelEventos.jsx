@@ -313,6 +313,9 @@ const aplicarSpecAsistente = (spec, eventos) => {
       case "sin_facturar": return !ev.facturado;
       case "sin_comprobante": return ev.facturado && !ev.comprobantePago;
       case "vencido": { const d = diasVencimientoPago(ev); return d !== null && d < 0; }
+      case "sin_cobrar": return estadoCobro(ev) === "sin_cobrar";
+      case "cobrado_parcial": return estadoCobro(ev) === "parcial";
+      case "cobrado": return estadoCobro(ev) === "cobrado";
       default: return true;
     }
   };
@@ -2537,9 +2540,26 @@ function ClientesSection({ clientes, eventos, onSave, onDelete, perms = {}, onVe
   const set = (k, v) => setF((p) => ({ ...p, [k]: v }));
   const setDir = (k, v) => setF((p) => ({ ...p, director: { ...p.director, [k]: v } }));
 
+  const [expandido, setExpandido] = useState(null);
+
   const eventosPorCliente = useMemo(() => {
     const map = {};
     eventos.forEach((e) => { if (e.clienteId) map[e.clienteId] = (map[e.clienteId] || 0) + 1; });
+    return map;
+  }, [eventos]);
+
+  // Cuenta corriente por cliente: facturado, cobrado y saldo, separado por moneda.
+  const ctaCorriente = useMemo(() => {
+    const map = {};
+    eventos.forEach((e) => {
+      if (!e.clienteId) return;
+      if (!map[e.clienteId]) map[e.clienteId] = { eventos: [], ars: { fact: 0, cob: 0 }, usd: { fact: 0, cob: 0 } };
+      const g = map[e.clienteId];
+      g.eventos.push(e);
+      const mon = e.moneda === "USD" ? "usd" : "ars";
+      g[mon].fact += totalFacturable(e);
+      g[mon].cob += montoCobrado(e);
+    });
     return map;
   }, [eventos]);
 
@@ -2652,25 +2672,94 @@ function ClientesSection({ clientes, eventos, onSave, onDelete, perms = {}, onVe
         </div>
       ) : (
         <div className="grid gap-2">
-          {filtrados.map((c) => (
-            <div key={c.id} className="rounded-xl px-4 py-3 flex items-center justify-between gap-3"
-              style={{ background: C.panel, border: `1px solid ${C.border}` }}>
-              <div className="min-w-0">
-                <div className="text-sm font-semibold truncate" style={{ color: C.text }}>{c.razonSocial}</div>
-                <div className="text-[11px] font-mono" style={{ color: C.dim }}>
-                  {c.cuit ? `CUIT ${c.cuit}` : "Sin CUIT"}
-                  {c.email ? ` · ${c.email}` : ""}
-                  {eventosPorCliente[c.id] ? ` · ${eventosPorCliente[c.id]} evento(s)` : ""}
+          {filtrados.map((c) => {
+            const cta = ctaCorriente[c.id];
+            const abierto = expandido === c.id;
+            const saldoARS = cta ? cta.ars.fact - cta.ars.cob : 0;
+            const saldoUSD = cta ? cta.usd.fact - cta.usd.cob : 0;
+            const saldoChip = (saldo, mon) => {
+              if (Math.abs(saldo) < 0.005) return null;
+              const debe = saldo > 0;
+              const color = debe ? C.amber : C.green;
+              return (
+                <span className="text-[10px] font-mono px-2 py-0.5 rounded-full whitespace-nowrap" style={{ background: `${color}18`, color, border: `1px solid ${color}55` }}>
+                  {debe ? "Debe" : "A favor"} {fmtMoneda(Math.abs(saldo), mon)}
+                </span>
+              );
+            };
+            return (
+            <div key={c.id} className="rounded-xl" style={{ background: C.panel, border: `1px solid ${abierto ? C.gold + "55" : C.border}` }}>
+              <div className="px-4 py-3 flex items-center justify-between gap-3">
+                <button onClick={() => cta && setExpandido(abierto ? null : c.id)} className="min-w-0 flex-1 text-left" style={{ cursor: cta ? "pointer" : "default" }}>
+                  <div className="text-sm font-semibold truncate flex items-center gap-1.5" style={{ color: C.text }}>
+                    {cta && <ChevronRight size={14} color={C.dim} style={{ transform: abierto ? "rotate(90deg)" : "none", transition: "transform .15s" }} />}
+                    {c.razonSocial}
+                  </div>
+                  <div className="text-[11px] font-mono" style={{ color: C.dim }}>
+                    {c.cuit ? `CUIT ${c.cuit}` : "Sin CUIT"}
+                    {c.email ? ` · ${c.email}` : ""}
+                    {eventosPorCliente[c.id] ? ` · ${eventosPorCliente[c.id]} evento(s)` : ""}
+                  </div>
+                </button>
+                <div className="flex items-center gap-1.5 shrink-0">
+                  {saldoChip(saldoARS, "ARS")}
+                  {saldoChip(saldoUSD, "USD")}
+                  {perms.clienteCrear && <IconBtn onClick={() => empezarEditar(c)} title="Editar"><Pencil size={15} /></IconBtn>}
+                  {perms.clienteBorrar && (
+                    <IconBtn onClick={() => { if (confirm(`¿Borrar cliente "${c.razonSocial}"?`)) onDelete(c.id); }} title="Borrar" danger><Trash2 size={15} /></IconBtn>
+                  )}
                 </div>
               </div>
-              <div className="flex gap-1 shrink-0">
-                {perms.clienteCrear && <IconBtn onClick={() => empezarEditar(c)} title="Editar"><Pencil size={15} /></IconBtn>}
-                {perms.clienteBorrar && (
-                  <IconBtn onClick={() => { if (confirm(`¿Borrar cliente "${c.razonSocial}"?`)) onDelete(c.id); }} title="Borrar" danger><Trash2 size={15} /></IconBtn>
-                )}
-              </div>
+
+              {abierto && cta && (
+                <div className="px-4 pb-3">
+                  {/* Resumen cuenta corriente */}
+                  <div className="grid sm:grid-cols-2 gap-2 mb-3">
+                    {["ars", "usd"].map((mon) => {
+                      const g = cta[mon];
+                      if (g.fact === 0 && g.cob === 0) return null;
+                      const label = mon === "usd" ? "USD" : "ARS";
+                      const saldo = g.fact - g.cob;
+                      const col = mon === "usd" ? C.cyan : C.gold;
+                      return (
+                        <div key={mon} className="rounded-lg p-3" style={{ background: C.panel2, border: `1px solid ${C.border}` }}>
+                          <div className="text-[10px] font-semibold uppercase tracking-wide mb-1.5" style={{ color: col }}>Cuenta corriente {label}</div>
+                          <div className="flex items-center justify-between text-xs"><span style={{ color: C.dim }}>Facturado</span><span className="font-mono" style={{ color: C.text }}>{fmtMoneda(g.fact, label)}</span></div>
+                          <div className="flex items-center justify-between text-xs"><span style={{ color: C.dim }}>Cobrado</span><span className="font-mono" style={{ color: C.green }}>{fmtMoneda(g.cob, label)}</span></div>
+                          <div className="flex items-center justify-between text-xs mt-1 pt-1" style={{ borderTop: `1px solid ${C.border}` }}>
+                            <span className="font-semibold" style={{ color: saldo > 0.005 ? C.amber : C.green }}>{saldo > 0.005 ? "Saldo (debe)" : saldo < -0.005 ? "A favor" : "Saldado"}</span>
+                            <span className="font-mono font-bold" style={{ color: saldo > 0.005 ? C.amber : C.green }}>{fmtMoneda(Math.abs(saldo), label)}</span>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                  {/* Eventos del cliente */}
+                  <div className="grid gap-1.5">
+                    {cta.eventos.slice().sort((a, b) => (b.fecha || "").localeCompare(a.fecha || "")).map((e) => {
+                      const saldoEv = saldoEvento(e);
+                      const est = estadoCobro(e);
+                      const col = est === "cobrado" ? C.green : est === "parcial" ? C.amber : C.rose;
+                      return (
+                        <button key={e.id} onClick={() => onVer(e.id)}
+                          className="w-full text-left rounded-lg px-3 py-2 flex items-center justify-between gap-2 hover:opacity-80"
+                          style={{ background: C.panel2, border: `1px solid ${C.border}` }}>
+                          <div className="min-w-0">
+                            <div className="text-xs font-medium truncate" style={{ color: C.text }}>{e.nombre}</div>
+                            <div className="text-[10px] font-mono" style={{ color: C.dim }}>{fmtFecha(e.fecha)} · Cobrado {fmtMoneda(montoCobrado(e), e.moneda)} de {fmtMoneda(totalFacturable(e), e.moneda)}</div>
+                          </div>
+                          <span className="text-[11px] font-mono shrink-0" style={{ color: col }}>
+                            {saldoEv > 0.005 ? `Debe ${fmtMoneda(saldoEv, e.moneda)}` : "Saldado"}
+                          </span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
             </div>
-          ))}
+            );
+          })}
         </div>
       )}
     </div>
@@ -2768,6 +2857,22 @@ function Home({ eventos, onVer }) {
 
     return { totalARS, totalUSD, facturadoARS, facturadoUSD, pendienteARS, pendienteUSD, m1Mes, m2Mes, tieneUSD, totalEquivARS };
   }, [eventosMes]);
+
+  // Cobrado en el mes: suma de pagos cuya fecha cae en el mes (por fecha de cobro,
+  // no de evento), separado por la moneda del evento.
+  const cobradoMes = useMemo(() => {
+    let ars = 0, usd = 0;
+    eventos.forEach((e) => {
+      const mon = e.moneda || "ARS";
+      (Array.isArray(e.pagos) ? e.pagos : []).forEach((p) => {
+        if ((p.fecha || "").startsWith(prefixMes)) {
+          if (mon === "USD") usd += Number(p.monto) || 0;
+          else ars += Number(p.monto) || 0;
+        }
+      });
+    });
+    return { ars, usd };
+  }, [eventos, prefixMes]);
 
   const teamStats = useMemo(() => {
     const evs = scope === "mes" ? eventosMes : eventos;
@@ -2892,6 +2997,21 @@ function Home({ eventos, onVer }) {
                   </span>
                 </div>
               ))}
+            </div>
+          )}
+          {/* Cobrado en el mes (por fecha de pago) */}
+          {(cobradoMes.ars > 0 || cobradoMes.usd > 0) && (
+            <div className="grid grid-cols-2 gap-3 mb-3">
+              <div className="rounded-xl p-3 flex flex-col gap-1" style={{ background: C.panel2, border: `1px solid ${C.green}55` }}>
+                <span className="text-[10px] font-semibold uppercase tracking-wide" style={{ color: C.green }}>Cobrado en el mes (ARS)</span>
+                <span className="font-mono font-extrabold text-base" style={{ color: C.green }}>{fmtMoneda(cobradoMes.ars, "ARS")}</span>
+              </div>
+              {cobradoMes.usd > 0 && (
+                <div className="rounded-xl p-3 flex flex-col gap-1" style={{ background: C.panel2, border: `1px solid ${C.cyan}55` }}>
+                  <span className="text-[10px] font-semibold uppercase tracking-wide" style={{ color: C.cyan }}>Cobrado en el mes (USD)</span>
+                  <span className="font-mono font-extrabold text-base" style={{ color: C.cyan }}>{fmtMoneda(cobradoMes.usd, "USD")}</span>
+                </div>
+              )}
             </div>
           )}
           <div className="mb-5" />

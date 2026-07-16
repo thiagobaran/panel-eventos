@@ -33,7 +33,7 @@ Tu única tarea es convertir la pregunta del usuario en un objeto JSON con esta 
     "estudios": ${JSON.stringify(ESTUDIOS)} (subconjunto) | [],
     "empresas": ${JSON.stringify(EMPRESAS)} (subconjunto) | [],
     "moneda": "ARS" | "USD" | null,
-    "estado": "borrador" | "listo" | "facturado" | "sin_facturar" | "sin_comprobante" | "vencido" | null,
+    "estado": "borrador" | "listo" | "facturado" | "sin_facturar" | "sin_comprobante" | "vencido" | "sin_cobrar" | "cobrado_parcial" | "cobrado" | null,
     "persona": string | null,
     "texto": string | null
   },
@@ -52,7 +52,7 @@ Reglas sobre "agrupar_por":
 
 Reglas sobre "filtros":
 - "desde"/"hasta": resolvé fechas relativas ("este mes", "la semana que viene", "junio", "el año pasado", "esta semana") a rango absoluto usando la fecha de hoy. Si no hay referencia temporal, dejá ambas en null.
-- "estado": "listo" = confirmado pero no facturado; "sin_facturar" = todo lo no facturado; "sin_comprobante" = facturado sin comprobante de pago; "vencido" = pago vencido.
+- "estado": "listo" = confirmado pero no facturado; "sin_facturar" = todo lo no facturado; "sin_comprobante" = facturado sin comprobante de pago; "vencido" = pago vencido; "sin_cobrar" = sin ningún pago recibido; "cobrado_parcial" = cobrado en parte; "cobrado" = cobrado en su totalidad.
 - "persona": nombre de un integrante o director mencionado.
 - "texto": solo si buscan por nombre de evento/razón social específica que no encaja en otro campo.
 - Dejá en null o [] todo lo que no aplique.
