@@ -47,11 +47,26 @@ pestañas en el header:
 - **Personal**: sub-pestañas **Listado** (personas agrupadas por categoría,
   con sus roles habituales) y **Disponibilidad** (consulta quién está libre
   u ocupado en una fecha determinada, cruzando eventos y fases). Incluye
-  gestión de categorías de personal.
+  gestión de categorías de personal y de **sectores** (áreas de la empresa —
+  Cacodelphia, LED, Cine — un nivel arriba de la categoría: cada persona
+  pertenece a un solo sector, pero puede tener cualquier categoría dentro de
+  ese sector).
+- **Asistencia**: grilla mensual (personas × días del mes) para marcar
+  presente / ausente / franco / medio día de cada persona, con una
+  observación libre por día (ej. en qué tarea o área está). Filtrable por
+  sector. Solo quien tiene permiso de editar personal puede marcar; el resto
+  la ve en solo lectura.
 - **Clientes**: alta, edición y baja de clientes (las productoras/empresas
   que contratan a Cacodelphia), con cuenta corriente por moneda.
 - **Pendientes**: tres tablas — pagos vencidos, eventos sin facturar y
   eventos facturados sin comprobante de pago cargado.
+- **LED**: catálogo de módulos de pantalla LED y equipos de video (senders,
+  escaladores, media servers, procesadores) para venta y alquiler, con
+  alta/edición/borrado y buscador. Pensado para un futuro asistente de
+  recomendación (todavía en diseño) que arme la configuración de pantalla
+  según los requerimientos del cliente. Acceso exclusivo del rol **LED**
+  (que no ve ninguna otra pantalla de la app) y de **admin**; el resto de
+  los roles con permiso `ledVer` (ej. producción) lo ven en solo lectura.
 - **Usuarios**: administración de cuentas, solo visible para el rol admin.
 - **Asistente** (ícono ✨) y **Notificaciones** (ícono campana): overlays
   accesibles desde el header.
@@ -180,14 +195,19 @@ Roles y permisos (gestionables en **Usuarios**, visible solo para admin):
 - **contabilidad**: no crea ni confirma eventos, pero sí los edita/borra,
   gestiona facturación, sube archivos, y administra clientes y personal.
 - **producción**: crea, edita y confirma eventos, pero no factura ni
-  administra archivos (puede verlos, no subirlos/borrarlos).
+  administra archivos (puede verlos, no subirlos/borrarlos). Ve el módulo
+  LED en solo lectura.
 - **espectador**: solo lectura.
+- **led**: caso especial — solo ve y edita el módulo **LED**; ninguna otra
+  pantalla de la app (Eventos, Personal, Clientes, etc.) le aparece, ni
+  siquiera el Asistente o las Notificaciones.
 
 Los permisos son granulares (crear/editar/borrar/confirmar/facturar
 eventos, ver/gestionar archivos, gestionar personal y categorías, gestionar
 clientes, importar/exportar, liberar personal de conflictos, gestionar
-usuarios) y se aplican por control individual en cada pantalla, no
-ocultando pestañas completas.
+usuarios, ver/editar el módulo LED) y se aplican por control individual en
+cada pantalla, no ocultando pestañas completas — excepto el rol `led`, que
+sí queda encerrado únicamente en su módulo.
 
 La pantalla **Usuarios** permite crear cuentas, cambiar rol o contraseña,
 activar/desactivar y borrar (con protección para no auto-borrarte ni
@@ -278,17 +298,23 @@ Después del primer deploy, configurar las variables de entorno
 ```
 src/
   PanelEventos.jsx        -> toda la interfaz (Resumen, Eventos, formulario,
-                              detalle, Personal, Clientes, Pendientes,
-                              Usuarios, login, asistente, notificaciones)
+                              detalle, Personal, Asistencia, Clientes,
+                              Pendientes, LED, Usuarios, login, asistente,
+                              notificaciones)
   lib/
     supabaseClient.js     -> conexión a Supabase (o null si no está configurado)
     eventosApi.js         -> leer/guardar/borrar eventos (Supabase o localStorage)
     personasApi.js        -> leer/guardar/borrar personal
     categoriasPersonalApi.js -> categorías de personal
+    sectoresPersonalApi.js -> sectores del personal (Cacodelphia/LED/Cine…)
+    asistenciasApi.js     -> marcas de asistencia (presente/ausente/franco/medio día)
     clientesApi.js        -> leer/guardar/borrar clientes
     usuariosApi.js        -> login, sesión, usuarios, roles y permisos
     storageApi.js         -> subir/descargar/borrar facturas y comprobantes
     asistenteApi.js       -> llamada al endpoint del asistente de IA
+    ledModulosApi.js      -> catálogo de módulos de pantalla LED
+    ledEquiposApi.js      -> catálogo de senders/escaladores/media servers/procesadores
+    ledSeedData.js         -> datos de fábrica del catálogo LED (desde Excel)
 api/
   asistente.js             -> función serverless: traduce la pregunta a un filtro (Claude)
 supabase/
