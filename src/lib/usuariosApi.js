@@ -216,6 +216,7 @@ export const ROLES = [
   { value: "contabilidad",  label: "Contabilidad",  desc: "Todo salvo crear eventos, personal y categorías" },
   { value: "produccion",    label: "Producción",    desc: "Crea y edita eventos (sin facturación)" },
   { value: "espectador",    label: "Espectador",    desc: "Solo visualización, sin permisos de edición" },
+  { value: "led",           label: "LED",           desc: "Solo el módulo de equipos LED (venta y alquiler)" },
 ];
 
 /* ---------- matriz de permisos por rol ---------- */
@@ -231,6 +232,7 @@ export function perms(rol) {
         importarExportar: true,
         liberarPersona: true,
         usuarios: true,
+        ledVer: true, ledEditar: true,
       };
     case "contabilidad":
       return {
@@ -242,6 +244,7 @@ export function perms(rol) {
         importarExportar: true,
         liberarPersona: false,
         usuarios: false,
+        ledVer: false, ledEditar: false,
       };
     case "produccion":
       return {
@@ -253,6 +256,19 @@ export function perms(rol) {
         importarExportar: true,
         liberarPersona: true,
         usuarios: false,
+        ledVer: true, ledEditar: false,
+      };
+    case "led":
+      return {
+        eventoCrear: false, eventoEditar: false, eventoBorrar: false,
+        eventoConfirmar: false, eventoFacturar: false, archivos: false, archivosVer: false,
+        personalAgregar: false, personalEditar: false, personalBorrar: false,
+        categoriaAgregar: false, categoriaEditar: false, categoriaBorrar: false,
+        clientes: false, clienteCrear: false, clienteBorrar: false,
+        importarExportar: false,
+        liberarPersona: false,
+        usuarios: false,
+        ledVer: true, ledEditar: true,
       };
     case "espectador":
     default:
@@ -265,6 +281,7 @@ export function perms(rol) {
         importarExportar: false,
         liberarPersona: false,
         usuarios: false,
+        ledVer: false, ledEditar: false,
       };
   }
 }

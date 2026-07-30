@@ -7,6 +7,7 @@ import {
   Download, Upload, WifiOff, RefreshCw, Paperclip, Receipt, Eye, EyeOff,
   LogOut, KeyRound, UserCog, ShieldCheck, Lock, Bell, CheckCircle,
   BarChart2, ChevronRight, MessageSquare, Send, Printer, Copy, Sparkles,
+  Grid3x3,
 } from "lucide-react";
 import { listEventos, upsertEvento, deleteEvento, subscribeEventos } from "./lib/eventosApi";
 import { listPersonas, upsertPersona, deletePersona, subscribePersonas } from "./lib/personasApi";
@@ -938,6 +939,11 @@ export default function PanelEventos() {
               </span>
             )}
           </Tab>
+          {p.ledVer && (
+            <Tab active={vista === "led"} onClick={() => setVista("led")} icon={<Grid3x3 size={15} />}>
+              LED
+            </Tab>
+          )}
           {p.usuarios && (
             <Tab active={vista === "usuarios"} onClick={() => setVista("usuarios")} icon={<UserCog size={15} />}>
               Usuarios
@@ -1086,6 +1092,8 @@ export default function PanelEventos() {
             pagosVencidos={pendVenc}
             onVer={(id) => { setVerId(id); setVista("detalle"); }}
           />
+        ) : vista === "led" && p.ledVer ? (
+          <LedModulo perms={p} />
         ) : vista === "usuarios" && p.usuarios ? (
           <Usuarios
             usuarios={usuarios}
@@ -2417,137 +2425,24 @@ function StatCard({ label, value, color, icon, fullRow }) {
   );
 }
 
-/* ---- DonutSVG ---- */
-function DonutSVG({ segments, size = 130 }) {
-  const thickness = Math.max(Math.round(size * 0.16), 10);
-  const r = (size - thickness) / 2;
-  const cx = size / 2, cy = size / 2;
-  const circ = 2 * Math.PI * r;
-  const total = segments.reduce((s, d) => s + d.value, 0);
 
-  if (total === 0) {
-    return (
-      <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`}>
-        <circle cx={cx} cy={cy} r={r} fill="none" stroke={`${C.border}60`} strokeWidth={thickness} />
-      </svg>
-    );
-  }
-
-  const nonZero = segments.filter((d) => d.value > 0).length;
-  const GAP = nonZero > 1 ? 4 : 0;
-  const usable = circ - nonZero * GAP;
-  const arcs = [];
-  let cum = 0;
-  for (const seg of segments) {
-    if (seg.value <= 0) continue;
-    const len = (seg.value / total) * usable;
-    arcs.push({ color: seg.color, len, offset: circ - cum });
-    cum += len + GAP;
-  }
-
+/* ====================== LED ====================== */
+function LedModulo({ perms }) {
   return (
-    <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`}>
-      <g transform={`rotate(-90, ${cx}, ${cy})`}>
-        {arcs.map((arc, i) => (
-          <circle key={i} cx={cx} cy={cy} r={r} fill="none"
-            stroke={arc.color} strokeWidth={thickness}
-            strokeDasharray={`${arc.len} ${circ - arc.len}`}
-            strokeDashoffset={arc.offset}
-          />
-        ))}
-      </g>
-    </svg>
-  );
-}
-
-/* ---- SideMonthMini ---- */
-function SideMonthMini({ mes, anio, evs, onClick, disabled, position }) {
-  const total = evs.length;
-  const segs = ESTUDIOS.map((s) => ({ value: evs.filter((e) => e.estudio === s).length, color: EST_COLORS[s] }));
-  const sinEst = evs.filter((e) => !e.estudio).length;
-  if (sinEst > 0) segs.push({ value: sinEst, color: C.dim });
-
-  return (
-    <button
-      onClick={onClick}
-      disabled={disabled}
-      className="flex flex-col items-center gap-1.5 rounded-xl py-3 px-2 transition-all shrink-0"
-      style={{
-        background: C.panel2,
-        border: `1px solid ${C.border}`,
-        opacity: disabled ? 0.15 : 0.38,
-        cursor: disabled ? "default" : "pointer",
-        width: 84,
-      }}
-      onMouseEnter={(e) => { if (!disabled) e.currentTarget.style.opacity = "0.7"; }}
-      onMouseLeave={(e) => { e.currentTarget.style.opacity = disabled ? "0.15" : "0.38"; }}
-    >
-      {position === "prev" && <ChevronLeft size={13} color={C.dim} />}
-      <span className="text-[11px] font-semibold" style={{ color: C.text }}>
-        {MESES_ES[mes].slice(0, 3)} <span style={{ color: C.dim }}>{String(anio).slice(2)}</span>
-      </span>
-      <div className="relative">
-        <DonutSVG segments={segs} size={52} />
-        <div className="absolute inset-0 flex items-center justify-center">
-          <span className="font-mono font-bold text-xs" style={{ color: C.dim }}>{total}</span>
-        </div>
+    <div className="fade max-w-3xl mx-auto">
+      <div className="flex items-center gap-2 mb-4">
+        <Grid3x3 size={18} color={C.gold} />
+        <h1 className="text-lg font-semibold">Módulo LED</h1>
       </div>
-      {position === "next" && <ChevronRight size={13} color={C.dim} />}
-    </button>
-  );
-}
-
-/* ---- CenterMonthChart ---- */
-function CenterMonthChart({ evs }) {
-  const total = evs.length;
-  const estData = ESTUDIOS.map((s) => ({
-    label: `Est. ${s}`,
-    value: evs.filter((e) => e.estudio === s).length,
-    color: EST_COLORS[s],
-  }));
-  const sinEst = evs.filter((e) => !e.estudio).length;
-  if (sinEst > 0) estData.push({ label: "S/est.", value: sinEst, color: C.dim });
-  const catMap = evs.reduce((acc, e) => { if (e.categoria) acc[e.categoria] = (acc[e.categoria] || 0) + 1; return acc; }, {});
-  const cats = Object.entries(catMap).sort((a, b) => b[1] - a[1]);
-
-  return (
-    <div className="flex flex-col sm:flex-row items-center gap-5">
-      {/* Donut */}
-      <div className="relative shrink-0">
-        <DonutSVG segments={estData} size={138} />
-        <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
-          <span className="text-3xl font-bold font-mono leading-none" style={{ color: total > 0 ? C.gold : C.dim }}>
-            {total}
-          </span>
-          <span className="text-[10px] mt-0.5" style={{ color: C.dim }}>proyectos</span>
-        </div>
-      </div>
-
-      {/* Breakdown */}
-      <div className="flex-1 w-full grid gap-2.5">
-        {estData.filter((d) => d.value > 0).map((d) => (
-          <div key={d.label} className="flex items-center gap-2">
-            <span className="w-2 h-2 rounded-full shrink-0" style={{ background: d.color }} />
-            <span className="text-xs w-14 shrink-0" style={{ color: C.dim }}>{d.label}</span>
-            <div className="flex-1 h-1.5 rounded-full overflow-hidden" style={{ background: `${C.border}60` }}>
-              <div className="h-full rounded-full transition-all duration-500"
-                style={{ width: `${total > 0 ? (d.value / total) * 100 : 0}%`, background: d.color }} />
-            </div>
-            <span className="font-mono font-bold text-sm w-4 text-right" style={{ color: d.color }}>{d.value}</span>
-          </div>
-        ))}
-        {total === 0 && (
-          <p className="text-sm text-center py-3" style={{ color: C.dim }}>Sin proyectos en este mes</p>
-        )}
-        {cats.length > 0 && (
-          <div className="flex flex-wrap gap-1.5 mt-1">
-            {cats.map(([cat, cnt]) => (
-              <span key={cat} className="text-[11px] px-2 py-0.5 rounded-full"
-                style={{ background: `${C.gold}15`, color: C.gold, border: `1px solid ${C.gold}30` }}>
-                {cat} ×{cnt}
-              </span>
-            ))}
-          </div>
+      <div className="rounded-xl p-6 text-center" style={{ background: C.panel, border: `1px solid ${C.border}` }}>
+        <Grid3x3 size={32} className="mx-auto mb-3" style={{ color: C.dim }} />
+        <p className="text-sm" style={{ color: C.text }}>Este módulo todavía se está armando.</p>
+        <p className="text-xs mt-1" style={{ color: C.dim }}>
+          Acá van a estar la base de datos de módulos LED, senders/escaladores, y el asistente de
+          recomendación para armar pantallas según los requerimientos del cliente.
+        </p>
+        {!perms?.ledEditar && (
+          <p className="text-[11px] mt-3" style={{ color: C.dim }}>Tenés acceso de solo lectura a este módulo.</p>
         )}
       </div>
     </div>
@@ -2863,7 +2758,6 @@ function Home({ eventos, onVer }) {
   const [anio, setAnio] = useState(hoy.getFullYear());
   const [mes, setMes] = useState(hoy.getMonth());
   const [scope, setScope] = useState("mes");
-  const [animDir, setAnimDir] = useState(null);
 
   // Max month that has any event (to cap the "next" button)
   const maxEvento = useMemo(() => {
@@ -2886,24 +2780,8 @@ function Home({ eventos, onVer }) {
 
   const go = (dir) => {
     if (dir > 0 && esTope) return;
-    setAnimDir(dir > 0 ? "right" : "left");
     navMes(dir);
   };
-
-  const getEvs = (m, a) => {
-    const prefix = `${a}-${String(m + 1).padStart(2, "0")}`;
-    return eventos.filter((e) => e.fecha?.startsWith(prefix));
-  };
-
-  const getMAdj = (offset) => {
-    let m = mes + offset, a = anio;
-    if (m < 0) { m += 12; a--; }
-    if (m > 11) { m -= 12; a++; }
-    return { mes: m, anio: a, evs: getEvs(m, a) };
-  };
-
-  const prevM = getMAdj(-1);
-  const nextM = getMAdj(1);
 
   const prefixMes = `${anio}-${String(mes + 1).padStart(2, "0")}`;
 
@@ -3110,35 +2988,6 @@ function Home({ eventos, onVer }) {
           <BarChart6Meses eventos={eventos} mesActual={mes} anioActual={anio} onMesClick={(m, a) => { setMes(m); setAnio(a); }} />
         </div>
       )}
-
-      {/* Carousel chart */}
-      <div className="rounded-xl p-4 mb-6" style={{ background: C.panel, border: `1px solid ${C.border}` }}>
-        <div className="flex items-center gap-2 mb-4">
-          <BarChart2 size={15} color={C.gold} />
-          <h2 className="text-sm font-semibold">Proyectos por mes</h2>
-        </div>
-        <div className="flex items-center gap-2">
-          {/* Mes anterior */}
-          <SideMonthMini
-            mes={prevM.mes} anio={prevM.anio} evs={prevM.evs}
-            onClick={() => go(-1)} position="prev"
-          />
-          {/* Centro animado */}
-          <div
-            key={`${mes}-${anio}`}
-            className={`flex-1 rounded-xl p-4 ${animDir === "right" ? "slide-r" : animDir === "left" ? "slide-l" : ""}`}
-            style={{ background: C.panel2, border: `1px solid ${C.border}` }}
-          >
-            <CenterMonthChart evs={eventosMes} />
-          </div>
-          {/* Mes siguiente */}
-          <SideMonthMini
-            mes={nextM.mes} anio={nextM.anio} evs={nextM.evs}
-            onClick={() => go(1)} position="next"
-            disabled={esTope}
-          />
-        </div>
-      </div>
 
       {/* Categorías del mes */}
       {categoriaStats.length > 0 && (
