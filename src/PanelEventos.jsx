@@ -24,6 +24,12 @@ import {
   loginUsuario, seedUsuariosIniciales, ensurePruebaUser, guardarSesion, leerSesion, subscribeUsuarios,
   ROLES, perms,
 } from "./lib/usuariosApi";
+import {
+  listLedModulos, upsertLedModulo, deleteLedModulo, subscribeLedModulos, seedLedModulosIniciales,
+} from "./lib/ledModulosApi";
+import {
+  listLedEquipos, upsertLedEquipo, deleteLedEquipo, subscribeLedEquipos, seedLedEquiposIniciales,
+} from "./lib/ledEquiposApi";
 
 /* ---------- constantes ---------- */
 const CATEGORIAS = ["VIDEO CLIP", "RODAJE SERIE", "RODAJE LARGO", "EVENTO / DEMO", "PUBLICIDAD", "STREAMING"];
@@ -2427,23 +2433,396 @@ function StatCard({ label, value, color, icon, fullRow }) {
 
 
 /* ====================== LED ====================== */
+const LED_MODULO_VACIO = {
+  codigo: "", nombre: "", pitch: "", anchoMm: "", altoMm: "",
+  pitchAnchoPx: "", pitchAltoPx: "", ancho1mPx: "", alto1mPx: "",
+  carpeta: "", tipoEquipo: "",
+};
+const LED_EQUIPO_VACIO = {
+  codigo: "", nombre: "", carpeta: "", tipoEquipo: "",
+  puertosEthernet: "", puertosFibra: "", capacidadMaxPixeles: "",
+  resolucion: "", maximoAltoAncho: "",
+  inputHdmi: "", inputDisplayport: "", inputDvi: "", inputSdi: "",
+  contenidoInterno: false, observaciones: "",
+};
+
 function LedModulo({ perms }) {
+  const editable = !!perms?.ledEditar;
+  const [tab, setTab] = useState("modulos"); // modulos | equipos
+  const [modulos, setModulos] = useState([]);
+  const [equipos, setEquipos] = useState([]);
+  const [cargando, setCargando] = useState(true);
+  const [error, setError] = useState("");
+
+  const cargar = useCallback(async () => {
+    const [ms, es] = await Promise.all([listLedModulos(), listLedEquipos()]);
+    setModulos(ms);
+    setEquipos(es);
+  }, []);
+
+  useEffect(() => {
+    (async () => {
+      setCargando(true);
+      try {
+        await seedLedModulosIniciales();
+        await seedLedEquiposIniciales();
+        await cargar();
+      } catch (e) {
+        console.error(e);
+        setError("No se pudo cargar el catálogo LED: " + e.message);
+      }
+      setCargando(false);
+    })();
+  }, [cargar]);
+
+  useEffect(() => {
+    const u1 = subscribeLedModulos(cargar);
+    const u2 = subscribeLedEquipos(cargar);
+    return () => { u1(); u2(); };
+  }, [cargar]);
+
+  const guardarModulo = async (m) => { await upsertLedModulo(m); await cargar(); };
+  const borrarModulo = async (id) => { await deleteLedModulo(id); await cargar(); };
+  const guardarEquipo = async (e) => { await upsertLedEquipo(e); await cargar(); };
+  const borrarEquipo = async (id) => { await deleteLedEquipo(id); await cargar(); };
+
   return (
-    <div className="fade max-w-3xl mx-auto">
-      <div className="flex items-center gap-2 mb-4">
+    <div className="fade">
+      <div className="flex items-center gap-2 mb-1">
         <Grid3x3 size={18} color={C.gold} />
         <h1 className="text-lg font-semibold">Módulo LED</h1>
       </div>
-      <div className="rounded-xl p-6 text-center" style={{ background: C.panel, border: `1px solid ${C.border}` }}>
-        <Grid3x3 size={32} className="mx-auto mb-3" style={{ color: C.dim }} />
-        <p className="text-sm" style={{ color: C.text }}>Este módulo todavía se está armando.</p>
-        <p className="text-xs mt-1" style={{ color: C.dim }}>
-          Acá van a estar la base de datos de módulos LED, senders/escaladores, y el asistente de
-          recomendación para armar pantallas según los requerimientos del cliente.
-        </p>
-        {!perms?.ledEditar && (
-          <p className="text-[11px] mt-3" style={{ color: C.dim }}>Tenés acceso de solo lectura a este módulo.</p>
+      <p className="text-xs mb-4" style={{ color: C.dim }}>
+        Catálogo de módulos de pantalla LED y equipos de video (senders, escaladores, media servers,
+        procesadores) para venta y alquiler.
+        {!editable && " Tenés acceso de solo lectura a este módulo."}
+      </p>
+
+      {error && (
+        <div className="rounded-md px-3 py-2 mb-3 text-xs" style={{ background: `${C.rose}1a`, border: `1px solid ${C.rose}40`, color: C.rose }}>
+          {error}
+        </div>
+      )}
+
+      <div className="flex items-center gap-0.5 p-0.5 rounded-lg mb-4 w-fit" style={{ background: C.panel2, border: `1px solid ${C.border}` }}>
+        {[
+          { value: "modulos", label: `Módulos LED (${modulos.length})` },
+          { value: "equipos", label: `Senders / Video (${equipos.length})` },
+        ].map((o) => (
+          <button key={o.value} onClick={() => setTab(o.value)}
+            className="text-xs font-medium px-3 py-1.5 rounded-md transition-all"
+            style={{
+              background: tab === o.value ? C.panel : "transparent",
+              color: tab === o.value ? C.text : C.dim,
+              border: tab === o.value ? `1px solid ${C.border}` : "1px solid transparent",
+            }}>
+            {o.label}
+          </button>
+        ))}
+      </div>
+
+      {cargando ? (
+        <div style={{ color: C.dim }} className="font-mono text-sm py-16 text-center">cargando…</div>
+      ) : tab === "modulos" ? (
+        <LedModulosTabla items={modulos} onSave={guardarModulo} onDelete={borrarModulo} editable={editable} />
+      ) : (
+        <LedEquiposTabla items={equipos} onSave={guardarEquipo} onDelete={borrarEquipo} editable={editable} />
+      )}
+    </div>
+  );
+}
+
+function LedModulosTabla({ items, onSave, onDelete, editable }) {
+  const [busqueda, setBusqueda] = useState("");
+  const [editando, setEditando] = useState(null); // "new" | id | null
+  const [f, setF] = useState(LED_MODULO_VACIO);
+  const [guardando, setGuardando] = useState(false);
+  const set = (k, v) => setF((p) => ({ ...p, [k]: v }));
+
+  const filtrados = useMemo(() => {
+    const q = busqueda.trim().toLowerCase();
+    if (!q) return items;
+    return items.filter((m) => (m.codigo + " " + m.nombre).toLowerCase().includes(q));
+  }, [items, busqueda]);
+
+  const empezarNuevo = () => { setF(LED_MODULO_VACIO); setEditando("new"); };
+  const empezarEditar = (m) => { setF({ ...LED_MODULO_VACIO, ...m }); setEditando(m.id); };
+  const cancelar = () => { setEditando(null); setF(LED_MODULO_VACIO); };
+
+  // Recalcula los campos derivados a partir de pitch + medidas físicas.
+  const recalcular = () => {
+    const pitch = Number(f.pitch);
+    if (!pitch) return;
+    const anchoMm = Number(f.anchoMm) || 0;
+    const altoMm = Number(f.altoMm) || 0;
+    setF((p) => ({
+      ...p,
+      pitchAnchoPx: anchoMm ? Math.round((anchoMm / pitch) * 10) / 10 : p.pitchAnchoPx,
+      pitchAltoPx: altoMm ? Math.round((altoMm / pitch) * 10) / 10 : p.pitchAltoPx,
+      ancho1mPx: Math.round((1000 / pitch) * 10) / 10,
+      alto1mPx: Math.round((1000 / pitch) * 10) / 10,
+    }));
+  };
+
+  const guardar = async () => {
+    if (!f.nombre.trim()) { alert("Poné el nombre del módulo."); return; }
+    setGuardando(true);
+    try {
+      await onSave(editando === "new" ? { ...f } : { ...f, id: editando });
+      cancelar();
+    } catch (e) {
+      console.error(e);
+      alert("No se pudo guardar el módulo: " + e.message);
+    } finally {
+      setGuardando(false);
+    }
+  };
+
+  return (
+    <div>
+      <div className="flex flex-wrap gap-2 mb-4 items-center">
+        <div className="relative flex-1 min-w-[180px]">
+          <Search size={15} color={C.dim} className="absolute left-3 top-1/2 -translate-y-1/2" />
+          <input value={busqueda} onChange={(e) => setBusqueda(e.target.value)}
+            placeholder="Buscar por código o nombre…"
+            className="w-full text-sm pl-9 pr-3 py-2 rounded-md"
+            style={{ background: C.panel, border: `1px solid ${C.border}`, color: C.text }} />
+        </div>
+        {editable && !editando && (
+          <button onClick={empezarNuevo}
+            className="flex items-center gap-1.5 text-sm font-medium px-3 py-2 rounded-md"
+            style={{ background: C.gold, color: C.onGold }}>
+            <Plus size={16} /> Nuevo módulo
+          </button>
         )}
+      </div>
+
+      {editando && (
+        <div className="rounded-xl p-4 mb-4" style={{ background: C.panel, border: `1px solid ${C.gold}55` }}>
+          <h3 className="text-sm font-semibold mb-3">{editando === "new" ? "Nuevo módulo LED" : "Editar módulo LED"}</h3>
+          <div className="grid sm:grid-cols-3 gap-3">
+            <Field label="Código"><Input value={f.codigo} onChange={(v) => set("codigo", v)} placeholder="RPMO0001" /></Field>
+            <Field label="Nombre *" full><Input value={f.nombre} onChange={(v) => set("nombre", v)} placeholder="Nombre del módulo" /></Field>
+            <Field label="Pitch (mm)"><Input type="number" value={f.pitch} onChange={(v) => set("pitch", v)} placeholder="6" /></Field>
+            <Field label="Ancho (mm)"><Input type="number" value={f.anchoMm} onChange={(v) => set("anchoMm", v)} placeholder="500" /></Field>
+            <Field label="Alto (mm)"><Input type="number" value={f.altoMm} onChange={(v) => set("altoMm", v)} placeholder="500" /></Field>
+          </div>
+
+          <div className="mt-3 rounded-lg p-3" style={{ background: C.panel2, border: `1px solid ${C.border}` }}>
+            <div className="flex items-center justify-between mb-2">
+              <span className="text-[11px] font-semibold uppercase tracking-wide" style={{ color: C.dim }}>Resolución (calculada)</span>
+              <button type="button" onClick={recalcular} className="text-[11px] flex items-center gap-1 hover:opacity-80" style={{ color: C.gold }}>
+                <RefreshCw size={12} /> Recalcular desde pitch/medidas
+              </button>
+            </div>
+            <div className="grid sm:grid-cols-4 gap-2">
+              <Field label="Píx. ancho (módulo)"><Input type="number" value={f.pitchAnchoPx} onChange={(v) => set("pitchAnchoPx", v)} placeholder="0" /></Field>
+              <Field label="Píx. alto (módulo)"><Input type="number" value={f.pitchAltoPx} onChange={(v) => set("pitchAltoPx", v)} placeholder="0" /></Field>
+              <Field label="Píx./m ancho"><Input type="number" value={f.ancho1mPx} onChange={(v) => set("ancho1mPx", v)} placeholder="0" /></Field>
+              <Field label="Píx./m alto"><Input type="number" value={f.alto1mPx} onChange={(v) => set("alto1mPx", v)} placeholder="0" /></Field>
+            </div>
+          </div>
+
+          <div className="grid sm:grid-cols-2 gap-3 mt-3">
+            <Field label="Categoría / carpeta"><Input value={f.carpeta} onChange={(v) => set("carpeta", v)} placeholder="JUPITERLED/PANTALLAS LED/MODULOS" /></Field>
+            <Field label="Tipo de equipo"><Input value={f.tipoEquipo} onChange={(v) => set("tipoEquipo", v)} placeholder="Artículo físico" /></Field>
+          </div>
+
+          <div className="flex gap-2 mt-3">
+            <button onClick={guardar} disabled={guardando}
+              className="text-sm font-medium px-4 py-2 rounded-md flex items-center gap-1.5 disabled:opacity-50"
+              style={{ background: C.gold, color: C.onGold }}>
+              <Check size={15} /> {guardando ? "Guardando…" : "Guardar"}
+            </button>
+            <button onClick={cancelar} className="text-sm px-4 py-2 rounded-md" style={{ background: C.panel2, border: `1px solid ${C.border}`, color: C.dim }}>
+              Cancelar
+            </button>
+          </div>
+        </div>
+      )}
+
+      <div className="rounded-xl overflow-hidden" style={{ background: C.panel, border: `1px solid ${C.border}` }}>
+        <div className="overflow-x-auto">
+          <table className="w-full text-xs">
+            <thead>
+              <tr style={{ borderBottom: `1px solid ${C.border}` }}>
+                {["Código", "Nombre", "Pitch", "Ancho×Alto (mm)", "Píx. módulo", "Píx./m", ""].map((h) => (
+                  <th key={h} className="text-left px-3 py-2 font-medium" style={{ color: C.dim }}>{h}</th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {filtrados.map((m) => (
+                <tr key={m.id} style={{ borderBottom: `1px solid ${C.border}` }}>
+                  <td className="px-3 py-2 font-mono" style={{ color: C.dim }}>{m.codigo || "—"}</td>
+                  <td className="px-3 py-2">{m.nombre}</td>
+                  <td className="px-3 py-2 font-mono">{m.pitch || "—"}</td>
+                  <td className="px-3 py-2 font-mono">{m.anchoMm && m.altoMm ? `${m.anchoMm}×${m.altoMm}` : "—"}</td>
+                  <td className="px-3 py-2 font-mono">{m.pitchAnchoPx && m.pitchAltoPx ? `${m.pitchAnchoPx}×${m.pitchAltoPx}` : "—"}</td>
+                  <td className="px-3 py-2 font-mono">{m.ancho1mPx || "—"}</td>
+                  <td className="px-3 py-2 text-right whitespace-nowrap">
+                    {editable && (
+                      <div className="flex justify-end gap-1">
+                        <IconBtn onClick={() => empezarEditar(m)} title="Editar"><Pencil size={13} /></IconBtn>
+                        <IconBtn onClick={() => { if (confirm(`¿Borrar "${m.nombre}"?`)) onDelete(m.id); }} title="Borrar" danger><Trash2 size={13} /></IconBtn>
+                      </div>
+                    )}
+                  </td>
+                </tr>
+              ))}
+              {filtrados.length === 0 && (
+                <tr><td colSpan={7} className="px-3 py-8 text-center" style={{ color: C.dim }}>Sin resultados.</td></tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function LedEquiposTabla({ items, onSave, onDelete, editable }) {
+  const [busqueda, setBusqueda] = useState("");
+  const [editando, setEditando] = useState(null);
+  const [f, setF] = useState(LED_EQUIPO_VACIO);
+  const [guardando, setGuardando] = useState(false);
+  const set = (k, v) => setF((p) => ({ ...p, [k]: v }));
+
+  const filtrados = useMemo(() => {
+    const q = busqueda.trim().toLowerCase();
+    if (!q) return items;
+    return items.filter((e) => (e.codigo + " " + e.nombre + " " + e.carpeta).toLowerCase().includes(q));
+  }, [items, busqueda]);
+
+  const empezarNuevo = () => { setF(LED_EQUIPO_VACIO); setEditando("new"); };
+  const empezarEditar = (e) => { setF({ ...LED_EQUIPO_VACIO, ...e }); setEditando(e.id); };
+  const cancelar = () => { setEditando(null); setF(LED_EQUIPO_VACIO); };
+
+  const guardar = async () => {
+    if (!f.nombre.trim()) { alert("Poné el nombre del equipo."); return; }
+    setGuardando(true);
+    try {
+      await onSave(editando === "new" ? { ...f } : { ...f, id: editando });
+      cancelar();
+    } catch (e) {
+      console.error(e);
+      alert("No se pudo guardar el equipo: " + e.message);
+    } finally {
+      setGuardando(false);
+    }
+  };
+
+  // Última parte de la carpeta (ej: "JUPITERLED/VIDEO/SENDERS" -> "SENDERS")
+  const categoria = (carpeta) => (carpeta || "").split("/").filter(Boolean).pop() || "—";
+
+  return (
+    <div>
+      <div className="flex flex-wrap gap-2 mb-4 items-center">
+        <div className="relative flex-1 min-w-[180px]">
+          <Search size={15} color={C.dim} className="absolute left-3 top-1/2 -translate-y-1/2" />
+          <input value={busqueda} onChange={(e) => setBusqueda(e.target.value)}
+            placeholder="Buscar por código, nombre o categoría…"
+            className="w-full text-sm pl-9 pr-3 py-2 rounded-md"
+            style={{ background: C.panel, border: `1px solid ${C.border}`, color: C.text }} />
+        </div>
+        {editable && !editando && (
+          <button onClick={empezarNuevo}
+            className="flex items-center gap-1.5 text-sm font-medium px-3 py-2 rounded-md"
+            style={{ background: C.gold, color: C.onGold }}>
+            <Plus size={16} /> Nuevo equipo
+          </button>
+        )}
+      </div>
+
+      {editando && (
+        <div className="rounded-xl p-4 mb-4" style={{ background: C.panel, border: `1px solid ${C.gold}55` }}>
+          <h3 className="text-sm font-semibold mb-3">{editando === "new" ? "Nuevo equipo de video" : "Editar equipo de video"}</h3>
+          <div className="grid sm:grid-cols-3 gap-3">
+            <Field label="Código"><Input value={f.codigo} onChange={(v) => set("codigo", v)} placeholder="RVSE0001" /></Field>
+            <Field label="Nombre *" full><Input value={f.nombre} onChange={(v) => set("nombre", v)} placeholder="Nombre del equipo" /></Field>
+            <Field label="Categoría / carpeta"><Input value={f.carpeta} onChange={(v) => set("carpeta", v)} placeholder="JUPITERLED/VIDEO/SENDERS" /></Field>
+            <Field label="Tipo de equipo"><Input value={f.tipoEquipo} onChange={(v) => set("tipoEquipo", v)} placeholder="Artículo físico" /></Field>
+          </div>
+
+          <div className="mt-3 rounded-lg p-3" style={{ background: C.panel2, border: `1px solid ${C.border}` }}>
+            <span className="text-[11px] font-semibold uppercase tracking-wide block mb-2" style={{ color: C.dim }}>Conectividad y capacidad</span>
+            <div className="grid sm:grid-cols-3 gap-2">
+              <Field label="Puertos ethernet"><Input type="number" value={f.puertosEthernet} onChange={(v) => set("puertosEthernet", v)} placeholder="0" /></Field>
+              <Field label="Puertos fibra"><Input type="number" value={f.puertosFibra} onChange={(v) => set("puertosFibra", v)} placeholder="0" /></Field>
+              <Field label="Capacidad máx. píxeles"><Input type="number" value={f.capacidadMaxPixeles} onChange={(v) => set("capacidadMaxPixeles", v)} placeholder="0" /></Field>
+              <Field label="Resolución máxima"><Input value={f.resolucion} onChange={(v) => set("resolucion", v)} placeholder="1920×1200 a 60 Hz" /></Field>
+              <Field label="Máximo alto/ancho" full><Input value={f.maximoAltoAncho} onChange={(v) => set("maximoAltoAncho", v)} placeholder="ej: 4096 píxeles de ancho o 1920 de alto" /></Field>
+            </div>
+          </div>
+
+          <div className="mt-3 rounded-lg p-3" style={{ background: C.panel2, border: `1px solid ${C.border}` }}>
+            <span className="text-[11px] font-semibold uppercase tracking-wide block mb-2" style={{ color: C.dim }}>Inputs</span>
+            <div className="grid sm:grid-cols-4 gap-2">
+              <Field label="HDMI"><Input type="number" value={f.inputHdmi} onChange={(v) => set("inputHdmi", v)} placeholder="0" /></Field>
+              <Field label="DisplayPort"><Input type="number" value={f.inputDisplayport} onChange={(v) => set("inputDisplayport", v)} placeholder="0" /></Field>
+              <Field label="DVI"><Input type="number" value={f.inputDvi} onChange={(v) => set("inputDvi", v)} placeholder="0" /></Field>
+              <Field label="SDI"><Input type="number" value={f.inputSdi} onChange={(v) => set("inputSdi", v)} placeholder="0" /></Field>
+            </div>
+          </div>
+
+          <div className="grid sm:grid-cols-2 gap-3 mt-3 items-end">
+            <label className="flex items-center gap-2 text-sm px-3 py-2 rounded-md cursor-pointer" style={{ background: C.panel2, border: `1px solid ${C.border}` }}>
+              <input type="checkbox" checked={f.contenidoInterno} onChange={(e) => set("contenidoInterno", e.target.checked)} />
+              Tiene contenido/reproductor interno
+            </label>
+          </div>
+          <Field label="Observaciones" full><Input value={f.observaciones} onChange={(v) => set("observaciones", v)} placeholder="Requerimientos u observaciones específicas" /></Field>
+
+          <div className="flex gap-2 mt-3">
+            <button onClick={guardar} disabled={guardando}
+              className="text-sm font-medium px-4 py-2 rounded-md flex items-center gap-1.5 disabled:opacity-50"
+              style={{ background: C.gold, color: C.onGold }}>
+              <Check size={15} /> {guardando ? "Guardando…" : "Guardar"}
+            </button>
+            <button onClick={cancelar} className="text-sm px-4 py-2 rounded-md" style={{ background: C.panel2, border: `1px solid ${C.border}`, color: C.dim }}>
+              Cancelar
+            </button>
+          </div>
+        </div>
+      )}
+
+      <div className="rounded-xl overflow-hidden" style={{ background: C.panel, border: `1px solid ${C.border}` }}>
+        <div className="overflow-x-auto">
+          <table className="w-full text-xs">
+            <thead>
+              <tr style={{ borderBottom: `1px solid ${C.border}` }}>
+                {["Código", "Nombre", "Categoría", "Eth.", "Fibra", "Cap. máx. píx.", "Resolución", "Máx. alto/ancho", ""].map((h) => (
+                  <th key={h} className="text-left px-3 py-2 font-medium whitespace-nowrap" style={{ color: C.dim }}>{h}</th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {filtrados.map((e) => (
+                <tr key={e.id} style={{ borderBottom: `1px solid ${C.border}` }}>
+                  <td className="px-3 py-2 font-mono" style={{ color: C.dim }}>{e.codigo || "—"}</td>
+                  <td className="px-3 py-2">{e.nombre}</td>
+                  <td className="px-3 py-2">{categoria(e.carpeta)}</td>
+                  <td className="px-3 py-2 font-mono">{e.puertosEthernet || "—"}</td>
+                  <td className="px-3 py-2 font-mono">{e.puertosFibra || "—"}</td>
+                  <td className="px-3 py-2 font-mono">{e.capacidadMaxPixeles ? Number(e.capacidadMaxPixeles).toLocaleString("es-AR") : "—"}</td>
+                  <td className="px-3 py-2">{e.resolucion || "—"}</td>
+                  <td className="px-3 py-2">{e.maximoAltoAncho || "—"}</td>
+                  <td className="px-3 py-2 text-right whitespace-nowrap">
+                    {editable && (
+                      <div className="flex justify-end gap-1">
+                        <IconBtn onClick={() => empezarEditar(e)} title="Editar"><Pencil size={13} /></IconBtn>
+                        <IconBtn onClick={() => { if (confirm(`¿Borrar "${e.nombre}"?`)) onDelete(e.id); }} title="Borrar" danger><Trash2 size={13} /></IconBtn>
+                      </div>
+                    )}
+                  </td>
+                </tr>
+              ))}
+              {filtrados.length === 0 && (
+                <tr><td colSpan={9} className="px-3 py-8 text-center" style={{ color: C.dim }}>Sin resultados.</td></tr>
+              )}
+            </tbody>
+          </table>
+        </div>
       </div>
     </div>
   );

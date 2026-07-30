@@ -274,6 +274,84 @@ begin
 end $$;
 
 -- ---------------------------------------------------------------------
+-- LED: catálogo de módulos de pantalla y equipos de video (venta/alquiler)
+-- ---------------------------------------------------------------------
+-- Módulos de pantalla LED: pitch, medidas físicas y resolución de cada
+-- módulo. Se siembra automáticamente desde la app (seedLedModulosIniciales)
+-- con el catálogo provisto en Excel la primera vez que se abre el módulo.
+create table if not exists public.led_modulos (
+  id uuid primary key default gen_random_uuid(),
+  created_at timestamptz not null default now(),
+  codigo text unique,
+  nombre text not null,
+  pitch numeric,
+  ancho_mm numeric,
+  alto_mm numeric,
+  pitch_ancho_px numeric,
+  pitch_alto_px numeric,
+  ancho_1m_px numeric,
+  alto_1m_px numeric,
+  carpeta text,
+  tipo_equipo text,
+  activo boolean not null default true
+);
+alter table public.led_modulos enable row level security;
+drop policy if exists "Acceso interno completo" on public.led_modulos;
+create policy "Acceso interno completo"
+  on public.led_modulos
+  for all
+  using (true)
+  with check (true);
+do $$
+begin
+  if not exists (
+    select 1 from pg_publication_tables
+    where pubname = 'supabase_realtime' and tablename = 'led_modulos'
+  ) then
+    alter publication supabase_realtime add table public.led_modulos;
+  end if;
+end $$;
+
+-- Equipos de video: senders, escaladores, media servers y procesadores.
+-- Igual que arriba, se siembra automáticamente desde la app.
+create table if not exists public.led_equipos_video (
+  id uuid primary key default gen_random_uuid(),
+  created_at timestamptz not null default now(),
+  codigo text unique,
+  nombre text not null,
+  carpeta text,
+  tipo_equipo text,
+  puertos_ethernet numeric,
+  puertos_fibra numeric,
+  capacidad_max_pixeles numeric,
+  resolucion text,
+  maximo_alto_ancho text,
+  input_hdmi numeric,
+  input_displayport numeric,
+  input_dvi numeric,
+  input_sdi numeric,
+  contenido_interno boolean not null default false,
+  observaciones text,
+  activo boolean not null default true
+);
+alter table public.led_equipos_video enable row level security;
+drop policy if exists "Acceso interno completo" on public.led_equipos_video;
+create policy "Acceso interno completo"
+  on public.led_equipos_video
+  for all
+  using (true)
+  with check (true);
+do $$
+begin
+  if not exists (
+    select 1 from pg_publication_tables
+    where pubname = 'supabase_realtime' and tablename = 'led_equipos_video'
+  ) then
+    alter publication supabase_realtime add table public.led_equipos_video;
+  end if;
+end $$;
+
+-- ---------------------------------------------------------------------
 -- Storage: bucket para facturas y comprobantes de pago de cada evento
 -- ---------------------------------------------------------------------
 insert into storage.buckets (id, name, public)
