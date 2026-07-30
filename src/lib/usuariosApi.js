@@ -269,6 +269,7 @@ export function perms(rol) {
         liberarPersona: false,
         usuarios: false,
         ledVer: true, ledEditar: true,
+        soloLed: true,
       };
     case "espectador":
     default:

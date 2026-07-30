@@ -930,21 +930,25 @@ export default function PanelEventos() {
         </div>
 
         <nav className="flex items-center gap-1 ml-auto">
-          <Tab active={vista === "home"} onClick={() => setVista("home")} icon={<BarChart2 size={15} />}>Resumen</Tab>
-          <Tab active={vista === "lista"} onClick={() => setVista("lista")} icon={<Layers size={15} />}>Eventos</Tab>
-          <Tab active={vista === "personal"} onClick={() => setVista("personal")} icon={<Users size={15} />}>Personal</Tab>
-          {p.clientes && (
-            <Tab active={vista === "clientes"} onClick={() => setVista("clientes")} icon={<Building2 size={15} />}>Clientes</Tab>
+          {!p.soloLed && (
+            <>
+              <Tab active={vista === "home"} onClick={() => setVista("home")} icon={<BarChart2 size={15} />}>Resumen</Tab>
+              <Tab active={vista === "lista"} onClick={() => setVista("lista")} icon={<Layers size={15} />}>Eventos</Tab>
+              <Tab active={vista === "personal"} onClick={() => setVista("personal")} icon={<Users size={15} />}>Personal</Tab>
+              {p.clientes && (
+                <Tab active={vista === "clientes"} onClick={() => setVista("clientes")} icon={<Building2 size={15} />}>Clientes</Tab>
+              )}
+              <Tab active={vista === "dashboard"} onClick={() => setVista("dashboard")} icon={<AlertTriangle size={15} />}>
+                Pendientes
+                {(pendFact.length + pendComp.length + pendVenc.length) > 0 && (
+                  <span className="ml-1.5 text-[10px] font-mono px-1.5 rounded-full"
+                    style={{ background: pendVenc.length > 0 ? C.rose : C.amber, color: pendVenc.length > 0 ? "#fff" : "#1a1200" }}>
+                    {pendFact.length + pendComp.length + pendVenc.length}
+                  </span>
+                )}
+              </Tab>
+            </>
           )}
-          <Tab active={vista === "dashboard"} onClick={() => setVista("dashboard")} icon={<AlertTriangle size={15} />}>
-            Pendientes
-            {(pendFact.length + pendComp.length + pendVenc.length) > 0 && (
-              <span className="ml-1.5 text-[10px] font-mono px-1.5 rounded-full"
-                style={{ background: pendVenc.length > 0 ? C.rose : C.amber, color: pendVenc.length > 0 ? "#fff" : "#1a1200" }}>
-                {pendFact.length + pendComp.length + pendVenc.length}
-              </span>
-            )}
-          </Tab>
           {p.ledVer && (
             <Tab active={vista === "led"} onClick={() => setVista("led")} icon={<Grid3x3 size={15} />}>
               LED
@@ -956,6 +960,7 @@ export default function PanelEventos() {
             </Tab>
           )}
           <div className="ml-2 flex items-center gap-2 pl-2" style={{ borderLeft: `1px solid ${C.border}` }}>
+            {!p.soloLed && (<>
             {/* Asistente IA */}
             <button onClick={() => setShowAsistente(true)} title="Asistente de consultas"
               className="p-1.5 rounded-md hover:opacity-80"
@@ -1023,6 +1028,7 @@ export default function PanelEventos() {
                 </div>
               )}
             </div>
+            </>)}
             <div className="hidden sm:flex flex-col leading-tight items-end">
               <span className="text-xs font-medium">{usuario.nombre}</span>
               <span className="text-[10px] font-mono uppercase tracking-wide" style={{ color: C.gold }}>{usuario.rol}</span>
@@ -1060,6 +1066,8 @@ export default function PanelEventos() {
       <main className="px-4 sm:px-6 py-5 max-w-6xl mx-auto">
         {cargando ? (
           <div style={{ color: C.dim }} className="font-mono text-sm py-20 text-center">cargando…</div>
+        ) : p.soloLed ? (
+          <LedModulo perms={p} />
         ) : vista === "form" ? (
           <FormEvento
             base={eventoEdit || duplicandoBase || nuevoEvento()}
