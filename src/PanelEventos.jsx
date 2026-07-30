@@ -981,12 +981,20 @@ export default function PanelEventos() {
         </div>
 
         <nav className="flex items-center gap-1 ml-auto">
-          {!p.soloLed && (
+          {!p.soloLed && !p.soloAsistencia && (
             <>
               <Tab active={vista === "home"} onClick={() => setVista("home")} icon={<BarChart2 size={15} />}>Resumen</Tab>
               <Tab active={vista === "lista"} onClick={() => setVista("lista")} icon={<Layers size={15} />}>Eventos</Tab>
+            </>
+          )}
+          {!p.soloLed && (
+            <>
               <Tab active={vista === "personal"} onClick={() => setVista("personal")} icon={<Users size={15} />}>Personal</Tab>
               <Tab active={vista === "asistencia"} onClick={() => setVista("asistencia")} icon={<CalendarCheck size={15} />}>Asistencia</Tab>
+            </>
+          )}
+          {!p.soloLed && !p.soloAsistencia && (
+            <>
               {p.clientes && (
                 <Tab active={vista === "clientes"} onClick={() => setVista("clientes")} icon={<Building2 size={15} />}>Clientes</Tab>
               )}
@@ -1012,7 +1020,7 @@ export default function PanelEventos() {
             </Tab>
           )}
           <div className="ml-2 flex items-center gap-2 pl-2" style={{ borderLeft: `1px solid ${C.border}` }}>
-            {!p.soloLed && (<>
+            {!p.soloLed && !p.soloAsistencia && (<>
             {/* Asistente IA */}
             <button onClick={() => setShowAsistente(true)} title="Asistente de consultas"
               className="p-1.5 rounded-md hover:opacity-80"
@@ -1120,6 +1128,20 @@ export default function PanelEventos() {
           <div style={{ color: C.dim }} className="font-mono text-sm py-20 text-center">cargando…</div>
         ) : p.soloLed ? (
           <LedModulo perms={p} />
+        ) : p.soloAsistencia && vista !== "personal" && vista !== "asistencia" ? (
+          <Personal
+            personas={personas}
+            categorias={categoriasPersonal}
+            sectores={sectoresPersonal}
+            onSave={guardarPersona}
+            onDelete={borrarPersona}
+            onSaveCategoria={guardarCategoriaPersonal}
+            onDeleteCategoria={borrarCategoriaPersonal}
+            onSaveSector={guardarSectorPersonal}
+            onDeleteSector={borrarSectorPersonal}
+            perms={p}
+            eventos={eventos}
+          />
         ) : vista === "form" ? (
           <FormEvento
             base={eventoEdit || duplicandoBase || nuevoEvento()}
@@ -4350,7 +4372,19 @@ function AsistenciaModulo({ personas, sectores, perms }) {
     setCargando(false);
   }, [desde, hasta]);
 
-  useEffect(() => { cargar(); }, [cargar]);
+  useEffect(() => {
+    (async () => {
+      setCargando(true);
+      try {
+        const data = await listAsistenciasRango(desde, hasta);
+        setAsistencias(data);
+      } catch (e) {
+        console.error(e);
+      }
+      setCargando(false);
+    })();
+  }, [desde, hasta]);
+
   useEffect(() => {
     const unsub = subscribeAsistencias(() => cargar());
     return unsub;

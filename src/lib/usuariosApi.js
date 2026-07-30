@@ -217,6 +217,7 @@ export const ROLES = [
   { value: "produccion",    label: "Producción",    desc: "Crea y edita eventos (sin facturación)" },
   { value: "espectador",    label: "Espectador",    desc: "Solo visualización, sin permisos de edición" },
   { value: "led",           label: "LED",           desc: "Solo el módulo de equipos LED (venta y alquiler)" },
+  { value: "asistencia",    label: "Asistencia",    desc: "Solo los módulos de Personal y Asistencia" },
 ];
 
 /* ---------- matriz de permisos por rol ---------- */
@@ -270,6 +271,19 @@ export function perms(rol) {
         usuarios: false,
         ledVer: true, ledEditar: true,
         soloLed: true,
+      };
+    case "asistencia":
+      return {
+        eventoCrear: false, eventoEditar: false, eventoBorrar: false,
+        eventoConfirmar: false, eventoFacturar: false, archivos: false, archivosVer: false,
+        personalAgregar: true, personalEditar: true, personalBorrar: true,
+        categoriaAgregar: true, categoriaEditar: true, categoriaBorrar: true,
+        clientes: false, clienteCrear: false, clienteBorrar: false,
+        importarExportar: false,
+        liberarPersona: false,
+        usuarios: false,
+        ledVer: false, ledEditar: false,
+        soloAsistencia: true,
       };
     case "espectador":
     default:
