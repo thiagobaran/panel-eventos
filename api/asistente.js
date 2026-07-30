@@ -11,8 +11,8 @@
 
 const MODEL = process.env.ASISTENTE_MODEL || "claude-haiku-4-5-20251001";
 
-const CATEGORIAS = ["VIDEO CLIP", "RODAJE SERIE", "RODAJE LARGO", "EVENTO / DEMO", "PUBLICIDAD"];
-const MODALIDADES = ["En estudio", "Rodaje externo", "Servicio virtual"];
+const CATEGORIAS = ["VIDEO CLIP", "RODAJE SERIE", "RODAJE LARGO", "EVENTO / DEMO", "PUBLICIDAD", "STREAMING"];
+const MODALIDADES = ["En estudio", "Rodaje externo", "Servicio virtual", "Rental"];
 const ESTUDIOS = ["1", "2", "3"];
 const EMPRESAS = ["M1", "M2", "MIXTO"];
 

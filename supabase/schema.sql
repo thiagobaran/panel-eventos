@@ -230,6 +230,10 @@ alter table public.eventos add column if not exists cuit text;
 -- Registro de pagos/cobros del evento: [{id, fecha, monto, medio, nota}]
 alter table public.eventos add column if not exists pagos jsonb not null default '[]'::jsonb;
 
+-- Cronograma de cuotas de pago/facturación: [{id, label, dias, fecha, monto}]
+-- "dias" = offset en días desde la fecha del evento; "fecha" = fecha fija (uno u otro).
+alter table public.eventos add column if not exists cuotas_pago jsonb not null default '[]'::jsonb;
+
 -- ---------------------------------------------------------------------
 -- Usuarios (login + roles)
 -- ---------------------------------------------------------------------

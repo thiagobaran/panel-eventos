@@ -1,97 +1,264 @@
 # Panel de Eventos
 
-Sistema interno de gestión de eventos de producción (videoclips, publicidades,
-películas, series). Permite cargar y consultar cada evento con toda su
-información: categoría, tipo de producción (Virtual Production / Back
-Projecting), trackeo, equipamiento, integrantes y roles, datos de facturación,
-contacto del director y observaciones. Incluye un panel de "Pendientes" para
-ver de un vistazo qué falta facturar o qué falta el comprobante de pago.
-
-## 1. Cómo usar el sistema (guía rápida)
-
-1. **Eventos**: lista todos los eventos cargados. Se puede buscar por nombre,
-   director, razón social o integrante, y filtrar por categoría/empresa.
-2. **Personal**: listado maestro de todo el personal de la productora (nombre,
-   rol habitual, teléfono, email). Se carga una sola vez acá y después, al
-   crear o editar un evento, se elige a cada persona de esta lista y se le
-   asigna el rol que ocupa en ese evento puntual.
-3. **Nuevo evento**: botón dorado arriba a la derecha. Completa los datos del
-   evento por secciones (Producción, Integrantes, Dirección, Facturación,
-   Observaciones) y guardá. En **Facturación** se elige la distribución entre
-   las dos razones sociales: **M1** (factura con IVA), **M2** (efectivo, sin
-   IVA) o **M1 + M2** (mixto: una parte por cada una). El "Importe + IVA" y
-   el "Total facturable" se calculan solos según lo elegido. Las facturas y
-   comprobantes **no se cargan acá** — se suben como archivo desde el detalle
-   del evento, una vez creado.
-4. **Click en un evento**: abre el detalle, desde ahí se puede **Editar** o
-   **Borrar**.
-5. **Estado administrativo y archivos (en el detalle)**: una vez creado el
-   evento, se pueden subir las facturas (hasta la cantidad indicada en "Cant.
-   facturas") y los comprobantes de pago como archivos PDF/imagen. Los
-   marcadores "Facturado", "Comprobante de pago" y "Facturado total" se
-   activan solos al subir los archivos correspondientes y se pueden
-   sobreescribir manualmente. (Más adelante esto va a quedar restringido al
-   rol de Administración — ver sección 7).
-6. **Pendientes**: muestra dos tablas — eventos sin facturar y eventos
-   facturados sin comprobante de pago cargado. Sirve como recordatorio para
-   administración.
-7. **Exportar / Importar (íconos de descarga/subida en el header)**: genera o
-   carga un archivo JSON con todos los eventos. Útil como respaldo manual.
+Sistema interno de gestión de eventos de producción (videoclips, series,
+largometrajes, publicidades, demos/eventos) para **Cacodelphia**. Permite
+cargar y consultar cada evento con toda su información: categoría, modalidad
+de rodaje, tipo de producción, trackeo, estudio(s), partes/fases del proyecto
+con sus fechas, equipamiento, integrantes internos y roles, equipo técnico
+externo, cliente, datos de facturación y cobros, contacto del director,
+mensajería interna y observaciones. Incluye una pantalla de **Resumen**
+(dashboard financiero y de ocupación mensual), un panel de **Pendientes**
+(facturación, comprobantes y pagos vencidos), gestión de **Clientes** (con
+cuenta corriente), gestión de **Personal** (con categorías y disponibilidad),
+un sistema de **login con roles y permisos**, y un **asistente de IA** para
+consultar los eventos en lenguaje natural.
 
 La app es **multiusuario**: si se configura Supabase (paso 3), todas las
-personas que entren a la URL ven y editan los mismos eventos en tiempo real,
-desde cualquier computadora o celular.
+personas que entren a la URL ven y editan los mismos datos en tiempo real,
+desde cualquier computadora o celular. Sin Supabase configurado, funciona en
+**modo local** (los datos quedan solo en el navegador, vía `localStorage`).
 
-## 2. Requisitos para desarrollo local
+## 1. Pantallas
+
+Toda la app requiere **iniciar sesión** (ver sección 6). La navegación es por
+pestañas en el header:
+
+- **Resumen**: pantalla de inicio. Selector de mes, calendario mensual con
+  los eventos coloreados por fase de producción, tarjetas de estadísticas
+  (proyectos del mes, ocupación por estudio), bloque financiero (total
+  facturado/pendiente/cobrado del mes en ARS y USD, gráfico de los últimos 6
+  meses, distribución por estudio), categorías del mes y ranking de
+  integrantes (por cantidad de proyectos, mes actual o histórico).
+- **Eventos**: listado con pestañas Próximos / Finalizados / Todos, búsqueda
+  por nombre/director/razón social/integrante, filtros por categoría,
+  modalidad de rodaje y empresa, badges de estado (Borrador, Listo para
+  facturar, Facturado, Sin comprobante, Cobrado, Cobro parcial, Pago
+  vencido) y de mensajes sin leer. Desde acá se exportan reportes (ver
+  sección 7) y se crean eventos nuevos.
+- **Nuevo evento / Editar**: formulario por secciones — Producción, Partes
+  del proyecto (fases y fechas), Integrantes y roles, Equipo técnico
+  externo, Dirección, Facturación, Observaciones.
+- **Detalle de evento**: cada bloque (Observaciones/mensajería,
+  Producción, Facturación, Cobros y pagos, Estado administrativo, Archivos,
+  Equipo, Dirección, Equipo técnico externo, Partes del proyecto) se edita
+  de forma independiente sin pasar por el formulario completo. Incluye
+  banner de estado (borrador/confirmado), exportar a PDF, duplicar evento,
+  editar (formulario completo) y borrar.
+- **Personal**: sub-pestañas **Listado** (personas agrupadas por categoría,
+  con sus roles habituales) y **Disponibilidad** (consulta quién está libre
+  u ocupado en una fecha determinada, cruzando eventos y fases). Incluye
+  gestión de categorías de personal.
+- **Clientes**: alta, edición y baja de clientes (las productoras/empresas
+  que contratan a Cacodelphia), con cuenta corriente por moneda.
+- **Pendientes**: tres tablas — pagos vencidos, eventos sin facturar y
+  eventos facturados sin comprobante de pago cargado.
+- **Usuarios**: administración de cuentas, solo visible para el rol admin.
+- **Asistente** (ícono ✨) y **Notificaciones** (ícono campana): overlays
+  accesibles desde el header.
+
+## 2. Cómo usar el sistema (guía rápida)
+
+1. **Iniciar sesión** con tu usuario y contraseña.
+2. **Nuevo evento** (botón dorado, en Eventos): completá los datos por
+   secciones y guardá. En **Facturación** se elige la distribución entre las
+   dos razones sociales: **M1** (factura con IVA 21%), **M2** (efectivo, sin
+   IVA) o **M1 + M2** (mixto). Si hay más de una factura (`Cant. facturas`),
+   se puede desglosar el monto factura por factura. Los totales se calculan
+   solos según lo elegido.
+3. **Click en un evento**: abre el Detalle, desde ahí se edita cada bloque
+   por separado — incluida la Facturación, donde se puede elegir el cliente
+   real de la lista (no solo escribir la razón social a mano) — se sube
+   documentación, se registran cobros, se duplica o se borra.
+4. **Archivos**: las facturas (hasta la cantidad indicada en "Cant.
+   facturas") y los comprobantes de pago se suben desde el Detalle, como
+   PDF o imagen. Los marcadores "Facturado", "Comprobante de pago" y
+   "Facturado total" se activan solos al subir los archivos
+   correspondientes (y se pueden sobreescribir manualmente con el permiso
+   adecuado).
+5. **Cobros**: se pueden registrar pagos parciales por evento; el estado de
+   cobro (sin cobrar / parcial / cobrado) se calcula comparando lo cobrado
+   contra el total facturable. Si la forma de pago indica un plazo (ej. "30
+   días"), la app calcula el vencimiento y avisa si está vencido o próximo
+   a vencer.
+6. **Personal y Clientes** se cargan una sola vez; después se eligen desde
+   listas al crear/editar un evento (asignándoles rol y, en el caso del
+   personal, las fases en las que participa).
+7. **Pendientes**: recordatorio rápido de qué falta facturar, cobrar o
+   documentar.
+8. **Exportar** (ver sección 7): reportes HTML imprimibles, desde Eventos
+   (varios eventos) o desde el Detalle (uno solo, con secciones a elección).
+
+## 3. Modelo de datos
+
+- **`eventos`**: fecha, nombre, categoría, uno o más estudios, modalidad de
+  rodaje, tipo de producción, trackeo, equipamiento, integrantes internos
+  (persona + rol + fases en las que participa), equipo técnico externo,
+  director, cliente vinculado, datos de facturación (razón social/es, CUIT,
+  moneda, distribución M1/M2/mixto, montos, tipo de cambio, desglose por
+  factura, forma y medio de pago), archivos de facturas/comprobantes,
+  partes/fases del proyecto (con sus fechas y estudios), mensajería interna,
+  pagos registrados, flags de estado (confirmado, facturado, comprobante de
+  pago, facturado total) con sus timestamps, y observaciones.
+- **`personas`**: nombre, rol(es) habitual(es), teléfono, email,
+  categoría(s), activo/inactivo.
+- **`personas_categorias`**: categorías del personal (ej. Cámara,
+  Iluminación, Producción, Arte).
+- **`clientes`**: razón social, CUIT, teléfono, email, domicilio, contacto
+  de dirección y equipo técnico externo por defecto (autocompletan el
+  formulario de evento), contactos de reclamo, notas, activo/inactivo.
+- **`usuarios`**: nombre, contraseña (hasheada), rol, activo/inactivo.
+
+Todas las tablas soportan tiempo real (Supabase Realtime) cuando la app está
+conectada a Supabase.
+
+## 4. Facturación en detalle
+
+- **Distribución**: M1 (factura con IVA 21%), M2 (efectivo sin IVA) o
+  MIXTO (una parte de cada una). El campo "empresa" se autogenera según lo
+  elegido.
+- **Multi-factura**: si `Cant. facturas` es mayor a 1, se puede desglosar
+  el monto individualmente por cada factura; los totales del evento se
+  recalculan como la suma de ese desglose.
+- **Tipo de cambio**: en eventos en USD se puede cargar un tipo de cambio
+  manual, usado para mostrar equivalentes en ARS en reportes y en Resumen.
+- **Workflow de estado**: Borrador → Confirmado ("Confirmar listo para
+  facturar") → Facturado → Comprobante de pago → Facturado total. Cada
+  paso queda con su timestamp, que alimenta las métricas de demora del
+  asistente de IA.
+- **Auto-marcado por archivos**: subir la última factura esperada marca
+  automáticamente el evento como facturado (y facturado total); subir un
+  comprobante marca "comprobante de pago". Borrar todos los archivos de un
+  tipo desmarca el estado correspondiente. Todo es sobreescribible
+  manualmente con el permiso adecuado.
+- **Cobros y vencimientos**: se registran pagos parciales por evento (con
+  fecha, monto, medio y nota); el estado de cobro se deriva comparando lo
+  cobrado contra el total facturable. Si la forma de pago define un plazo,
+  se calcula la fecha de vencimiento y se muestran alertas cuando está
+  vencido o vence pronto.
+- **Cronograma de pagos/facturación**: en Facturación se puede cargar una
+  lista de cuotas o hitos (ej. "Anticipo", "Saldo"), cada uno con días desde
+  la fecha del evento (o una fecha fija) y, opcionalmente, un monto. El
+  Detalle muestra cada cuota con su fecha calculada y la marca si está
+  vencida o vence pronto — útil para acordar de antemano, por ejemplo, un
+  pago parcial al momento del evento y el resto a 30 días.
+
+## 5. Clientes
+
+Representan a las productoras/empresas que contratan a Cacodelphia (no es lo
+mismo que el personal interno de "Personal"). Al elegir un cliente en el
+formulario de evento se autocompletan razón social, CUIT, director y equipo
+técnico externo por defecto; si se escribe un cliente nuevo a mano, queda
+guardado para la próxima vez. Cada cliente tiene una **cuenta corriente**
+por moneda (total facturado, cobrado, saldo pendiente o excedente,
+pendiente de facturación), calculada sumando todos sus eventos. Si un
+cliente tiene excedente en un proyecto y deuda en otro, ese excedente se
+puede **imputar** al saldo pendiente del otro proyecto.
+
+## 6. Login, usuarios y roles
+
+El acceso a toda la app requiere iniciar sesión; no hay pantallas visibles
+sin usuario logueado. La sesión se guarda en `localStorage` del navegador.
+
+Al arrancar por primera vez (tabla `usuarios` vacía), se crean
+automáticamente los usuarios semilla:
+
+| Usuario | Contraseña | Rol |
+|---|---|---|
+| `admin` | `admin` | admin |
+| `nacho` | `nacho` | contabilidad |
+| `pablo` | `pablo` | producción |
+| `prueba` | `prueba` | espectador |
+
+> **Cambiá estas contraseñas** (o borrá los usuarios que no necesites) desde
+> la pantalla **Usuarios** apenas tengas la app en uso real — quedan
+> creadas automáticamente solo para poder entrar la primera vez.
+
+Roles y permisos (gestionables en **Usuarios**, visible solo para admin):
+
+- **admin**: acceso total, incluida la gestión de usuarios y el borrado de
+  categorías/personal/clientes.
+- **contabilidad**: no crea ni confirma eventos, pero sí los edita/borra,
+  gestiona facturación, sube archivos, y administra clientes y personal.
+- **producción**: crea, edita y confirma eventos, pero no factura ni
+  administra archivos (puede verlos, no subirlos/borrarlos).
+- **espectador**: solo lectura.
+
+Los permisos son granulares (crear/editar/borrar/confirmar/facturar
+eventos, ver/gestionar archivos, gestionar personal y categorías, gestionar
+clientes, importar/exportar, liberar personal de conflictos, gestionar
+usuarios) y se aplican por control individual en cada pantalla, no
+ocultando pestañas completas.
+
+La pantalla **Usuarios** permite crear cuentas, cambiar rol o contraseña,
+activar/desactivar y borrar (con protección para no auto-borrarte ni
+auto-desactivarte). El admin puede ver la contraseña en texto plano de
+cualquier usuario desde ahí.
+
+**Notificaciones** (ícono campana): avisan a contabilidad/admin de eventos
+recién confirmados sin facturar, y a producción de eventos recién
+facturados.
+
+> **Nota de seguridad**: este es un login propio sobre una tabla de la app
+> (no usa Supabase Auth), pensado para uso interno del equipo. La política
+> de la base de datos permite lectura/escritura a cualquiera que tenga la
+> URL y la key anon — no la compartas públicamente.
+
+## 7. Exportar reportes
+
+Ya no existe un botón de "importar" JSON. Lo que hay para exportar:
+
+- **Descargar eventos** (ícono en el header de Eventos): descarga un
+  respaldo crudo en JSON con todos los eventos tal cual están en memoria
+  (`eventos-{fecha}.json`) — pensado como backup manual, no para imprimir.
+- **Descargar eventos** (en la lista de Eventos, junto a "Nuevo evento"):
+  filtra (todos/próximos/finalizados), permite elegir eventos puntuales por
+  checkbox, y genera un **reporte HTML imprimible** con todos los datos de
+  cada evento seleccionado (pensado para imprimir o guardar como PDF desde
+  el navegador).
+- **Exportar PDF** (en Detalle de un evento): genera el mismo tipo de
+  reporte imprimible para un solo evento, eligiendo qué secciones incluir.
+
+## 8. Requisitos para desarrollo local
 
 - Node.js 18 o superior
 - `npm install`
 - `npm run dev` → abre en `http://localhost:5173`
 
 Sin configurar nada más, la app funciona en **modo local**: los datos se
-guardan en el navegador (localStorage). Es útil para probar, pero **no se
-comparten entre usuarios ni dispositivos**. Para uso real de la empresa, seguí
-el paso 3.
+guardan en el navegador (`localStorage`). Es útil para probar, pero **no se
+comparten entre usuarios ni dispositivos**. Para uso real de la empresa,
+seguí el paso 9.
 
-## 3. Configurar la base de datos compartida (Supabase, gratis)
+## 9. Configurar la base de datos compartida (Supabase, gratis)
 
-Esto hace que todos los empleados vean y carguen los mismos eventos, desde
-cualquier lugar.
+Esto hace que todo el equipo vea y cargue los mismos datos, desde cualquier
+lugar, en tiempo real.
 
 1. Crear una cuenta gratis en [supabase.com](https://supabase.com) y un
-   "New project" (elegir cualquier nombre, región y una contraseña de base de
-   datos — guardala, no la vas a necesitar para esta app pero Supabase la
-   pide).
+   "New project" (elegir cualquier nombre, región y una contraseña de base
+   de datos — guardala, no la vas a necesitar para esta app pero Supabase
+   la pide).
 2. Ir a **SQL Editor** → **New query**, pegar el contenido completo del
-   archivo [`supabase/schema.sql`](supabase/schema.sql) de este repositorio y
-   darle **Run**. Esto crea las tablas `eventos` y `personas`, agrega las
-   columnas nuevas (`distribucion`, `monto_m1`, `monto_m2`, `facturas`,
-   `comprobantes`) si todavía no estaban, y crea el bucket de Storage
-   `eventos-archivos` que se usa para guardar las facturas y los comprobantes
-   de pago de cada evento. Si ya habías corrido una versión anterior del
-   script, podés volver a correrlo: usa `if not exists` / `on conflict` y no
-   duplica nada.
+   archivo [`supabase/schema.sql`](supabase/schema.sql) de este repositorio
+   y darle **Run**. Esto crea las tablas (`eventos`, `personas`,
+   `personas_categorias`, `clientes`, `usuarios`) y el bucket de Storage
+   `eventos-archivos` usado para las facturas y comprobantes de pago. Si ya
+   habías corrido una versión anterior del script, se puede volver a
+   correr: usa `if not exists` / `on conflict` y no duplica nada.
 3. Ir a **Project Settings → API**. Copiar:
    - **Project URL** → va en `VITE_SUPABASE_URL`
    - **anon public key** → va en `VITE_SUPABASE_ANON_KEY`
 4. En desarrollo local: copiar `.env.example` a `.env` y completar esos dos
    valores. Reiniciar `npm run dev`.
 5. En producción (Vercel): cargar esas mismas dos variables en
-   **Project Settings → Environment Variables** (ver paso 4) y volver a
-   desplegar.
+   **Project Settings → Environment Variables** y volver a desplegar.
 
-Cuando estas variables están configuradas, el cartel amarillo de "Modo local"
-desaparece y los datos quedan en la nube, compartidos por todo el equipo, con
-actualización en tiempo real (si una persona carga un evento, las demás lo ven
-aparecer sin recargar la página).
+Cuando estas variables están configuradas, el cartel ámbar de "Modo local"
+desaparece y los datos quedan en la nube, compartidos por todo el equipo,
+con actualización en tiempo real (si una persona carga algo, las demás lo
+ven aparecer sin recargar la página).
 
-> **Nota de seguridad**: la política de la base de datos creada por
-> `schema.sql` permite leer y escribir a cualquiera que tenga la URL de la
-> app (pensado para uso interno, sin pantalla de login). No compartas la URL
-> de la app públicamente. Si en el futuro se necesita login por usuario,
-> se puede agregar Supabase Auth y restringir la política por `auth.uid()`.
-
-## 4. Deploy a Vercel
+## 10. Deploy a Vercel
 
 Con [Vercel CLI](https://vercel.com/cli) ya instalado y logueado:
 
@@ -106,82 +273,92 @@ Después del primer deploy, configurar las variables de entorno
 **Vercel → Project → Settings → Environment Variables**, y volver a correr
 `vercel --prod` para que el build las tome.
 
-## 5. Estructura del proyecto
+## 11. Estructura del proyecto
 
 ```
 src/
-  PanelEventos.jsx     -> toda la interfaz (lista, personal, formulario, detalle, pendientes)
+  PanelEventos.jsx        -> toda la interfaz (Resumen, Eventos, formulario,
+                              detalle, Personal, Clientes, Pendientes,
+                              Usuarios, login, asistente, notificaciones)
   lib/
-    supabaseClient.js  -> conexión a Supabase (o null si no está configurado)
-    eventosApi.js       -> leer/guardar/borrar eventos (Supabase o localStorage)
-    personasApi.js      -> leer/guardar/borrar personal (Supabase o localStorage)
-    storageApi.js       -> subir/descargar/borrar facturas y comprobantes (Supabase Storage)
+    supabaseClient.js     -> conexión a Supabase (o null si no está configurado)
+    eventosApi.js         -> leer/guardar/borrar eventos (Supabase o localStorage)
+    personasApi.js        -> leer/guardar/borrar personal
+    categoriasPersonalApi.js -> categorías de personal
+    clientesApi.js        -> leer/guardar/borrar clientes
+    usuariosApi.js        -> login, sesión, usuarios, roles y permisos
+    storageApi.js         -> subir/descargar/borrar facturas y comprobantes
+    asistenteApi.js       -> llamada al endpoint del asistente de IA
+api/
+  asistente.js             -> función serverless: traduce la pregunta a un filtro (Claude)
 supabase/
-  schema.sql            -> script para crear las tablas "eventos", "personas" y el bucket de archivos
+  schema.sql               -> tablas, columnas, RLS y bucket de archivos
 ```
 
-## 6. Categorías y listas predefinidas
+## 12. Categorías y listas predefinidas
 
 Editables directamente en `src/PanelEventos.jsx` (constantes al inicio del
 archivo):
 
-- **Categoría del evento**: Videoclip, Publicidad, Película, Serie
-- **Estudio**: 1, 2, 3
+- **Categoría del evento**: Video Clip, Rodaje Serie, Rodaje Largo, Evento /
+  Demo, Publicidad, Streaming
+- **Estudio**: 1, 2, 3 (un evento puede ocupar más de uno)
+- **Modalidad de rodaje**: En estudio, Rodaje externo, Servicio virtual,
+  Rental (rodaje fuera de los estudios propios, alquilando equipamiento a
+  otra empresa para que haga la producción)
 - **Tipo de producción**: Virtual Production, Back Projecting
 - **Trackeo**: Con trackeo, Sin trackeo
-- **Empresas (facturación)**: MG M1, MG M2
+- **Partes del proyecto**: Armado, Armado + Prelight, Prelighting, Rodaje,
+  Desarme
+- **Roles de equipo técnico externo**: Director/a, Director/a de
+  Fotografía, Director/a de Arte, Productor/a, Jefe/a de Producción
+- **Distribución de facturación**: M1, M2, M1 + M2 (mixto)
 - **Moneda**: ARS, USD
 
-## 7. Roles de usuario (futuro)
+## 13. Asistente de consultas (IA) — opcional
 
-Todavía **no hay sistema de login ni de usuarios** — toda la app es de acceso
-libre con la URL. Cuando se implemente, está pensado que existan tres
-perfiles:
+La app incluye un asistente (ícono ✨ en la barra superior) para consultar
+los datos en lenguaje natural: *"¿cuánto facturamos en USD este mes?"*,
+*"eventos confirmados sin facturar"*, *"pagos vencidos"*, *"días trabajados
+por Fulano este año"*, etc.
 
-- **Administración**: además de ver todos los eventos, puede marcar un
-  evento como "Facturado", marcar que se cobró, y subir facturas y
-  comprobantes de pago.
-- **Creador de eventos**: puede ver toda la información de los eventos
-  (crear, editar, consultar), pero **no** puede marcar "Facturado", **no**
-  puede subir comprobantes de pago ni facturas.
-- **Admin (super-admin)**: control total — agregar, eliminar y modificar
-  usuarios y sus permisos, además de todas las capacidades de los otros dos
-  perfiles.
-
-Cuando se implemente login, lo más simple es usar **Supabase Auth** +
-una tabla `usuarios` (o una columna `rol` en una tabla de perfiles) y
-restringir las políticas RLS de `eventos`/`personas` según `auth.uid()` y el
-rol de cada usuario. La UI ya está organizada para que los controles de
-"Facturado / Comprobante de pago / Facturado total" (en el detalle del
-evento) puedan ocultarse o deshabilitarse fácilmente según el rol.
-
-## Asistente de consultas (IA) — opcional
-
-La app incluye un asistente (ícono ✨ en la barra superior) para consultar los
-eventos en lenguaje natural: *"¿cuánto facturamos en USD este mes?"*, *"eventos
-confirmados sin facturar"*, *"pagos vencidos"*, etc.
-
-**Cómo funciona:** la pregunta se envía a una función serverless
-(`api/asistente.js`) que le pide a Claude (modelo Haiku, económico) que la
-traduzca a un **filtro estructurado**. Ese filtro se aplica a los eventos
-**localmente en el navegador** — los montos y razones sociales nunca se envían a
-la IA. El gasto de tokens por consulta es mínimo.
+**Cómo funciona:** la pregunta (sin ningún dato de eventos) se envía a una
+función serverless (`api/asistente.js`) que le pide a Claude (modelo Haiku,
+económico) que la traduzca a un **filtro estructurado** (intención,
+agrupamiento, rango de fechas, categoría, estudio, moneda, estado, persona,
+texto libre, etc.). Ese filtro se aplica a los eventos **localmente en el
+navegador** — los montos, clientes y razones sociales nunca se envían a la
+IA. El gasto de tokens por consulta es mínimo.
 
 Soporta: totales de facturación (ARS/USD), conteos, listados, desglose por
-proyecto/persona/categoría/estudio/mes/empresa, días trabajados por persona, y
-demoras de facturación o de comprobante de pago. Para medir la demora del
-comprobante se agregó la columna `comprobante_pago_at` (ver `schema.sql`).
+proyecto/persona/categoría/estudio/modalidad/mes/empresa, días trabajados
+por persona, y demoras de facturación o de comprobante de pago (medidas
+entre los timestamps de confirmado/facturado/comprobante de pago).
 
-**Activación:** el asistente queda inactivo hasta cargar la API key. En Vercel:
+> Si cambiás las categorías, modalidades, estudios o empresas en
+> `PanelEventos.jsx`, actualizá también las listas hardcodeadas en
+> `api/asistente.js` para que el asistente las reconozca.
 
-1. Crear una cuenta en <https://console.anthropic.com> y generar una API key.
-   Conviene ponerle un **límite de gasto mensual** para no llevarse sorpresas.
+**Activación:** el asistente queda inactivo hasta cargar la API key. En
+Vercel:
+
+1. Crear una cuenta en <https://console.anthropic.com> y generar una API
+   key. Conviene ponerle un **límite de gasto mensual** para no llevarse
+   sorpresas.
 2. En el proyecto de Vercel → *Settings → Environment Variables*, agregar:
-   - `ANTHROPIC_API_KEY` = la key (⚠️ **sin** el prefijo `VITE_`, así queda solo
-     en el servidor y nunca se expone en el navegador).
+   - `ANTHROPIC_API_KEY` = la key (⚠️ **sin** el prefijo `VITE_`, así queda
+     solo en el servidor y nunca se expone en el navegador).
    - (opcional) `ASISTENTE_MODEL` para cambiar el modelo (default:
      `claude-haiku-4-5-20251001`).
 3. Redeploy. Listo.
 
-Mientras no haya key cargada, el botón funciona pero avisa que el asistente no
-está activado.
+Mientras no haya key cargada, el botón funciona pero avisa que el asistente
+no está activado.
+
+## 14. Roles de usuario — próximos pasos
+
+El sistema de login y permisos ya está en producción (sección 6), con 4
+roles fijos. Si en el futuro se necesita login más robusto (recuperación de
+contraseña, SSO, auditoría), la migración natural es a **Supabase Auth**
+manteniendo la tabla `usuarios` para el rol y los permisos, restringiendo
+las políticas RLS por `auth.uid()` en vez de la key `anon` abierta actual.

@@ -25,12 +25,12 @@ import {
 } from "./lib/usuariosApi";
 
 /* ---------- constantes ---------- */
-const CATEGORIAS = ["VIDEO CLIP", "RODAJE SERIE", "RODAJE LARGO", "EVENTO / DEMO", "PUBLICIDAD"];
+const CATEGORIAS = ["VIDEO CLIP", "RODAJE SERIE", "RODAJE LARGO", "EVENTO / DEMO", "PUBLICIDAD", "STREAMING"];
 const ESTUDIOS = ["1", "2", "3"];
 const MONEDAS = ["ARS", "USD"];
 const TIPO_PROD = ["Virtual Production", "Back Projecting"];
 const TRACKEO = ["Con trackeo", "Sin trackeo"];
-const MODALIDAD_RODAJE = ["En estudio", "Rodaje externo", "Servicio virtual"];
+const MODALIDAD_RODAJE = ["En estudio", "Rodaje externo", "Servicio virtual", "Rental"];
 const ROLES_EQUIPO_TECNICO = ["DIRECTOR/A", "DIRECTOR/A DE FOTOGRAFIA", "DIRECTOR/A DE ARTE", "PRODUCTOR/A", "JEFE/A DE PRODUCCION"];
 
 // Distribución de facturación entre las dos razones sociales.
@@ -91,6 +91,25 @@ const diasVencimientoPago = (ev) => {
   return Math.ceil((vence - hoy) / 86400000);
 };
 
+// Cronograma de cuotas de pago/facturación: cada cuota tiene fecha fija o días desde
+// la fecha del evento (uno de los dos). fechaCuota() resuelve la fecha absoluta,
+// diasParaCuota() devuelve cuántos días faltan (negativo = vencida).
+const fechaCuota = (ev, cuota) => {
+  if (cuota.fecha) return new Date(cuota.fecha + "T12:00:00");
+  if (!ev.fecha) return null;
+  const dias = Number(cuota.dias) || 0;
+  const f = new Date(ev.fecha + "T12:00:00");
+  f.setDate(f.getDate() + dias);
+  return f;
+};
+const diasParaCuota = (ev, cuota) => {
+  const f = fechaCuota(ev, cuota);
+  if (!f) return null;
+  const hoy = new Date();
+  hoy.setHours(12, 0, 0, 0);
+  return Math.ceil((f - hoy) / 86400000);
+};
+
 const C = {
   bg: "#000000",
   panel: "#141414",
@@ -136,6 +155,7 @@ const nuevoEvento = () => ({
   tipoCambio: "",
   medioPago: "",
   formaPago: "",
+  cuotasPago: [],
   facturas: [],
   comprobantes: [],
   pagos: [],
@@ -627,6 +647,7 @@ export default function PanelEventos() {
       facturas: [],
       comprobantes: [],
       pagos: [],
+      cuotasPago: [],
       mensajes: [],
       facturado: false,
       comprobantePago: false,
@@ -1055,6 +1076,8 @@ export default function PanelEventos() {
             usuario={usuario}
             personas={personas}
             eventos={eventos}
+            clientes={clientes}
+            onSaveCliente={guardarCliente}
           />
         ) : vista === "dashboard" ? (
           <Dashboard
@@ -3813,7 +3836,7 @@ function CategoriasPersonal({ categorias, personas, onSave, onDelete, abierto, s
 }
 
 /* ====================== DETALLE ====================== */
-function Detalle({ ev, onBack, onEdit, onDelete, onUpdate, onUpdateEvento, onDuplicate, perms = {}, usuario = {}, personas = [], eventos = [] }) {
+function Detalle({ ev, onBack, onEdit, onDelete, onUpdate, onUpdateEvento, onDuplicate, perms = {}, usuario = {}, personas = [], eventos = [], clientes = [], onSaveCliente }) {
   const [pdfModal, setPdfModal] = useState(false);
   useEffect(() => {
     if (usuario?.id && ev?.id) marcarLeido(ev.id, usuario.id);
@@ -3897,7 +3920,7 @@ function Detalle({ ev, onBack, onEdit, onDelete, onUpdate, onUpdateEvento, onDup
 
         <ProduccionCard ev={ev} onUpdate={onUpdate} perms={perms} eventos={eventos} />
 
-        <FacturacionCard ev={ev} onUpdate={onUpdate} perms={perms} />
+        <FacturacionCard ev={ev} onUpdate={onUpdate} perms={perms} clientes={clientes} onSaveCliente={onSaveCliente} />
 
         <PagosCard ev={ev} onUpdate={onUpdate} onUpdateEvento={onUpdateEvento} perms={perms} eventos={eventos} />
 
@@ -4407,7 +4430,7 @@ function PagosCard({ ev, onUpdate, onUpdateEvento, perms, eventos = [] }) {
   );
 }
 
-function FacturacionCard({ ev, onUpdate, perms }) {
+function FacturacionCard({ ev, onUpdate, perms, clientes = [], onSaveCliente }) {
   const [editando, setEditando] = useState(false);
   const [f, setF] = useState({});
   const set = (k, v) => setF((p) => ({ ...p, [k]: v }));
@@ -4421,12 +4444,41 @@ function FacturacionCard({ ev, onUpdate, perms }) {
         : [];
     setF({
       distribucion: ev.distribucion || "M1", moneda: ev.moneda || "ARS",
-      razonSocial: ev.razonSocial || "", montoM1: ev.montoM1 ?? "",
+      clienteId: ev.clienteId || "", razonSocial: ev.razonSocial || "", montoM1: ev.montoM1 ?? "",
       montoM2: ev.montoM2 ?? "", cantFacturas: ev.cantFacturas ?? "",
       facturasDesglose: desg, tipoCambio: ev.tipoCambio ?? "",
       medioPago: ev.medioPago || "", formaPago: ev.formaPago || "",
+      cuotasPago: Array.isArray(ev.cuotasPago) ? ev.cuotasPago.map((c) => ({ ...c })) : [],
     });
     setEditando(true);
+  };
+
+  // Cliente: al elegir uno del desplegable se autocompleta razón social/CUIT.
+  const seleccionarCliente = (id) => {
+    if (id === "__nuevo") { set("clienteId", ""); return; }
+    const c = clientes.find((x) => x.id === id);
+    if (!c) { set("clienteId", ""); return; }
+    setF((p) => ({ ...p, clienteId: c.id, razonSocial: c.razonSocial || "", cuit: c.cuit || p.cuit }));
+  };
+
+  const agregarCuota = () => {
+    setF((p) => ({
+      ...p,
+      cuotasPago: [...(p.cuotasPago || []), { id: crypto.randomUUID(), label: "", dias: "", fecha: "", monto: "" }],
+    }));
+  };
+  const setCuota = (idx, campo, val) => {
+    setF((p) => {
+      const arr = [...(p.cuotasPago || [])];
+      arr[idx] = { ...arr[idx], [campo]: val };
+      // días y fecha fija son mutuamente excluyentes
+      if (campo === "fecha" && val) arr[idx].dias = "";
+      if (campo === "dias" && val) arr[idx].fecha = "";
+      return { ...p, cuotasPago: arr };
+    });
+  };
+  const quitarCuota = (idx) => {
+    setF((p) => ({ ...p, cuotasPago: (p.cuotasPago || []).filter((_, i) => i !== idx) }));
   };
 
   const onCantFacturasChange = (v) => {
@@ -4451,7 +4503,7 @@ function FacturacionCard({ ev, onUpdate, perms }) {
     });
   };
 
-  const guardarFact = () => {
+  const guardarFact = async () => {
     const data = { ...f };
     const cant = Number(data.cantFacturas) || 0;
     if (cant > 1 && data.facturasDesglose?.length > 0) {
@@ -4461,6 +4513,17 @@ function FacturacionCard({ ev, onUpdate, perms }) {
       data.montoM2 = String(sumM2);
     } else {
       data.facturasDesglose = [];
+    }
+    // Descarta cuotas vacías (sin etiqueta ni fecha/días cargados)
+    data.cuotasPago = (data.cuotasPago || []).filter((c) => c.label?.trim() || c.dias || c.fecha);
+    // Cliente nuevo escrito a mano: se guarda en la base para futuros eventos.
+    if (!data.clienteId && data.razonSocial?.trim() && onSaveCliente && perms?.clienteCrear) {
+      try {
+        const nuevo = await onSaveCliente({ razonSocial: data.razonSocial.trim(), cuit: data.cuit || ev.cuit || "" });
+        if (nuevo?.id) data.clienteId = nuevo.id;
+      } catch (e) {
+        console.error("No se pudo guardar el cliente nuevo:", e);
+      }
     }
     onUpdate(data);
     setEditando(false);
@@ -4483,8 +4546,27 @@ function FacturacionCard({ ev, onUpdate, perms }) {
               <Input type="number" value={f.tipoCambio} onChange={(v) => set("tipoCambio", v)} placeholder="Ej: 1200" />
               <span className="text-[10px] mt-1 block" style={{ color: C.dim }}>Valor del dólar en pesos al momento del evento</span></div>
           )}
+          <div><label className="text-[11px] block mb-1" style={{ color: C.dim }}>Cliente</label>
+            <select
+              value={f.clienteId || "__nuevo"}
+              onChange={(e) => seleccionarCliente(e.target.value)}
+              className="w-full text-sm px-3 py-2 rounded-md"
+              style={{ background: C.panel2, border: `1px solid ${C.border}`, color: f.clienteId ? C.text : C.dim, colorScheme: "dark" }}>
+              <option value="__nuevo" style={{ background: C.panel2, color: C.dim }}>➕ Otro / nuevo cliente (escribir a mano)</option>
+              {clientes.map((c) => (
+                <option key={c.id} value={c.id} style={{ background: C.panel2, color: C.text }}>
+                  {c.razonSocial}{c.cuit ? ` — CUIT ${c.cuit}` : ""}
+                </option>
+              ))}
+            </select>
+          </div>
           <div><label className="text-[11px] block mb-1" style={{ color: C.dim }}>Razón social</label>
-            <Input value={f.razonSocial} onChange={(v) => set("razonSocial", v)} placeholder="Razón social…" /></div>
+            <Input value={f.razonSocial} onChange={(v) => set("razonSocial", v)} placeholder="Razón social…" />
+            {!f.clienteId && (
+              <span className="text-[10px] mt-1 block" style={{ color: C.dim }}>
+                Si el cliente no está en la lista, escribilo acá: se guarda solo para futuros eventos.
+              </span>
+            )}</div>
           <div><label className="text-[11px] block mb-1" style={{ color: C.dim }}>Cant. facturas</label>
             <Input type="number" value={f.cantFacturas} onChange={onCantFacturasChange} placeholder="1" min="1" /></div>
 
@@ -4532,6 +4614,44 @@ function FacturacionCard({ ev, onUpdate, perms }) {
           <div><label className="text-[11px] block mb-1" style={{ color: C.dim }}>Forma de pago</label>
             <Input value={f.formaPago} onChange={(v) => set("formaPago", v)} placeholder="Contado, 30 días, 2 semanas…" />
             <span className="text-[10px] mt-1 block" style={{ color: C.dim }}>Escribí los días/semanas/meses para activar alertas de vencimiento (ej: 30 días, 2 semanas, 1 mes)</span></div>
+
+          <div className="rounded-lg p-2.5 mt-1" style={{ background: C.panel2, border: `1px solid ${C.border}` }}>
+            <span className="text-[10px] font-semibold uppercase tracking-wide block mb-2" style={{ color: C.dim }}>
+              Cronograma de pagos / facturación
+            </span>
+            <div className="grid gap-2">
+              {(f.cuotasPago || []).map((c, idx) => (
+                <div key={c.id || idx} className="rounded-md p-2" style={{ background: C.panel, border: `1px solid ${C.border}` }}>
+                  <div className="flex items-center gap-2 mb-1.5">
+                    <Input value={c.label} onChange={(v) => setCuota(idx, "label", v)} placeholder="Ej: Anticipo, Saldo…" />
+                    <IconBtn onClick={() => quitarCuota(idx)} title="Quitar" danger><X size={14} /></IconBtn>
+                  </div>
+                  <div className="grid grid-cols-2 gap-1.5">
+                    <div>
+                      <label className="text-[10px] block mb-0.5" style={{ color: C.dim }}>Días desde el evento</label>
+                      <Input type="number" value={c.dias} onChange={(v) => setCuota(idx, "dias", v)} placeholder="Ej: 0, 30…" />
+                    </div>
+                    <div>
+                      <label className="text-[10px] block mb-0.5" style={{ color: C.dim }}>o fecha fija</label>
+                      <Input type="date" value={c.fecha} onChange={(v) => setCuota(idx, "fecha", v)} />
+                    </div>
+                  </div>
+                  <div className="mt-1.5">
+                    <label className="text-[10px] block mb-0.5" style={{ color: C.dim }}>Monto (opcional)</label>
+                    <Input type="number" value={c.monto} onChange={(v) => setCuota(idx, "monto", v)} placeholder="0" />
+                  </div>
+                </div>
+              ))}
+            </div>
+            <button type="button" onClick={agregarCuota} className="w-full mt-2 text-xs font-medium px-3 py-1.5 rounded-md flex items-center justify-center gap-1.5"
+              style={{ background: C.panel, border: `1px solid ${C.border}`, color: C.gold }}>
+              <Plus size={13} /> Agregar cuota
+            </button>
+            <span className="text-[10px] mt-1.5 block" style={{ color: C.dim }}>
+              Cargá cada hito por separado (ej: "Anticipo" a 0 días, "Saldo" a 30 días) para que el detalle muestre las fechas de pago o facturación de cada uno.
+            </span>
+          </div>
+
           <EditCardFooter onSave={guardarFact} onCancel={() => setEditando(false)} />
         </div>
       ) : (
@@ -4590,6 +4710,33 @@ function FacturacionCard({ ev, onUpdate, perms }) {
             );
             return null;
           })()}
+          {Array.isArray(ev.cuotasPago) && ev.cuotasPago.length > 0 && (
+            <div className="sm:col-span-2 rounded-lg p-2.5 grid gap-1.5 mt-1" style={{ background: C.panel2, border: `1px solid ${C.border}` }}>
+              <span className="text-[10px] font-semibold uppercase tracking-wide" style={{ color: C.dim }}>Cronograma de pagos / facturación</span>
+              {ev.cuotasPago
+                .slice()
+                .sort((a, b) => {
+                  const fa = fechaCuota(ev, a), fb = fechaCuota(ev, b);
+                  return (fa?.getTime() ?? 0) - (fb?.getTime() ?? 0);
+                })
+                .map((c, idx) => {
+                  const fecha = fechaCuota(ev, c);
+                  const d = diasParaCuota(ev, c);
+                  const vencida = d !== null && d < 0;
+                  const proxima = d !== null && d >= 0 && d <= 7;
+                  return (
+                    <div key={c.id || idx} className="flex items-center justify-between gap-2 text-[12px]">
+                      <span style={{ color: C.text }}>{c.label || "Cuota"}{c.monto ? ` · ${fmtMoneda(Number(c.monto) || 0, ev.moneda)}` : ""}</span>
+                      <span className="font-mono flex items-center gap-1.5" style={{ color: vencida ? C.rose : proxima ? C.amber : C.dim }}>
+                        {fecha ? fmtFecha(fecha.toISOString().slice(0, 10)) : "—"}
+                        {vencida && <AlertTriangle size={12} />}
+                        {proxima && <Clock size={12} />}
+                      </span>
+                    </div>
+                  );
+                })}
+            </div>
+          )}
         </>
       )}
     </Card>
