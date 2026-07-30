@@ -1,29 +1,23 @@
 import { supabase, isSupabaseConfigured } from "./supabaseClient";
 
-const TABLE = "personas";
-const LOCAL_KEY = "personas-data-v1";
+const TABLE = "asistencias";
+const LOCAL_KEY = "asistencias-data-v1";
 
 /* ---------- mapeo JS (camelCase) <-> DB (snake_case) ---------- */
-const toDb = (p) => ({
-  id: p.id,
-  nombre: p.nombre || "",
-  rol_habitual: p.rolHabitual || null,
-  telefono: p.telefono || null,
-  email: p.email || null,
-  categoria_id: p.categoriaId || null,
-  sector_id: p.sectorId || null,
-  activo: p.activo !== false,
+const toDb = (a) => ({
+  id: a.id,
+  persona_id: a.personaId,
+  fecha: a.fecha,
+  estado: a.estado || "presente",
+  observacion: a.observacion || null,
 });
 
 const fromDb = (r) => ({
   id: r.id,
-  nombre: r.nombre || "",
-  rolHabitual: r.rol_habitual || "",
-  telefono: r.telefono || "",
-  email: r.email || "",
-  categoriaId: r.categoria_id || "",
-  sectorId: r.sector_id || "",
-  activo: r.activo !== false,
+  personaId: r.persona_id,
+  fecha: r.fecha,
+  estado: r.estado || "presente",
+  observacion: r.observacion || "",
 });
 
 /* ---------- modo local (sin Supabase configurado) ---------- */
@@ -39,51 +33,55 @@ function saveLocal(data) {
 }
 
 /* ---------- API pública ---------- */
-export async function listPersonas() {
+/** Lista las marcas de asistencia entre dos fechas (YYYY-MM-DD), inclusive. */
+export async function listAsistenciasRango(desde, hasta) {
   if (!isSupabaseConfigured) {
-    return loadLocal().sort((a, b) => a.nombre.localeCompare(b.nombre));
+    return loadLocal().filter((a) => a.fecha >= desde && a.fecha <= hasta);
   }
   const { data, error } = await supabase
     .from(TABLE)
     .select("*")
-    .order("nombre", { ascending: true });
+    .gte("fecha", desde)
+    .lte("fecha", hasta);
   if (error) throw error;
   return (data || []).map(fromDb);
 }
 
-export async function upsertPersona(persona) {
-  const item = { id: persona.id || crypto.randomUUID(), ...persona };
+/** Crea o actualiza la marca de un día (única por persona + fecha). */
+export async function upsertAsistencia(asistencia) {
   if (!isSupabaseConfigured) {
     const data = loadLocal();
-    const idx = data.findIndex((p) => p.id === item.id);
+    const idx = data.findIndex((a) => a.personaId === asistencia.personaId && a.fecha === asistencia.fecha);
+    const item = { id: asistencia.id || (idx >= 0 ? data[idx].id : crypto.randomUUID()), ...asistencia };
     if (idx >= 0) data[idx] = item;
     else data.push(item);
     saveLocal(data);
     return item;
   }
+  const item = { id: asistencia.id || crypto.randomUUID(), ...asistencia };
   const { data, error } = await supabase
     .from(TABLE)
-    .upsert(toDb(item))
+    .upsert(toDb(item), { onConflict: "persona_id,fecha" })
     .select()
     .single();
   if (error) throw error;
   return fromDb(data);
 }
 
-export async function deletePersona(id) {
+export async function deleteAsistencia(id) {
   if (!isSupabaseConfigured) {
-    saveLocal(loadLocal().filter((p) => p.id !== id));
+    saveLocal(loadLocal().filter((a) => a.id !== id));
     return;
   }
   const { error } = await supabase.from(TABLE).delete().eq("id", id);
   if (error) throw error;
 }
 
-/** Se suscribe a cambios en tiempo real (otros usuarios cargando/editando personal). */
-export function subscribePersonas(onChange) {
+/** Se suscribe a cambios en tiempo real. */
+export function subscribeAsistencias(onChange) {
   if (!isSupabaseConfigured) return () => {};
   const channel = supabase
-    .channel("personas-changes")
+    .channel("asistencias-changes")
     .on("postgres_changes", { event: "*", schema: "public", table: TABLE }, onChange)
     .subscribe();
   return () => supabase.removeChannel(channel);

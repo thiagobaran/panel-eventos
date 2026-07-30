@@ -7,7 +7,7 @@ import {
   Download, Upload, WifiOff, RefreshCw, Paperclip, Receipt, Eye, EyeOff,
   LogOut, KeyRound, UserCog, ShieldCheck, Lock, Bell, CheckCircle,
   BarChart2, ChevronRight, MessageSquare, Send, Printer, Copy, Sparkles,
-  Grid3x3,
+  Grid3x3, CalendarCheck,
 } from "lucide-react";
 import { listEventos, upsertEvento, deleteEvento, subscribeEventos } from "./lib/eventosApi";
 import { listPersonas, upsertPersona, deletePersona, subscribePersonas } from "./lib/personasApi";
@@ -16,6 +16,13 @@ import {
   listCategoriasPersonal, upsertCategoriaPersonal, deleteCategoriaPersonal,
   subscribeCategoriasPersonal
 } from "./lib/categoriasPersonalApi";
+import {
+  listSectoresPersonal, upsertSectorPersonal, deleteSectorPersonal,
+  subscribeSectoresPersonal, seedSectoresPersonalIniciales,
+} from "./lib/sectoresPersonalApi";
+import {
+  listAsistenciasRango, upsertAsistencia, deleteAsistencia, subscribeAsistencias,
+} from "./lib/asistenciasApi";
 import { subirArchivo, urlArchivo, borrarArchivo } from "./lib/storageApi";
 import { consultarAsistente } from "./lib/asistenteApi";
 import { isSupabaseConfigured } from "./lib/supabaseClient";
@@ -133,6 +140,13 @@ const C = {
   cyanMid: "#06B6D4",
   cyanLight: "#67E8F9",
 };
+
+const ASISTENCIA_ESTADOS = [
+  { value: "presente", label: "Presente", short: "P", color: C.green },
+  { value: "ausente", label: "Ausente", short: "A", color: C.rose },
+  { value: "franco", label: "Franco", short: "F", color: C.dim },
+  { value: "mediodia", label: "Medio día", short: "M", color: C.amber },
+];
 
 const nuevoEvento = () => ({
   id: crypto.randomUUID(),
@@ -520,6 +534,7 @@ export default function PanelEventos() {
   const [personas, setPersonas] = useState([]);
   const [clientes, setClientes] = useState([]);
   const [categoriasPersonal, setCategoriasPersonal] = useState([]);
+  const [sectoresPersonal, setSectoresPersonal] = useState([]);
   const [cargando, setCargando] = useState(true);
   const [error, setError] = useState("");
   const [guardando, setGuardando] = useState(false);
@@ -562,6 +577,16 @@ export default function PanelEventos() {
     }
   }, []);
 
+  const recargarSectoresPersonal = useCallback(async () => {
+    try {
+      await seedSectoresPersonalIniciales();
+      const data = await listSectoresPersonal();
+      setSectoresPersonal(data);
+    } catch (e) {
+      console.error(e);
+    }
+  }, []);
+
   const recargarClientes = useCallback(async () => {
     try {
       const data = await listClientes();
@@ -575,10 +600,10 @@ export default function PanelEventos() {
   useEffect(() => {
     (async () => {
       setCargando(true);
-      await Promise.all([recargar(), recargarPersonas(), recargarCategoriasPersonal(), recargarClientes()]);
+      await Promise.all([recargar(), recargarPersonas(), recargarCategoriasPersonal(), recargarSectoresPersonal(), recargarClientes()]);
       setCargando(false);
     })();
-  }, [recargar, recargarPersonas, recargarCategoriasPersonal, recargarClientes]);
+  }, [recargar, recargarPersonas, recargarCategoriasPersonal, recargarSectoresPersonal, recargarClientes]);
 
   /* tiempo real: refresca si otro usuario carga/edita/borra un evento */
   useEffect(() => {
@@ -597,6 +622,12 @@ export default function PanelEventos() {
     const unsub = subscribeCategoriasPersonal(() => recargarCategoriasPersonal());
     return unsub;
   }, [recargarCategoriasPersonal]);
+
+  /* tiempo real: sectores del personal */
+  useEffect(() => {
+    const unsub = subscribeSectoresPersonal(() => recargarSectoresPersonal());
+    return unsub;
+  }, [recargarSectoresPersonal]);
 
   /* tiempo real: clientes */
   useEffect(() => {
@@ -734,6 +765,26 @@ export default function PanelEventos() {
     } catch (e) {
       console.error(e);
       alert(explicarErrorSchema(e, "No se pudo borrar la categoría: "));
+    }
+  };
+
+  const guardarSectorPersonal = async (sector) => {
+    try {
+      await upsertSectorPersonal(sector);
+      await recargarSectoresPersonal();
+    } catch (e) {
+      console.error(e);
+      alert(explicarErrorSchema(e, "No se pudo guardar el sector: "));
+    }
+  };
+
+  const borrarSectorPersonal = async (id) => {
+    try {
+      await deleteSectorPersonal(id);
+      await Promise.all([recargarSectoresPersonal(), recargarPersonas()]);
+    } catch (e) {
+      console.error(e);
+      alert(explicarErrorSchema(e, "No se pudo borrar el sector: "));
     }
   };
 
@@ -935,6 +986,7 @@ export default function PanelEventos() {
               <Tab active={vista === "home"} onClick={() => setVista("home")} icon={<BarChart2 size={15} />}>Resumen</Tab>
               <Tab active={vista === "lista"} onClick={() => setVista("lista")} icon={<Layers size={15} />}>Eventos</Tab>
               <Tab active={vista === "personal"} onClick={() => setVista("personal")} icon={<Users size={15} />}>Personal</Tab>
+              <Tab active={vista === "asistencia"} onClick={() => setVista("asistencia")} icon={<CalendarCheck size={15} />}>Asistencia</Tab>
               {p.clientes && (
                 <Tab active={vista === "clientes"} onClick={() => setVista("clientes")} icon={<Building2 size={15} />}>Clientes</Tab>
               )}
@@ -1121,13 +1173,18 @@ export default function PanelEventos() {
           <Personal
             personas={personas}
             categorias={categoriasPersonal}
+            sectores={sectoresPersonal}
             onSave={guardarPersona}
             onDelete={borrarPersona}
             onSaveCategoria={guardarCategoriaPersonal}
             onDeleteCategoria={borrarCategoriaPersonal}
+            onSaveSector={guardarSectorPersonal}
+            onDeleteSector={borrarSectorPersonal}
             perms={p}
             eventos={eventos}
           />
+        ) : vista === "asistencia" && !p.soloLed ? (
+          <AsistenciaModulo personas={personas} sectores={sectoresPersonal} perms={p} />
         ) : vista === "clientes" && p.clientes ? (
           <ClientesSection
             clientes={clientes}
@@ -3535,13 +3592,15 @@ function Home({ eventos, onVer }) {
 }
 
 /* ====================== PERSONAL ====================== */
-function Personal({ personas, categorias, onSave, onDelete, onSaveCategoria, onDeleteCategoria, perms = {}, eventos = [] }) {
-  const vacio = { nombre: "", roles: [], categoriaIds: [], activo: true };
+function Personal({ personas, categorias, sectores = [], onSave, onDelete, onSaveCategoria, onDeleteCategoria, onSaveSector, onDeleteSector, perms = {}, eventos = [] }) {
+  const vacio = { nombre: "", roles: [], categoriaIds: [], sectorId: "", activo: true };
   const [editando, setEditando] = useState(null);
   const [f, setF] = useState(vacio);
   const [nuevoRol, setNuevoRol] = useState("");
   const [filtroCatId, setFiltroCatId] = useState("");
+  const [filtroSectorId, setFiltroSectorId] = useState("");
   const [catAbierto, setCatAbierto] = useState(false);
+  const [sectorAbierto, setSectorAbierto] = useState(false);
   const [tabPersonal, setTabPersonal] = useState("lista");
 
   const parseRoles = (p) => p.rolHabitual ? p.rolHabitual.split(",").map((r) => r.trim()).filter(Boolean) : [];
@@ -3568,12 +3627,22 @@ function Personal({ personas, categorias, onSave, onDelete, onSaveCategoria, onD
   const quitarCategoria = (cid) => setF((prev) => ({ ...prev, categoriaIds: prev.categoriaIds.filter((x) => x !== cid) }));
 
   const nombreCategoria = (id) => categorias.find((c) => c.id === id)?.nombre || "";
+  const nombreSector = (id) => sectores.find((s) => s.id === id)?.nombre || "";
 
   const filtradas = useMemo(() => {
-    if (!filtroCatId) return personas;
-    if (filtroCatId === "__sin") return personas.filter((p) => !p.categoriaId || p.categoriaId === "");
-    return personas.filter((p) => parseCategorias(p).includes(filtroCatId));
-  }, [personas, filtroCatId]);
+    let out = personas;
+    if (filtroSectorId) {
+      out = filtroSectorId === "__sin"
+        ? out.filter((p) => !p.sectorId)
+        : out.filter((p) => p.sectorId === filtroSectorId);
+    }
+    if (filtroCatId) {
+      out = filtroCatId === "__sin"
+        ? out.filter((p) => !p.categoriaId || p.categoriaId === "")
+        : out.filter((p) => parseCategorias(p).includes(filtroCatId));
+    }
+    return out;
+  }, [personas, filtroCatId, filtroSectorId]);
 
   const grupos = useMemo(() => {
     const map = new Map();
@@ -3612,6 +3681,12 @@ function Personal({ personas, categorias, onSave, onDelete, onSaveCategoria, onD
       {tabPersonal === "lista" && editando === null && (perms.categoriaAgregar || perms.personalAgregar) && (
         <div className="flex gap-2 justify-end mb-4">
           {perms.categoriaAgregar && (
+            <button onClick={() => setSectorAbierto(true)} className="text-sm font-medium px-3 py-1.5 rounded-md flex items-center gap-1.5"
+              style={{ background: C.gold, color: C.onGold }}>
+              <Plus size={15} /> Agregar sector
+            </button>
+          )}
+          {perms.categoriaAgregar && (
             <button onClick={() => setCatAbierto(true)} className="text-sm font-medium px-3 py-1.5 rounded-md flex items-center gap-1.5"
               style={{ background: C.gold, color: C.onGold }}>
               <Plus size={15} /> Agregar categoría
@@ -3634,6 +3709,15 @@ function Personal({ personas, categorias, onSave, onDelete, onSaveCategoria, onD
       )}
 
       {tabPersonal === "lista" && (<>
+      <SectoresPersonal
+        sectores={sectores}
+        personas={personas}
+        onSave={onSaveSector}
+        onDelete={onDeleteSector}
+        abierto={sectorAbierto}
+        setAbierto={setSectorAbierto}
+        perms={perms}
+      />
       <CategoriasPersonal
         categorias={categorias}
         personas={personas}
@@ -3650,6 +3734,16 @@ function Personal({ personas, categorias, onSave, onDelete, onSaveCategoria, onD
             <Input value={f.nombre} onChange={(v) => setF({ ...f, nombre: v })}
               onKeyDown={(e) => { if (e.key === "Enter") guardar(); }}
               placeholder="Nombre y apellido" />
+          </Field>
+          <Field label="Sector">
+            <select value={f.sectorId} onChange={(e) => setF({ ...f, sectorId: e.target.value })}
+              className="w-full text-sm px-3 py-2 rounded-md"
+              style={{ background: C.panel2, border: `1px solid ${C.border}`, color: f.sectorId ? C.text : C.dim, colorScheme: "dark" }}>
+              <option value="" style={{ background: C.panel2, color: C.dim }}>Sin sector</option>
+              {sectores.map((s) => (
+                <option key={s.id} value={s.id} style={{ background: C.panel2, color: C.text }}>{s.nombre}</option>
+              ))}
+            </select>
           </Field>
           <Field label="Categorías">
             <div>
@@ -3714,6 +3808,48 @@ function Personal({ personas, categorias, onSave, onDelete, onSaveCategoria, onD
               <Check size={16} /> Guardar
             </button>
           </div>
+        </div>
+      )}
+
+      {personas.length > 0 && sectores.length > 0 && (
+        <div className="flex flex-wrap items-center gap-2 mb-2">
+          <span className="text-xs" style={{ color: C.dim }}>Sector:</span>
+          <button
+            onClick={() => setFiltroSectorId("")}
+            className="text-xs px-2.5 py-1 rounded-full"
+            style={{
+              background: !filtroSectorId ? C.gold : C.panel2,
+              color: !filtroSectorId ? C.onGold : C.dim,
+              border: `1px solid ${!filtroSectorId ? C.gold : C.border}`,
+            }}
+          >
+            Todos
+          </button>
+          {sectores.map((s) => (
+            <button
+              key={s.id}
+              onClick={() => setFiltroSectorId(s.id)}
+              className="text-xs px-2.5 py-1 rounded-full"
+              style={{
+                background: filtroSectorId === s.id ? C.gold : C.panel2,
+                color: filtroSectorId === s.id ? C.onGold : C.dim,
+                border: `1px solid ${filtroSectorId === s.id ? C.gold : C.border}`,
+              }}
+            >
+              {s.nombre}
+            </button>
+          ))}
+          <button
+            onClick={() => setFiltroSectorId("__sin")}
+            className="text-xs px-2.5 py-1 rounded-full"
+            style={{
+              background: filtroSectorId === "__sin" ? C.gold : C.panel2,
+              color: filtroSectorId === "__sin" ? C.onGold : C.dim,
+              border: `1px solid ${filtroSectorId === "__sin" ? C.gold : C.border}`,
+            }}
+          >
+            Sin sector
+          </button>
         </div>
       )}
 
@@ -3786,6 +3922,9 @@ function Personal({ personas, categorias, onSave, onDelete, onSaveCategoria, onD
                     <div className="flex-1 min-w-0">
                       <div className="font-medium truncate">{p.nombre}</div>
                       <div className="flex flex-wrap gap-1.5 mt-1.5 text-xs" style={{ color: C.dim }}>
+                        {p.sectorId && nombreSector(p.sectorId) && (
+                          <Badge color={C.cyan}>{nombreSector(p.sectorId)}</Badge>
+                        )}
                         {parseCategorias(p).map((cid) => {
                           const cat = categorias.find((c) => c.id === cid);
                           return cat ? <Badge key={cid} color={C.gold}>{cat.nombre}</Badge> : null;
@@ -3958,6 +4097,119 @@ function DisponibilidadPersonal({ personas, eventos }) {
 }
 
 /* Bloque para gestionar las categorías del personal (crear / renombrar / borrar). */
+function SectoresPersonal({ sectores, personas, onSave, onDelete, abierto, setAbierto, perms = {} }) {
+  const [nuevo, setNuevo] = useState("");
+  const [editId, setEditId] = useState(null);
+  const [editNombre, setEditNombre] = useState("");
+
+  const cuenta = (id) => personas.filter((p) => p.sectorId === id).length;
+
+  const agregar = async () => {
+    const n = nuevo.trim();
+    if (!n) return;
+    if (sectores.some((s) => s.nombre.toLowerCase() === n.toLowerCase())) {
+      alert("Ya existe un sector con ese nombre.");
+      return;
+    }
+    await onSave({ nombre: n });
+    setNuevo("");
+  };
+
+  const guardarEdicion = async () => {
+    const n = editNombre.trim();
+    if (!n) return;
+    await onSave({ id: editId, nombre: n });
+    setEditId(null);
+    setEditNombre("");
+  };
+
+  const borrar = async (s) => {
+    const usados = cuenta(s.id);
+    const msg = usados > 0
+      ? `Hay ${usados} persona(s) asignadas al sector "${s.nombre}". Si lo borrás, quedan sin sector. ¿Continuar?`
+      : `¿Borrar el sector "${s.nombre}"?`;
+    if (confirm(msg)) await onDelete(s.id);
+  };
+
+  return (
+    <div className="rounded-xl mb-4" style={{ background: C.panel, border: `1px solid ${C.border}` }}>
+      <button
+        type="button"
+        onClick={() => setAbierto(!abierto)}
+        className="w-full flex items-center gap-2 px-4 py-3"
+      >
+        <Building2 size={15} color={C.cyan} />
+        <span className="text-sm font-semibold">Sectores (áreas de la empresa)</span>
+        <span className="font-mono text-[11px] px-2 py-0.5 rounded-full" style={{ background: C.panel2, color: C.dim }}>
+          {sectores.length}
+        </span>
+        <span className="ml-auto text-xs" style={{ color: C.dim }}>
+          {abierto ? "Ocultar" : "Gestionar"}
+        </span>
+      </button>
+
+      {abierto && (
+        <div className="px-4 pb-4">
+          {perms.categoriaAgregar && (
+            <div className="flex gap-2 mb-3">
+              <Input
+                value={nuevo}
+                onChange={setNuevo}
+                onKeyDown={(e) => { if (e.key === "Enter") agregar(); }}
+                placeholder="Nuevo sector (ej: Cacodelphia, LED, Cine…)"
+              />
+              <button
+                onClick={agregar}
+                className="text-sm font-medium px-3 py-2 rounded-md flex items-center gap-1.5 shrink-0"
+                style={{ background: C.gold, color: C.onGold }}
+              >
+                <Plus size={14} /> Agregar
+              </button>
+            </div>
+          )}
+
+          {sectores.length === 0 ? (
+            <p className="text-xs py-2" style={{ color: C.dim }}>
+              Todavía no hay sectores. Creá el primero arriba.
+            </p>
+          ) : (
+            <div className="grid gap-1.5">
+              {sectores.map((s) => (
+                <div
+                  key={s.id}
+                  className="flex items-center gap-2 px-3 py-2 rounded"
+                  style={{ background: C.panel2, border: `1px solid ${C.border}` }}
+                >
+                  {editId === s.id ? (
+                    <>
+                      <Input value={editNombre} onChange={setEditNombre} placeholder="Nombre" />
+                      <IconBtn onClick={guardarEdicion} title="Guardar"><Check size={14} /></IconBtn>
+                      <IconBtn onClick={() => { setEditId(null); setEditNombre(""); }} title="Cancelar"><X size={14} /></IconBtn>
+                    </>
+                  ) : (
+                    <>
+                      <span className="text-sm flex-1">{s.nombre}</span>
+                      <span className="font-mono text-[10px] px-1.5 py-0.5 rounded-full" style={{ background: C.panel, color: C.dim }}>
+                        {cuenta(s.id)}
+                      </span>
+                      {perms.categoriaEditar && (
+                        <IconBtn onClick={() => { setEditId(s.id); setEditNombre(s.nombre); }} title="Renombrar"><Pencil size={13} /></IconBtn>
+                      )}
+                      {perms.categoriaBorrar && (
+                        <IconBtn onClick={() => borrar(s)} title="Borrar" danger><Trash2 size={13} /></IconBtn>
+                      )}
+                    </>
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function CategoriasPersonal({ categorias, personas, onSave, onDelete, abierto, setAbierto, perms = {} }) {
   const [nuevo, setNuevo] = useState("");
   const [editId, setEditId] = useState(null);
@@ -4067,6 +4319,258 @@ function CategoriasPersonal({ categorias, personas, onSave, onDelete, abierto, s
           )}
         </div>
       )}
+    </div>
+  );
+}
+
+/* ====================== ASISTENCIA ====================== */
+function AsistenciaModulo({ personas, sectores, perms }) {
+  const editable = !!perms?.personalEditar;
+  const hoy = new Date();
+  const [anio, setAnio] = useState(hoy.getFullYear());
+  const [mes, setMes] = useState(hoy.getMonth()); // 0-indexado
+  const [filtroSectorId, setFiltroSectorId] = useState("");
+  const [asistencias, setAsistencias] = useState([]);
+  const [cargando, setCargando] = useState(true);
+  const [celda, setCelda] = useState(null); // { personaId, fecha } | null
+
+  const diasEnMes = new Date(anio, mes + 1, 0).getDate();
+  const prefijo = `${anio}-${String(mes + 1).padStart(2, "0")}`;
+  const desde = `${prefijo}-01`;
+  const hasta = `${prefijo}-${String(diasEnMes).padStart(2, "0")}`;
+
+  const cargar = useCallback(async () => {
+    setCargando(true);
+    try {
+      const data = await listAsistenciasRango(desde, hasta);
+      setAsistencias(data);
+    } catch (e) {
+      console.error(e);
+    }
+    setCargando(false);
+  }, [desde, hasta]);
+
+  useEffect(() => { cargar(); }, [cargar]);
+  useEffect(() => {
+    const unsub = subscribeAsistencias(() => cargar());
+    return unsub;
+  }, [cargar]);
+
+  const mapa = useMemo(() => {
+    const m = new Map();
+    asistencias.forEach((a) => m.set(`${a.personaId}|${a.fecha}`, a));
+    return m;
+  }, [asistencias]);
+
+  const personasFiltradas = useMemo(() => {
+    if (!filtroSectorId) return personas;
+    if (filtroSectorId === "__sin") return personas.filter((p) => !p.sectorId);
+    return personas.filter((p) => p.sectorId === filtroSectorId);
+  }, [personas, filtroSectorId]);
+
+  const irMes = (delta) => {
+    let m = mes + delta, a = anio;
+    if (m < 0) { m = 11; a--; }
+    if (m > 11) { m = 0; a++; }
+    setMes(m); setAnio(a);
+  };
+
+  const nombreSector = (id) => sectores.find((s) => s.id === id)?.nombre || "";
+  const dias = useMemo(() => Array.from({ length: diasEnMes }, (_, i) => i + 1), [diasEnMes]);
+
+  return (
+    <div className="fade">
+      <div className="flex items-center gap-2 mb-1">
+        <CalendarCheck size={18} color={C.gold} />
+        <h1 className="text-lg font-semibold">Asistencia</h1>
+      </div>
+      <p className="text-xs mb-4" style={{ color: C.dim }}>
+        Marcá día por día quién está presente, ausente, de franco o medio día — filtrable por sector.
+        {!editable && " Tenés acceso de solo lectura."}
+      </p>
+
+      <div className="flex items-center gap-1 mb-4">
+        <IconBtn onClick={() => irMes(-1)} title="Mes anterior"><ChevronLeft size={16} /></IconBtn>
+        <span className="text-sm font-semibold w-36 text-center">{MESES_ES[mes]} {anio}</span>
+        <IconBtn onClick={() => irMes(1)} title="Mes siguiente"><ChevronRight size={16} /></IconBtn>
+      </div>
+
+      {sectores.length > 0 && (
+        <div className="flex flex-wrap items-center gap-2 mb-4">
+          <span className="text-xs" style={{ color: C.dim }}>Sector:</span>
+          <button onClick={() => setFiltroSectorId("")} className="text-xs px-2.5 py-1 rounded-full"
+            style={{ background: !filtroSectorId ? C.gold : C.panel2, color: !filtroSectorId ? C.onGold : C.dim, border: `1px solid ${!filtroSectorId ? C.gold : C.border}` }}>
+            Todos
+          </button>
+          {sectores.map((s) => (
+            <button key={s.id} onClick={() => setFiltroSectorId(s.id)} className="text-xs px-2.5 py-1 rounded-full"
+              style={{ background: filtroSectorId === s.id ? C.gold : C.panel2, color: filtroSectorId === s.id ? C.onGold : C.dim, border: `1px solid ${filtroSectorId === s.id ? C.gold : C.border}` }}>
+              {s.nombre}
+            </button>
+          ))}
+          <button onClick={() => setFiltroSectorId("__sin")} className="text-xs px-2.5 py-1 rounded-full"
+            style={{ background: filtroSectorId === "__sin" ? C.gold : C.panel2, color: filtroSectorId === "__sin" ? C.onGold : C.dim, border: `1px solid ${filtroSectorId === "__sin" ? C.gold : C.border}` }}>
+            Sin sector
+          </button>
+        </div>
+      )}
+
+      {cargando ? (
+        <div className="py-16 text-center font-mono text-sm" style={{ color: C.dim }}>cargando…</div>
+      ) : personasFiltradas.length === 0 ? (
+        <div className="rounded-xl text-center py-16 px-4" style={{ background: C.panel, border: `1px dashed ${C.border}` }}>
+          <Users size={28} color={C.dim} className="mx-auto mb-3" />
+          <p className="text-sm" style={{ color: C.dim }}>No hay personal para este filtro.</p>
+        </div>
+      ) : (
+        <div className="rounded-xl overflow-hidden" style={{ background: C.panel, border: `1px solid ${C.border}` }}>
+          <div className="overflow-x-auto">
+            <table className="text-xs border-collapse">
+              <thead>
+                <tr>
+                  <th className="sticky left-0 z-10 text-left px-3 py-2 font-medium" style={{ background: C.panel, color: C.dim, minWidth: 160 }}>
+                    Persona
+                  </th>
+                  {dias.map((d) => (
+                    <th key={d} className="px-1 py-2 font-mono font-medium text-center" style={{ color: C.dim, minWidth: 28 }}>{d}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {personasFiltradas.map((p) => (
+                  <tr key={p.id} style={{ borderTop: `1px solid ${C.border}` }}>
+                    <td className="sticky left-0 z-10 px-3 py-1.5 whitespace-nowrap" style={{ background: C.panel }}>
+                      <div className="font-medium">{p.nombre}</div>
+                      {p.sectorId && nombreSector(p.sectorId) && (
+                        <div className="text-[10px]" style={{ color: C.dim }}>{nombreSector(p.sectorId)}</div>
+                      )}
+                    </td>
+                    {dias.map((d) => {
+                      const fecha = `${prefijo}-${String(d).padStart(2, "0")}`;
+                      const a = mapa.get(`${p.id}|${fecha}`);
+                      const info = ASISTENCIA_ESTADOS.find((e) => e.value === a?.estado);
+                      return (
+                        <td key={d} className="px-0.5 py-1 text-center">
+                          <button
+                            type="button"
+                            onClick={() => editable && setCelda({ personaId: p.id, fecha })}
+                            title={a ? `${info?.label || a.estado}${a.observacion ? " — " + a.observacion : ""}` : "Sin marcar"}
+                            className="w-6 h-6 rounded flex items-center justify-center text-[10px] font-bold mx-auto"
+                            style={{
+                              background: info ? `${info.color}22` : "transparent",
+                              color: info ? info.color : C.border,
+                              border: `1px solid ${info ? info.color + "55" : C.border}`,
+                              cursor: editable ? "pointer" : "default",
+                            }}
+                          >
+                            {info ? info.short : "·"}
+                          </button>
+                        </td>
+                      );
+                    })}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
+      <div className="flex flex-wrap gap-3 mt-3 text-[11px]" style={{ color: C.dim }}>
+        {ASISTENCIA_ESTADOS.map((e) => (
+          <span key={e.value} className="flex items-center gap-1.5">
+            <span className="w-3 h-3 rounded" style={{ background: `${e.color}22`, border: `1px solid ${e.color}55` }} />
+            {e.label}
+          </span>
+        ))}
+      </div>
+
+      {celda && (
+        <AsistenciaCeldaModal
+          persona={personas.find((p) => p.id === celda.personaId)}
+          fecha={celda.fecha}
+          actual={mapa.get(`${celda.personaId}|${celda.fecha}`)}
+          onClose={() => setCelda(null)}
+          onGuardar={async (estado, observacion) => {
+            const existente = mapa.get(`${celda.personaId}|${celda.fecha}`);
+            await upsertAsistencia({
+              id: existente?.id,
+              personaId: celda.personaId,
+              fecha: celda.fecha,
+              estado,
+              observacion,
+            });
+            await cargar();
+            setCelda(null);
+          }}
+          onQuitar={async () => {
+            const existente = mapa.get(`${celda.personaId}|${celda.fecha}`);
+            if (existente) await deleteAsistencia(existente.id);
+            await cargar();
+            setCelda(null);
+          }}
+        />
+      )}
+    </div>
+  );
+}
+
+function AsistenciaCeldaModal({ persona, fecha, actual, onClose, onGuardar, onQuitar }) {
+  const [estado, setEstado] = useState(actual?.estado || "presente");
+  const [observacion, setObservacion] = useState(actual?.observacion || "");
+  const [guardando, setGuardando] = useState(false);
+
+  const guardar = async () => {
+    setGuardando(true);
+    try {
+      await onGuardar(estado, observacion);
+    } finally {
+      setGuardando(false);
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ background: "#000000a0" }} onClick={onClose}>
+      <div className="rounded-xl p-4 w-full max-w-sm" style={{ background: C.panel, border: `1px solid ${C.border}` }} onClick={(e) => e.stopPropagation()}>
+        <h3 className="text-sm font-semibold mb-1">{persona?.nombre || "Persona"}</h3>
+        <p className="text-xs mb-3" style={{ color: C.dim }}>{fmtFecha(fecha)}</p>
+
+        <div className="grid grid-cols-2 gap-2 mb-3">
+          {ASISTENCIA_ESTADOS.map((e) => (
+            <button key={e.value} type="button" onClick={() => setEstado(e.value)}
+              className="text-sm px-3 py-2 rounded-md text-left"
+              style={{
+                background: estado === e.value ? e.color : C.panel2,
+                color: estado === e.value ? "#04120b" : C.text,
+                border: `1px solid ${estado === e.value ? e.color : C.border}`,
+              }}>
+              {e.label}
+            </button>
+          ))}
+        </div>
+
+        <Field label="Observación" full>
+          <Input value={observacion} onChange={setObservacion} placeholder="Qué está haciendo / en qué área…" />
+        </Field>
+
+        <div className="flex gap-2 mt-3 items-center">
+          {actual && (
+            <button onClick={onQuitar} className="text-xs px-3 py-2 rounded-md" style={{ color: C.rose, border: `1px solid ${C.rose}40` }}>
+              Quitar marca
+            </button>
+          )}
+          <div className="flex gap-2 ml-auto">
+            <button onClick={onClose} className="text-sm px-4 py-2 rounded-md" style={{ background: C.panel2, border: `1px solid ${C.border}`, color: C.dim }}>
+              Cancelar
+            </button>
+            <button onClick={guardar} disabled={guardando}
+              className="text-sm font-medium px-4 py-2 rounded-md flex items-center gap-1.5 disabled:opacity-50"
+              style={{ background: C.gold, color: C.onGold }}>
+              <Check size={15} /> {guardando ? "Guardando…" : "Guardar"}
+            </button>
+          </div>
+        </div>
+      </div>
     </div>
   );
 }

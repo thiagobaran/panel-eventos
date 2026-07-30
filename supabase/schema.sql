@@ -180,6 +180,64 @@ begin
   end if;
 end $$;
 
+-- Sectores del personal (área de la empresa: Cacodelphia, LED, Cine…), un
+-- nivel arriba de categoría. Cada persona pertenece a un solo sector, pero
+-- puede tener cualquier categoría dentro de ese sector (ej: cámara y unreal
+-- son categorías distintas, ambas del sector Cacodelphia). Se siembra con
+-- "Cacodelphia", "LED" y "Cine" la primera vez que se abre Personal.
+create table if not exists public.personas_sectores (
+  id uuid primary key default gen_random_uuid(),
+  created_at timestamptz not null default now(),
+  nombre text not null
+);
+alter table public.personas_sectores enable row level security;
+drop policy if exists "Acceso interno completo" on public.personas_sectores;
+create policy "Acceso interno completo"
+  on public.personas_sectores
+  for all
+  using (true)
+  with check (true);
+do $$
+begin
+  if not exists (
+    select 1 from pg_publication_tables
+    where pubname = 'supabase_realtime' and tablename = 'personas_sectores'
+  ) then
+    alter publication supabase_realtime add table public.personas_sectores;
+  end if;
+end $$;
+
+alter table public.personas add column if not exists sector_id text;
+
+-- ---------------------------------------------------------------------
+-- Asistencia del personal (presente / ausente / franco / medio día por día)
+-- ---------------------------------------------------------------------
+create table if not exists public.asistencias (
+  id uuid primary key default gen_random_uuid(),
+  created_at timestamptz not null default now(),
+  persona_id uuid not null references public.personas(id) on delete cascade,
+  fecha date not null,
+  estado text not null default 'presente', -- presente | ausente | franco | mediodia
+  observacion text,
+  unique (persona_id, fecha)
+);
+alter table public.asistencias enable row level security;
+drop policy if exists "Acceso interno completo" on public.asistencias;
+create policy "Acceso interno completo"
+  on public.asistencias
+  for all
+  using (true)
+  with check (true);
+do $$
+begin
+  if not exists (
+    select 1 from pg_publication_tables
+    where pubname = 'supabase_realtime' and tablename = 'asistencias'
+  ) then
+    alter publication supabase_realtime add table public.asistencias;
+  end if;
+end $$;
+
 -- ---------------------------------------------------------------------
 -- Clientes (productoras que contratan a la empresa)
 -- ---------------------------------------------------------------------
