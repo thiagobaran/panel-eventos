@@ -5376,6 +5376,26 @@ function FormEvento({ base, onCancel, onSave, guardando, personas = [], eventos 
     }));
   };
 
+  // Cronograma de cuotas de pago/facturación
+  const agregarCuota = () => {
+    setF((p) => ({
+      ...p,
+      cuotasPago: [...(p.cuotasPago || []), { id: crypto.randomUUID(), label: "", dias: "", fecha: "", monto: "" }],
+    }));
+  };
+  const setCuota = (idx, campo, val) => {
+    setF((p) => {
+      const arr = [...(p.cuotasPago || [])];
+      arr[idx] = { ...arr[idx], [campo]: val };
+      if (campo === "fecha" && val) arr[idx].dias = "";
+      if (campo === "dias" && val) arr[idx].fecha = "";
+      return { ...p, cuotasPago: arr };
+    });
+  };
+  const quitarCuota = (idx) => {
+    setF((p) => ({ ...p, cuotasPago: (p.cuotasPago || []).filter((_, i) => i !== idx) }));
+  };
+
   // Estado para el input de fecha pendiente por parte (indexado)
   const [fechaInputs, setFechaInputs] = useState(() => Array(PARTES_PROD.length).fill(""));
   // Reemplazo de integrante en otro evento: { eventoId, personaId, nuevoId }
@@ -5570,6 +5590,8 @@ function FormEvento({ base, onCancel, onSave, guardando, personas = [], eventos 
     } else {
       datos.facturasDesglose = [];
     }
+    // Descarta cuotas vacías (sin etiqueta ni fecha/días cargados)
+    datos.cuotasPago = (datos.cuotasPago || []).filter((c) => c.label?.trim() || c.dias || c.fecha);
     // Cliente nuevo escrito a mano: se guarda en la base para futuros eventos.
     if (!datos.clienteId && datos.razonSocial?.trim() && onSaveCliente && perms.clienteCrear) {
       try {
@@ -6119,6 +6141,42 @@ function FormEvento({ base, onCancel, onSave, guardando, personas = [], eventos 
           <Field label="Forma de pago">
             <Input value={f.formaPago} onChange={(v) => set("formaPago", v)} placeholder="Contado, 30 días, 2 semanas…" />
             <span className="text-[10px] mt-1 block" style={{ color: C.dim }}>Escribí los días/semanas/meses para activar alertas de vencimiento (ej: 30 días, 2 semanas, 1 mes)</span>
+          </Field>
+
+          <Field label="Cronograma de pagos / facturación" full>
+            <div className="rounded-lg p-2.5" style={{ background: C.panel2, border: `1px solid ${C.border}` }}>
+              <div className="grid gap-2">
+                {(f.cuotasPago || []).map((c, idx) => (
+                  <div key={c.id || idx} className="rounded-md p-2" style={{ background: C.panel, border: `1px solid ${C.border}` }}>
+                    <div className="flex items-center gap-2 mb-1.5">
+                      <Input value={c.label} onChange={(v) => setCuota(idx, "label", v)} placeholder="Ej: Anticipo, Saldo…" />
+                      <IconBtn onClick={() => quitarCuota(idx)} title="Quitar" danger><X size={14} /></IconBtn>
+                    </div>
+                    <div className="grid grid-cols-2 gap-1.5">
+                      <div>
+                        <label className="text-[10px] block mb-0.5" style={{ color: C.dim }}>Días desde el evento</label>
+                        <Input type="number" value={c.dias} onChange={(v) => setCuota(idx, "dias", v)} placeholder="Ej: 0, 30…" />
+                      </div>
+                      <div>
+                        <label className="text-[10px] block mb-0.5" style={{ color: C.dim }}>o fecha fija</label>
+                        <Input type="date" value={c.fecha} onChange={(v) => setCuota(idx, "fecha", v)} />
+                      </div>
+                    </div>
+                    <div className="mt-1.5">
+                      <label className="text-[10px] block mb-0.5" style={{ color: C.dim }}>Monto (opcional)</label>
+                      <Input type="number" value={c.monto} onChange={(v) => setCuota(idx, "monto", v)} placeholder="0" />
+                    </div>
+                  </div>
+                ))}
+              </div>
+              <button type="button" onClick={agregarCuota} className="w-full mt-2 text-xs font-medium px-3 py-1.5 rounded-md flex items-center justify-center gap-1.5"
+                style={{ background: C.panel, border: `1px solid ${C.border}`, color: C.gold }}>
+                <Plus size={13} /> Agregar cuota
+              </button>
+              <span className="text-[10px] mt-1.5 block" style={{ color: C.dim }}>
+                Cargá cada hito por separado (ej: "Anticipo" a 0 días, "Saldo" a 30 días) para que el detalle muestre las fechas de pago o facturación de cada uno.
+              </span>
+            </div>
           </Field>
 
           <div className="sm:col-span-2 text-xs px-3 py-2 rounded-md flex items-start gap-2" style={{ background: C.panel2, border: `1px solid ${C.border}`, color: C.dim }}>
