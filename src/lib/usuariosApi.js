@@ -214,7 +214,7 @@ export function subscribeUsuarios(onChange) {
 export const ROLES = [
   { value: "admin",         label: "Admin",         desc: "Acceso total + gestión de usuarios" },
   { value: "contabilidad",  label: "Contabilidad",  desc: "Todo salvo crear eventos, personal y categorías" },
-  { value: "produccion",    label: "Producción",    desc: "Crea y edita eventos (sin facturación)" },
+  { value: "produccion",    label: "Producción",    desc: "Crea y edita eventos, incluida la facturación" },
   { value: "espectador",    label: "Espectador",    desc: "Solo visualización, sin permisos de edición" },
   { value: "led",           label: "LED",           desc: "Solo el módulo de equipos LED (venta y alquiler)" },
   { value: "asistencia",    label: "Asistencia",    desc: "Solo los módulos de Personal y Asistencia" },
@@ -250,7 +250,7 @@ export function perms(rol) {
     case "produccion":
       return {
         eventoCrear: true, eventoEditar: true, eventoBorrar: false,
-        eventoConfirmar: true, eventoFacturar: false, archivos: false, archivosVer: true,
+        eventoConfirmar: true, eventoFacturar: true, archivos: false, archivosVer: true,
         personalAgregar: false, personalEditar: false, personalBorrar: false,
         categoriaAgregar: false, categoriaEditar: false, categoriaBorrar: false,
         clientes: true, clienteCrear: true, clienteBorrar: false,
