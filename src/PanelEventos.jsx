@@ -5308,7 +5308,7 @@ function FacturacionCard({ ev, onUpdate, perms, clientes = [], onSaveCliente }) 
 
   return (
     <Card titulo="Facturación" icon={<DollarSign size={15} color={C.green} />}
-      action={perms?.eventoFacturar && !editando ? <EditCardBtn onClick={startEdit} /> : null}>
+      action={perms?.facturacionEditar && !editando ? <EditCardBtn onClick={startEdit} /> : null}>
       {editando ? (
         <div className="grid gap-2">
           <div><label className="text-[11px] block mb-1" style={{ color: C.dim }}>Distribución</label>

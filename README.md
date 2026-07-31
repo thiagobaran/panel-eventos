@@ -194,10 +194,12 @@ Roles y permisos (gestionables en **Usuarios**, visible solo para admin):
   categorías/personal/clientes.
 - **contabilidad**: no crea ni confirma eventos, pero sí los edita/borra,
   gestiona facturación, sube archivos, y administra clientes y personal.
-- **producción**: crea, edita y confirma eventos, y también puede facturar
-  (editar Facturación, registrar cobros, marcar Facturado/Comprobante/
-  Facturado total), pero no administra archivos (puede verlos, no
-  subirlos/borrarlos). Ve el módulo LED en solo lectura.
+- **producción**: crea, edita y confirma eventos, y puede editar el bloque
+  de **Facturación** (distribución, cliente, montos, forma de pago,
+  cronograma de cuotas). No puede registrar cobros, marcar Facturado/
+  Comprobante/Facturado total, ni subir o borrar archivos (puede verlos)
+  — eso sigue siendo exclusivo de administración/contabilidad. Ve el
+  módulo LED en solo lectura.
 - **espectador**: solo lectura.
 - **led**: caso especial — solo ve y edita el módulo **LED**; ninguna otra
   pantalla de la app (Eventos, Personal, Clientes, etc.) le aparece, ni

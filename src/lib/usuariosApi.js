@@ -226,7 +226,7 @@ export function perms(rol) {
     case "admin":
       return {
         eventoCrear: true, eventoEditar: true, eventoBorrar: true,
-        eventoConfirmar: true, eventoFacturar: true, archivos: true, archivosVer: true,
+        eventoConfirmar: true, eventoFacturar: true, facturacionEditar: true, archivos: true, archivosVer: true,
         personalAgregar: true, personalEditar: true, personalBorrar: true,
         categoriaAgregar: true, categoriaEditar: true, categoriaBorrar: true,
         clientes: true, clienteCrear: true, clienteBorrar: true,
@@ -238,7 +238,7 @@ export function perms(rol) {
     case "contabilidad":
       return {
         eventoCrear: false, eventoEditar: true, eventoBorrar: true,
-        eventoConfirmar: false, eventoFacturar: true, archivos: true, archivosVer: true,
+        eventoConfirmar: false, eventoFacturar: true, facturacionEditar: true, archivos: true, archivosVer: true,
         personalAgregar: false, personalEditar: true, personalBorrar: true,
         categoriaAgregar: false, categoriaEditar: true, categoriaBorrar: true,
         clientes: true, clienteCrear: true, clienteBorrar: true,
@@ -250,7 +250,7 @@ export function perms(rol) {
     case "produccion":
       return {
         eventoCrear: true, eventoEditar: true, eventoBorrar: false,
-        eventoConfirmar: true, eventoFacturar: true, archivos: false, archivosVer: true,
+        eventoConfirmar: true, eventoFacturar: false, facturacionEditar: true, archivos: false, archivosVer: true,
         personalAgregar: false, personalEditar: false, personalBorrar: false,
         categoriaAgregar: false, categoriaEditar: false, categoriaBorrar: false,
         clientes: true, clienteCrear: true, clienteBorrar: false,
@@ -262,7 +262,7 @@ export function perms(rol) {
     case "led":
       return {
         eventoCrear: false, eventoEditar: false, eventoBorrar: false,
-        eventoConfirmar: false, eventoFacturar: false, archivos: false, archivosVer: false,
+        eventoConfirmar: false, eventoFacturar: false, facturacionEditar: false, archivos: false, archivosVer: false,
         personalAgregar: false, personalEditar: false, personalBorrar: false,
         categoriaAgregar: false, categoriaEditar: false, categoriaBorrar: false,
         clientes: false, clienteCrear: false, clienteBorrar: false,
@@ -275,7 +275,7 @@ export function perms(rol) {
     case "asistencia":
       return {
         eventoCrear: false, eventoEditar: false, eventoBorrar: false,
-        eventoConfirmar: false, eventoFacturar: false, archivos: false, archivosVer: false,
+        eventoConfirmar: false, eventoFacturar: false, facturacionEditar: false, archivos: false, archivosVer: false,
         personalAgregar: true, personalEditar: true, personalBorrar: true,
         categoriaAgregar: true, categoriaEditar: true, categoriaBorrar: true,
         clientes: false, clienteCrear: false, clienteBorrar: false,
@@ -289,7 +289,7 @@ export function perms(rol) {
     default:
       return {
         eventoCrear: false, eventoEditar: false, eventoBorrar: false,
-        eventoConfirmar: false, eventoFacturar: false, archivos: false,
+        eventoConfirmar: false, eventoFacturar: false, facturacionEditar: false, archivos: false,
         personalAgregar: false, personalEditar: false, personalBorrar: false,
         categoriaAgregar: false, categoriaEditar: false, categoriaBorrar: false,
         clientes: false, clienteCrear: false, clienteBorrar: false,
