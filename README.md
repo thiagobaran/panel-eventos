@@ -70,15 +70,23 @@ Dentro de cada espacio, la navegación es por pestañas en el header:
 - **Pendientes**: tres tablas — pagos vencidos, eventos sin facturar y
   eventos facturados sin comprobante de pago cargado.
 - **Espacio LED** (Resumen / Eventos / Clientes / Pendientes): mismo patrón
-  que Estudios, pero para trabajos de instalación LED. Cada trabajo tiene
-  tipo de instalación (Fija / Temporal), ubicación (Indoor / Outdoor),
-  tamaño de pantalla deseado, partes (**Armado** y **Desarme** por fechas
-  puntuales, **Servicio** como un período continuo — fecha de inicio a fecha
-  de fin, no días sueltos) y la misma Facturación/Cobros/cronograma de
-  cuotas que Estudios. Clientes LED es una lista totalmente aparte de
-  Clientes de Estudios. Todavía no tiene subida de archivos (facturas/
-  comprobantes) ni el asistente de recomendación de equipo — el estado
-  Facturado/Comprobante/Facturado total se marca a mano por ahora.
+  que Estudios, pero para trabajos de instalación LED — incluido el
+  calendario mensual del Resumen (coloreado por Armado/Servicio/Desarme en
+  vez de las fases de Estudios). Cada trabajo tiene tipo de instalación
+  (Fija / Temporal), ubicación (Indoor / Outdoor), tamaño de pantalla
+  deseado, partes (**Armado** y **Desarme** por fechas puntuales,
+  **Servicio** como un período continuo — fecha de inicio a fecha de fin,
+  no días sueltos), **Equipo** (personal asignado del mismo listado de
+  Personal, segmentado por en qué etapa participa cada uno — sin la
+  detección de conflictos entre proyectos que sí tiene Estudios) y la misma
+  Facturación/Cobros/cronograma de cuotas que Estudios. Como en Estudios,
+  cada bloque del detalle (Datos del trabajo, Facturación, Partes, Equipo,
+  Observaciones) se edita por separado, sin pasar por el formulario
+  completo — para admin y para el rol LED por igual. Clientes LED es una
+  lista totalmente aparte de Clientes de Estudios. Todavía no tiene subida
+  de archivos (facturas/comprobantes) ni el asistente de recomendación de
+  equipo — el estado Facturado/Comprobante/Facturado total se marca a mano
+  por ahora.
 - **Catálogo** (dentro del espacio LED): el módulo de módulos de pantalla y
   equipos de video (senders, escaladores, media servers, procesadores) que
   ya existía, con alta/edición/borrado y buscador — pensado como insumo para

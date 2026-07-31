@@ -465,6 +465,9 @@ create table if not exists public.eventos_led (
   servicio_fin date,
   desarme_fechas jsonb not null default '[]'::jsonb,
 
+  -- Personal asignado: [{personaId, nombre, rol, partes: ["Armado","Servicio","Desarme"]}]
+  integrantes jsonb not null default '[]'::jsonb,
+
   cliente_id text,
   razon_social text,
   cuit text,

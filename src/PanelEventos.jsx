@@ -72,10 +72,11 @@ const PARTES_COLORS = {
   "Prelighting": "#9b8cff",
   "Rodaje": "#F2557A",
   "Desarme": "#64B5F6",
+  "Servicio": "#22D3EE",
 };
 const getColorPartes = (partes) => {
   if (!partes || partes.length === 0) return "#D4AF37";
-  const prio = ["Rodaje", "Prelighting", "Armado + Prelight", "Armado", "Desarme"];
+  const prio = ["Rodaje", "Prelighting", "Armado + Prelight", "Servicio", "Armado", "Desarme"];
   for (const p of prio) { if (partes.includes(p)) return PARTES_COLORS[p]; }
   return "#D4AF37";
 };
@@ -197,6 +198,7 @@ const nuevoEvento = () => ({
 /* ---------- LED: eventos/trabajos (instalación fija o alquiler) ---------- */
 const TIPO_INSTALACION_LED = ["Fija", "Temporal"];
 const UBICACION_LED = ["Indoor", "Outdoor"];
+const PARTES_LED = ["Armado", "Servicio", "Desarme"];
 const LED_VISTAS = ["home-led", "lista-led", "form-led", "detalle-led", "dashboard-led", "clientes-led", "led"];
 
 const nuevoEventoLed = () => ({
@@ -211,6 +213,7 @@ const nuevoEventoLed = () => ({
   servicioInicio: "",
   servicioFin: "",
   desarmeFechas: [],
+  integrantes: [],
   clienteId: "",
   razonSocial: "",
   cuit: "",
@@ -248,6 +251,24 @@ const fechaEventoLed = (ev) => {
   ].filter(Boolean).sort();
   return fechas[0] || "";
 };
+
+// Expande servicioInicio..servicioFin a la lista de días que ocupa (inclusive).
+const diasEnRango = (desde, hasta) => {
+  if (!desde || !hasta) return [];
+  const out = [];
+  let d = new Date(desde + "T12:00:00");
+  const fin = new Date(hasta + "T12:00:00");
+  while (d <= fin) { out.push(d.toISOString().slice(0, 10)); d.setDate(d.getDate() + 1); }
+  return out;
+};
+
+// Convierte un evento LED al mismo formato "partes" ([{tipo, fechas}]) que usan
+// el calendario y getFechasEvento/getColorPartes en Estudios, para reutilizarlos.
+const partesEventoLed = (ev) => ([
+  { tipo: "Armado", fechas: ev.armadoFechas || [] },
+  { tipo: "Servicio", fechas: diasEnRango(ev.servicioInicio, ev.servicioFin) },
+  { tipo: "Desarme", fechas: ev.desarmeFechas || [] },
+]);
 
 // Normaliza estudio: eventos viejos tienen string, nuevos tienen array.
 const normEstudio = (est) => {
@@ -1150,7 +1171,7 @@ export default function PanelEventos() {
         {!p.soloLed && !p.soloAsistencia && p.verLed && (
           <div className="flex items-center gap-0.5 p-0.5 rounded-lg" style={{ background: C.panel2, border: `1px solid ${C.border}` }}>
             {[{ v: "estudios", l: "Estudios" }, { v: "led", l: "LED" }].map(({ v, l }) => (
-              <button key={v} onClick={() => setWorkspace(v)}
+              <button key={v} onClick={() => { setWorkspace(v); setVista(v === "led" ? "home-led" : "home"); }}
                 className="text-xs font-medium px-3 py-1.5 rounded-md transition-all"
                 style={{ background: workspace === v ? C.gold : "transparent", color: workspace === v ? C.onGold : C.dim }}>
                 {l}
@@ -1394,6 +1415,8 @@ export default function PanelEventos() {
             guardando={guardando}
             clientesLed={clientesLed}
             onSaveClienteLed={guardarClienteLed}
+            personas={personas}
+            onIrAPersonal={() => setVista("personal")}
             perms={p}
           />
         ) : vista === "detalle-led" && eventoLedVer ? (
@@ -1409,6 +1432,7 @@ export default function PanelEventos() {
             onSaveClienteLed={guardarClienteLed}
             eventosLed={eventosLed}
             onUpdateEventoLed={actualizarEventoLed}
+            personas={personas}
           />
         ) : vista === "dashboard-led" && p.verLed ? (
           <Dashboard
@@ -2326,7 +2350,7 @@ function TablaPend({ titulo, icon, color, rows, onVer, vacio, extraCol }) {
 }
 
 /* ====================== CALENDARIO MES ====================== */
-function CalendarioMes({ anio, mes, eventos, onVer }) {
+function CalendarioMes({ anio, mes, eventos, onVer, mostrarFiltroEstudio = true, leyendaPartes = PARTES_PROD }) {
   const hoy = new Date().toISOString().slice(0, 10);
   const [filtroEstudio, setFiltroEstudio] = useState("");
   const prefix = `${anio}-${String(mes + 1).padStart(2, "0")}`;
@@ -2338,7 +2362,7 @@ function CalendarioMes({ anio, mes, eventos, onVer }) {
   for (let d = 1; d <= daysInMonth; d++) cells.push(d);
   while (cells.length % 7 !== 0) cells.push(null);
 
-  const estudios = ESTUDIOS;
+  const estudios = mostrarFiltroEstudio ? ESTUDIOS : [];
 
   const eventosFiltrados = useMemo(() =>
     filtroEstudio ? eventos.filter((e) => normEstudio(e.estudio).includes(filtroEstudio)) : eventos,
@@ -2381,7 +2405,7 @@ function CalendarioMes({ anio, mes, eventos, onVer }) {
           </div>
         )}
         <div className="ml-auto flex flex-wrap gap-2">
-          {PARTES_PROD.map((p) => (
+          {leyendaPartes.map((p) => (
             <span key={p} className="flex items-center gap-1 text-[10px]" style={{ color: C.dim }}>
               <span className="inline-block w-2 h-2 rounded-full" style={{ background: PARTES_COLORS[p] }} />
               {p}
@@ -3193,6 +3217,11 @@ function ResumenLed({ eventosLed, onVer }) {
   const porTipo = useMemo(() => contarPor("tipoInstalacion"), [contarPor]);
   const porUbicacion = useMemo(() => contarPor("ubicacion"), [contarPor]);
 
+  const eventosCalendario = useMemo(
+    () => eventosLed.map((e) => ({ ...e, partes: partesEventoLed(e) })),
+    [eventosLed]
+  );
+
   return (
     <div className="fade">
       <div className="flex items-center gap-2 mb-1">
@@ -3206,6 +3235,8 @@ function ResumenLed({ eventosLed, onVer }) {
         <span className="text-sm font-semibold w-36 text-center">{MESES_ES[mes]} {anio}</span>
         <IconBtn onClick={() => navMes(1)} title="Mes siguiente"><ChevronRight size={16} /></IconBtn>
       </div>
+
+      <CalendarioMes anio={anio} mes={mes} eventos={eventosCalendario} onVer={onVer} mostrarFiltroEstudio={false} leyendaPartes={PARTES_LED} />
 
       <div className="rounded-xl p-4 mb-5" style={{ background: C.panel, border: `1px solid ${C.border}` }}>
         <h2 className="text-sm font-semibold mb-3">Facturación — {MESES_ES[mes]} {anio}</h2>
@@ -3345,7 +3376,7 @@ function ListaEventosLed({ eventosLed, busqueda, setBusqueda, perms, onNuevo, on
 }
 
 /* ====================== LED: FORMULARIO ====================== */
-function FormEventoLed({ base, onCancel, onSave, guardando, clientesLed = [], onSaveClienteLed, perms = {} }) {
+function FormEventoLed({ base, onCancel, onSave, guardando, clientesLed = [], onSaveClienteLed, personas = [], onIrAPersonal, perms = {} }) {
   const [f, setF] = useState(() => ({ ...base }));
   const set = (k, v) => setF((p) => ({ ...p, [k]: v }));
   const [fechaArmadoInput, setFechaArmadoInput] = useState("");
@@ -3370,6 +3401,28 @@ function FormEventoLed({ base, onCancel, onSave, guardando, clientesLed = [], on
     setFechaDesarmeInput("");
   };
   const quitarFechaDesarme = (fecha) => setF((p) => ({ ...p, desarmeFechas: p.desarmeFechas.filter((x) => x !== fecha) }));
+
+  const agregarIntegrante = () => setF((p) => ({ ...p, integrantes: [...(p.integrantes || []), { personaId: "", nombre: "", rol: "", partes: [] }] }));
+  const elegirPersonaIntegrante = (idx, personaId) => {
+    const persona = personas.find((x) => x.id === personaId);
+    setF((p) => {
+      const arr = [...(p.integrantes || [])];
+      arr[idx] = { ...arr[idx], personaId, nombre: persona?.nombre || "" };
+      return { ...p, integrantes: arr };
+    });
+  };
+  const setIntegranteRol = (idx, rol) => setF((p) => {
+    const arr = [...(p.integrantes || [])];
+    arr[idx] = { ...arr[idx], rol };
+    return { ...p, integrantes: arr };
+  });
+  const toggleIntegranteParte = (idx, tipo) => setF((p) => {
+    const arr = [...(p.integrantes || [])];
+    const partes = arr[idx].partes || [];
+    arr[idx] = { ...arr[idx], partes: partes.includes(tipo) ? partes.filter((t) => t !== tipo) : [...partes, tipo] };
+    return { ...p, integrantes: arr };
+  });
+  const quitarIntegrante = (idx) => setF((p) => ({ ...p, integrantes: p.integrantes.filter((_, i) => i !== idx) }));
 
   const agregarCuota = () => setF((p) => ({ ...p, cuotasPago: [...(p.cuotasPago || []), { id: crypto.randomUUID(), label: "", dias: "", fecha: "", monto: "" }] }));
   const setCuota = (idx, campo, val) => setF((p) => {
@@ -3491,6 +3544,54 @@ function FormEventoLed({ base, onCancel, onSave, guardando, clientesLed = [], on
           </Field>
         </Seccion>
 
+        <Seccion titulo="Integrantes y roles" icon={<Users size={15} color={C.gold} />}>
+          <div className="sm:col-span-2 grid gap-2">
+            {personas.length === 0 && (
+              <p className="text-xs px-3 py-2 rounded-md" style={{ background: C.panel2, border: `1px solid ${C.border}`, color: C.dim }}>
+                Todavía no hay personal cargado.{" "}
+                {onIrAPersonal && (
+                  <button type="button" onClick={onIrAPersonal} className="underline" style={{ color: C.gold }}>
+                    Cargalo en la sección Personal
+                  </button>
+                )}
+              </p>
+            )}
+            {(f.integrantes || []).map((integ, idx) => (
+              <div key={idx} className="grid gap-1.5">
+                <div className="flex flex-col sm:flex-row gap-2 sm:items-center">
+                  <select value={integ.personaId || ""} onChange={(e) => elegirPersonaIntegrante(idx, e.target.value)}
+                    className="text-sm px-3 py-2 rounded-md sm:flex-1"
+                    style={{ background: C.panel2, border: `1px solid ${C.border}`, color: integ.personaId ? C.text : C.dim, colorScheme: "dark" }}>
+                    <option value="" style={{ background: C.panel2, color: C.dim }}>Elegir persona…</option>
+                    {personas.map((p) => <option key={p.id} value={p.id} style={{ background: C.panel2, color: C.text }}>{p.nombre}</option>)}
+                  </select>
+                  <Input value={integ.rol} onChange={(v) => setIntegranteRol(idx, v)} placeholder="Rol en este trabajo" />
+                  <IconBtn onClick={() => quitarIntegrante(idx)} title="Quitar" danger><X size={16} /></IconBtn>
+                </div>
+                {integ.personaId && (
+                  <div className="flex flex-wrap items-center gap-1.5 pl-1">
+                    <span className="text-[10px]" style={{ color: C.dim }}>Etapas donde participa:</span>
+                    {PARTES_LED.map((tipo) => {
+                      const sel = (integ.partes || []).includes(tipo);
+                      return (
+                        <button key={tipo} type="button" onClick={() => toggleIntegranteParte(idx, tipo)}
+                          className="text-[10px] px-2 py-0.5 rounded-full transition-colors"
+                          style={{ background: sel ? `${C.amber}22` : C.panel, color: sel ? C.amber : C.dim, border: `1px solid ${sel ? C.amber + "60" : C.border}` }}>
+                          {tipo}
+                        </button>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+            ))}
+            <button type="button" onClick={agregarIntegrante} className="self-start text-sm flex items-center gap-1.5 px-3 py-1.5 rounded-md mt-1"
+              style={{ background: C.panel2, border: `1px solid ${C.border}`, color: C.gold }}>
+              <Plus size={14} /> Agregar integrante
+            </button>
+          </div>
+        </Seccion>
+
         <Seccion titulo="Facturación" icon={<DollarSign size={15} color={C.green} />}>
           <Field label="Cliente" full>
             <select value={f.clienteId || "__nuevo"} onChange={(e) => seleccionarClienteLed(e.target.value)}
@@ -3610,7 +3711,237 @@ function FormEventoLed({ base, onCancel, onSave, guardando, clientesLed = [], on
 }
 
 /* ====================== LED: DETALLE ====================== */
-function DetalleLed({ ev, onBack, onEdit, onDelete, onUpdate, perms = {}, usuario = {}, clientesLed = [], onSaveClienteLed, eventosLed = [], onUpdateEventoLed }) {
+function DatosLedCard({ ev, onUpdate, perms }) {
+  const [editando, setEditando] = useState(false);
+  const [f, setF] = useState({});
+  const set = (k, v) => setF((p) => ({ ...p, [k]: v }));
+
+  const startEdit = () => {
+    setF({ tipoInstalacion: ev.tipoInstalacion || "", ubicacion: ev.ubicacion || "", anchoPantallaM: ev.anchoPantallaM ?? "", altoPantallaM: ev.altoPantallaM ?? "" });
+    setEditando(true);
+  };
+  const guardar = () => { onUpdate(f); setEditando(false); };
+
+  return (
+    <Card titulo="Datos del trabajo" icon={<Grid3x3 size={15} color={C.gold} />}
+      action={perms?.eventoLedEditar && !editando ? <EditCardBtn onClick={startEdit} /> : null}>
+      {editando ? (
+        <div className="grid gap-2">
+          <div><label className="text-[11px] block mb-1" style={{ color: C.dim }}>Tipo de instalación</label>
+            <Select value={f.tipoInstalacion} onChange={(v) => set("tipoInstalacion", v)} options={TIPO_INSTALACION_LED} placeholder="Elegir" /></div>
+          <div><label className="text-[11px] block mb-1" style={{ color: C.dim }}>Ubicación</label>
+            <Select value={f.ubicacion} onChange={(v) => set("ubicacion", v)} options={UBICACION_LED} placeholder="Elegir" /></div>
+          <div><label className="text-[11px] block mb-1" style={{ color: C.dim }}>Ancho pantalla (m)</label>
+            <Input type="number" value={f.anchoPantallaM} onChange={(v) => set("anchoPantallaM", v)} placeholder="0" /></div>
+          <div><label className="text-[11px] block mb-1" style={{ color: C.dim }}>Alto pantalla (m)</label>
+            <Input type="number" value={f.altoPantallaM} onChange={(v) => set("altoPantallaM", v)} placeholder="0" /></div>
+          <EditCardFooter onSave={guardar} onCancel={() => setEditando(false)} />
+        </div>
+      ) : (
+        <>
+          <Dato k="Tipo de instalación" v={ev.tipoInstalacion || "—"} />
+          <Dato k="Ubicación" v={ev.ubicacion || "—"} />
+          <Dato k="Tamaño pantalla" v={ev.anchoPantallaM && ev.altoPantallaM ? `${ev.anchoPantallaM} × ${ev.altoPantallaM} m` : "—"} />
+        </>
+      )}
+    </Card>
+  );
+}
+
+function PartesLedCard({ ev, onUpdate, perms }) {
+  const [editando, setEditando] = useState(false);
+  const [f, setF] = useState({});
+  const [fechaArmadoInput, setFechaArmadoInput] = useState("");
+  const [fechaDesarmeInput, setFechaDesarmeInput] = useState("");
+
+  const startEdit = () => {
+    setF({
+      armadoFechas: [...(ev.armadoFechas || [])],
+      servicioInicio: ev.servicioInicio || "",
+      servicioFin: ev.servicioFin || "",
+      desarmeFechas: [...(ev.desarmeFechas || [])],
+    });
+    setEditando(true);
+  };
+  const agregarFechaArmado = () => {
+    if (!fechaArmadoInput) return;
+    setF((p) => ({ ...p, armadoFechas: [...new Set([...(p.armadoFechas || []), fechaArmadoInput])].sort() }));
+    setFechaArmadoInput("");
+  };
+  const quitarFechaArmado = (fecha) => setF((p) => ({ ...p, armadoFechas: p.armadoFechas.filter((x) => x !== fecha) }));
+  const agregarFechaDesarme = () => {
+    if (!fechaDesarmeInput) return;
+    setF((p) => ({ ...p, desarmeFechas: [...new Set([...(p.desarmeFechas || []), fechaDesarmeInput])].sort() }));
+    setFechaDesarmeInput("");
+  };
+  const quitarFechaDesarme = (fecha) => setF((p) => ({ ...p, desarmeFechas: p.desarmeFechas.filter((x) => x !== fecha) }));
+  const guardar = () => {
+    onUpdate({ ...f, fecha: fechaEventoLed(f) });
+    setEditando(false);
+  };
+
+  return (
+    <Card titulo="Partes del trabajo" icon={<Calendar size={15} color={C.amber} />}
+      action={perms?.eventoLedEditar && !editando ? <EditCardBtn onClick={startEdit} /> : null}>
+      {editando ? (
+        <div className="grid gap-2">
+          <div>
+            <label className="text-[11px] block mb-1" style={{ color: C.dim }}>Armado (fechas)</label>
+            {(f.armadoFechas || []).length > 0 && (
+              <div className="flex flex-wrap gap-1.5 mb-2">
+                {f.armadoFechas.map((fe) => (
+                  <span key={fe} className="flex items-center gap-1 text-xs px-2 py-1 rounded-full" style={{ background: C.panel2, border: `1px solid ${C.border}` }}>
+                    {fmtFecha(fe)} <button type="button" onClick={() => quitarFechaArmado(fe)} style={{ color: C.dim }}><X size={11} /></button>
+                  </span>
+                ))}
+              </div>
+            )}
+            <div className="flex gap-2">
+              <input type="date" value={fechaArmadoInput} onChange={(e) => setFechaArmadoInput(e.target.value)}
+                className="text-sm px-3 py-2 rounded-md" style={{ background: C.panel2, border: `1px solid ${C.border}`, color: C.text, colorScheme: "dark" }} />
+              <button type="button" onClick={agregarFechaArmado} className="px-3 py-2 rounded-md" style={{ background: C.panel2, border: `1px solid ${C.border}`, color: C.dim }}><Plus size={15} /></button>
+            </div>
+          </div>
+          <div><label className="text-[11px] block mb-1" style={{ color: C.dim }}>Servicio — inicio</label>
+            <Input type="date" value={f.servicioInicio} onChange={(v) => setF((p) => ({ ...p, servicioInicio: v }))} /></div>
+          <div><label className="text-[11px] block mb-1" style={{ color: C.dim }}>Servicio — fin</label>
+            <Input type="date" value={f.servicioFin} onChange={(v) => setF((p) => ({ ...p, servicioFin: v }))} /></div>
+          <div>
+            <label className="text-[11px] block mb-1" style={{ color: C.dim }}>Desarme (fechas)</label>
+            {(f.desarmeFechas || []).length > 0 && (
+              <div className="flex flex-wrap gap-1.5 mb-2">
+                {f.desarmeFechas.map((fe) => (
+                  <span key={fe} className="flex items-center gap-1 text-xs px-2 py-1 rounded-full" style={{ background: C.panel2, border: `1px solid ${C.border}` }}>
+                    {fmtFecha(fe)} <button type="button" onClick={() => quitarFechaDesarme(fe)} style={{ color: C.dim }}><X size={11} /></button>
+                  </span>
+                ))}
+              </div>
+            )}
+            <div className="flex gap-2">
+              <input type="date" value={fechaDesarmeInput} onChange={(e) => setFechaDesarmeInput(e.target.value)}
+                className="text-sm px-3 py-2 rounded-md" style={{ background: C.panel2, border: `1px solid ${C.border}`, color: C.text, colorScheme: "dark" }} />
+              <button type="button" onClick={agregarFechaDesarme} className="px-3 py-2 rounded-md" style={{ background: C.panel2, border: `1px solid ${C.border}`, color: C.dim }}><Plus size={15} /></button>
+            </div>
+          </div>
+          <EditCardFooter onSave={guardar} onCancel={() => setEditando(false)} />
+        </div>
+      ) : (
+        <>
+          <Dato k="Armado" v={(ev.armadoFechas || []).length > 0 ? ev.armadoFechas.map(fmtFecha).join(", ") : "Sin fechas"} />
+          <Dato k="Servicio" v={ev.servicioInicio && ev.servicioFin ? `${fmtFecha(ev.servicioInicio)} → ${fmtFecha(ev.servicioFin)}` : "Sin definir"} />
+          <Dato k="Desarme" v={(ev.desarmeFechas || []).length > 0 ? ev.desarmeFechas.map(fmtFecha).join(", ") : "Sin fechas"} />
+        </>
+      )}
+    </Card>
+  );
+}
+
+function EquipoLedCard({ ev, onUpdate, perms, personas = [] }) {
+  const [editando, setEditando] = useState(false);
+  const [integrantes, setIntegrantes] = useState([]);
+
+  const startEdit = () => {
+    setIntegrantes((ev.integrantes || []).map((i) => ({ ...i, partes: i.partes || [] })));
+    setEditando(true);
+  };
+  const agregar = () => setIntegrantes((prev) => [...prev, { personaId: "", nombre: "", rol: "", partes: [] }]);
+  const elegirPersona = (idx, personaId) => {
+    const persona = personas.find((p) => p.id === personaId);
+    setIntegrantes((prev) => prev.map((x, i) => i === idx ? { ...x, personaId, nombre: persona?.nombre || "" } : x));
+  };
+  const setRol = (idx, rol) => setIntegrantes((prev) => prev.map((x, i) => i === idx ? { ...x, rol } : x));
+  const toggleParte = (idx, tipo) => setIntegrantes((prev) => prev.map((x, i) => {
+    if (i !== idx) return x;
+    const p = x.partes || [];
+    return { ...x, partes: p.includes(tipo) ? p.filter((t) => t !== tipo) : [...p, tipo] };
+  }));
+  const quitar = (idx) => setIntegrantes((prev) => prev.filter((_, i) => i !== idx));
+  const guardar = () => { onUpdate({ integrantes }); setEditando(false); };
+
+  return (
+    <Card titulo="Equipo" icon={<Users size={15} color={C.gold} />}
+      action={perms?.eventoLedEditar && !editando ? <EditCardBtn onClick={startEdit} /> : null}>
+      {editando ? (
+        <div className="grid gap-3">
+          {integrantes.map((integ, idx) => (
+            <div key={idx} className="grid gap-1.5 pb-2.5" style={{ borderBottom: `1px solid ${C.border}` }}>
+              <div className="flex flex-col sm:flex-row gap-2 sm:items-center">
+                <select value={integ.personaId || ""} onChange={(e) => elegirPersona(idx, e.target.value)}
+                  className="text-sm px-3 py-2 rounded-md sm:flex-1"
+                  style={{ background: C.panel2, border: `1px solid ${C.border}`, color: integ.personaId ? C.text : C.dim, colorScheme: "dark" }}>
+                  <option value="" style={{ background: C.panel2, color: C.dim }}>Elegir persona…</option>
+                  {personas.map((p) => <option key={p.id} value={p.id} style={{ background: C.panel2, color: C.text }}>{p.nombre}</option>)}
+                </select>
+                <Input value={integ.rol} onChange={(v) => setRol(idx, v)} placeholder="Rol" />
+                <IconBtn onClick={() => quitar(idx)} title="Quitar" danger><X size={16} /></IconBtn>
+              </div>
+              {integ.personaId && (
+                <div className="flex flex-wrap items-center gap-1.5 pl-1">
+                  <span className="text-[10px]" style={{ color: C.dim }}>Etapas donde participa:</span>
+                  {PARTES_LED.map((tipo) => {
+                    const sel = (integ.partes || []).includes(tipo);
+                    return (
+                      <button key={tipo} type="button" onClick={() => toggleParte(idx, tipo)}
+                        className="text-[10px] px-2 py-0.5 rounded-full transition-colors"
+                        style={{ background: sel ? `${C.amber}22` : C.panel, color: sel ? C.amber : C.dim, border: `1px solid ${sel ? C.amber + "60" : C.border}` }}>
+                        {tipo}
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          ))}
+          <button type="button" onClick={agregar} className="self-start text-sm flex items-center gap-1.5 px-3 py-1.5 rounded-md" style={{ background: C.panel2, border: `1px solid ${C.border}`, color: C.gold }}>
+            <Plus size={14} /> Agregar integrante
+          </button>
+          <EditCardFooter onSave={guardar} onCancel={() => setEditando(false)} />
+        </div>
+      ) : (ev.integrantes || []).length === 0 ? (
+        <p className="text-xs" style={{ color: C.dim }}>Sin integrantes cargados.</p>
+      ) : (
+        <div className="grid gap-1.5">
+          {ev.integrantes.map((integ, idx) => (
+            <div key={idx} className="text-sm">
+              <span className="font-medium">{integ.nombre}</span>
+              {integ.rol && <span style={{ color: C.dim }}> — {integ.rol}</span>}
+              {(integ.partes || []).length > 0 && (
+                <div className="flex flex-wrap gap-1 mt-1">
+                  {integ.partes.map((p) => <Badge key={p} color={C.amber}>{p}</Badge>)}
+                </div>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
+    </Card>
+  );
+}
+
+function ObservacionesLedCard({ ev, onUpdate, perms }) {
+  const [editando, setEditando] = useState(false);
+  const [texto, setTexto] = useState("");
+
+  const startEdit = () => { setTexto(ev.observaciones || ""); setEditando(true); };
+  const guardar = () => { onUpdate({ observaciones: texto }); setEditando(false); };
+
+  return (
+    <Card titulo="Observaciones" icon={<FileText size={15} color={C.dim} />}
+      action={perms?.eventoLedEditar && !editando ? <EditCardBtn onClick={startEdit} /> : null}>
+      {editando ? (
+        <div className="grid gap-2">
+          <textarea value={texto} onChange={(e) => setTexto(e.target.value)} placeholder="Notas, pendientes, detalles del trabajo…"
+            rows={3} className="w-full text-sm px-3 py-2 rounded-md" style={{ background: C.panel2, border: `1px solid ${C.border}`, color: C.text }} />
+          <EditCardFooter onSave={guardar} onCancel={() => setEditando(false)} />
+        </div>
+      ) : (
+        <p className="text-sm" style={{ color: ev.observaciones ? C.text : C.dim }}>{ev.observaciones || "Sin observaciones."}</p>
+      )}
+    </Card>
+  );
+}
+
+function DetalleLed({ ev, onBack, onEdit, onDelete, onUpdate, perms = {}, usuario = {}, clientesLed = [], onSaveClienteLed, eventosLed = [], onUpdateEventoLed, personas = [] }) {
   useEffect(() => {
     if (usuario?.id && ev?.id) marcarLeido(ev.id, usuario.id);
   }, [ev?.id, ev?.mensajes?.length, usuario?.id]);
@@ -3664,11 +3995,7 @@ function DetalleLed({ ev, onBack, onEdit, onDelete, onUpdate, perms = {}, usuari
       <div className="grid sm:grid-cols-2 gap-4">
         <MensajesEquipo ev={ev} usuario={usuario} onUpdate={onUpdate} />
 
-        <Card titulo="Datos del trabajo" icon={<Grid3x3 size={15} color={C.gold} />}>
-          <Dato k="Tipo de instalación" v={ev.tipoInstalacion || "—"} />
-          <Dato k="Ubicación" v={ev.ubicacion || "—"} />
-          <Dato k="Tamaño pantalla" v={ev.anchoPantallaM && ev.altoPantallaM ? `${ev.anchoPantallaM} × ${ev.altoPantallaM} m` : "—"} />
-        </Card>
+        <DatosLedCard ev={ev} onUpdate={onUpdate} perms={perms} />
 
         <FacturacionCard ev={ev} onUpdate={onUpdate} perms={permsFact} clientes={clientesLed} onSaveCliente={onSaveClienteLed} />
 
@@ -3683,15 +4010,11 @@ function DetalleLed({ ev, onBack, onEdit, onDelete, onUpdate, perms = {}, usuari
           <Toggle checked={ev.facturadoTotal} onChange={(v) => onUpdate({ facturadoTotal: v })} label="Facturado total" disabled={!perms.eventoLedFacturar} />
         </Card>
 
-        <Card titulo="Partes del trabajo" icon={<Calendar size={15} color={C.amber} />}>
-          <Dato k="Armado" v={(ev.armadoFechas || []).length > 0 ? ev.armadoFechas.map(fmtFecha).join(", ") : "Sin fechas"} />
-          <Dato k="Servicio" v={ev.servicioInicio && ev.servicioFin ? `${fmtFecha(ev.servicioInicio)} → ${fmtFecha(ev.servicioFin)}` : "Sin definir"} />
-          <Dato k="Desarme" v={(ev.desarmeFechas || []).length > 0 ? ev.desarmeFechas.map(fmtFecha).join(", ") : "Sin fechas"} />
-        </Card>
+        <PartesLedCard ev={ev} onUpdate={onUpdate} perms={perms} />
 
-        <Card titulo="Observaciones" icon={<FileText size={15} color={C.dim} />}>
-          <p className="text-sm" style={{ color: ev.observaciones ? C.text : C.dim }}>{ev.observaciones || "Sin observaciones."}</p>
-        </Card>
+        <EquipoLedCard ev={ev} onUpdate={onUpdate} perms={perms} personas={personas} />
+
+        <ObservacionesLedCard ev={ev} onUpdate={onUpdate} perms={perms} />
       </div>
     </div>
   );
