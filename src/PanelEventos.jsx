@@ -37,6 +37,8 @@ import {
 import {
   listLedEquipos, upsertLedEquipo, deleteLedEquipo, subscribeLedEquipos, seedLedEquiposIniciales,
 } from "./lib/ledEquiposApi";
+import { listEventosLed, upsertEventoLed, deleteEventoLed, subscribeEventosLed } from "./lib/eventosLedApi";
+import { listClientesLed, upsertClienteLed, deleteClienteLed, subscribeClientesLed } from "./lib/clientesLedApi";
 
 /* ---------- constantes ---------- */
 const CATEGORIAS = ["VIDEO CLIP", "RODAJE SERIE", "RODAJE LARGO", "EVENTO / DEMO", "PUBLICIDAD", "STREAMING"];
@@ -191,6 +193,61 @@ const nuevoEvento = () => ({
   comprobantePagoAt: null,
   observaciones: "",
 });
+
+/* ---------- LED: eventos/trabajos (instalación fija o alquiler) ---------- */
+const TIPO_INSTALACION_LED = ["Fija", "Temporal"];
+const UBICACION_LED = ["Indoor", "Outdoor"];
+const LED_VISTAS = ["home-led", "lista-led", "form-led", "detalle-led", "dashboard-led", "clientes-led", "led"];
+
+const nuevoEventoLed = () => ({
+  id: crypto.randomUUID(),
+  fecha: "",
+  nombre: "",
+  tipoInstalacion: "",
+  ubicacion: "",
+  anchoPantallaM: "",
+  altoPantallaM: "",
+  armadoFechas: [],
+  servicioInicio: "",
+  servicioFin: "",
+  desarmeFechas: [],
+  clienteId: "",
+  razonSocial: "",
+  cuit: "",
+  empresa: "",
+  moneda: "ARS",
+  distribucion: "M1",
+  montoM1: "",
+  montoM2: "",
+  cantFacturas: "",
+  facturasDesglose: [],
+  tipoCambio: "",
+  medioPago: "",
+  formaPago: "",
+  cuotasPago: [],
+  facturas: [],
+  comprobantes: [],
+  pagos: [],
+  mensajes: [],
+  facturado: false,
+  comprobantePago: false,
+  facturadoTotal: false,
+  confirmado: false,
+  confirmadoAt: null,
+  facturadoAt: null,
+  comprobantePagoAt: null,
+  observaciones: "",
+});
+
+// Fecha más temprana entre armado/servicio/desarme (para ordenar/mostrar la fecha del trabajo).
+const fechaEventoLed = (ev) => {
+  const fechas = [
+    ...(ev.armadoFechas || []),
+    ...(ev.servicioInicio ? [ev.servicioInicio] : []),
+    ...(ev.desarmeFechas || []),
+  ].filter(Boolean).sort();
+  return fechas[0] || "";
+};
 
 // Normaliza estudio: eventos viejos tienen string, nuevos tienen array.
 const normEstudio = (est) => {
@@ -535,6 +592,8 @@ export default function PanelEventos() {
   const [clientes, setClientes] = useState([]);
   const [categoriasPersonal, setCategoriasPersonal] = useState([]);
   const [sectoresPersonal, setSectoresPersonal] = useState([]);
+  const [eventosLed, setEventosLed] = useState([]);
+  const [clientesLed, setClientesLed] = useState([]);
   const [cargando, setCargando] = useState(true);
   const [error, setError] = useState("");
   const [guardando, setGuardando] = useState(false);
@@ -547,6 +606,26 @@ export default function PanelEventos() {
   const [filtroEmps, setFiltroEmps] = useState([]);
   const [filtroMods, setFiltroMods] = useState([]);
   const [filtroTiempo, setFiltroTiempo] = useState("proximos"); // proximos | finalizados | todos
+
+  /* ---------- espacio de trabajo: estudios | led ---------- */
+  const [workspace, setWorkspace] = useState("estudios");
+  const [editIdLed, setEditIdLed] = useState(null);
+  const [verIdLed, setVerIdLed] = useState(null);
+  const [busquedaLed, setBusquedaLed] = useState("");
+
+  // Al cambiar de usuario (login/logout en la misma pestaña), resetea vista y
+  // espacio de trabajo — evita quedar en una pantalla a la que el nuevo
+  // usuario no tiene acceso (ej: admin deja workspace="led" y entra Pablo).
+  useEffect(() => {
+    if (!usuario) return;
+    (async () => {
+      const soloLed = usuario.rol === "led";
+      const soloAsist = usuario.rol === "asistencia";
+      setWorkspace(soloLed ? "led" : "estudios");
+      setVista(soloLed ? "home-led" : soloAsist ? "personal" : "home");
+      setEditId(null); setVerId(null); setEditIdLed(null); setVerIdLed(null);
+    })();
+  }, [usuario]);
 
   const recargar = useCallback(async () => {
     try {
@@ -596,14 +675,35 @@ export default function PanelEventos() {
     }
   }, []);
 
+  const recargarEventosLed = useCallback(async () => {
+    try {
+      const data = await listEventosLed();
+      setEventosLed(data);
+    } catch (e) {
+      console.error(e);
+    }
+  }, []);
+
+  const recargarClientesLed = useCallback(async () => {
+    try {
+      const data = await listClientesLed();
+      setClientesLed(data);
+    } catch (e) {
+      console.error(e);
+    }
+  }, []);
+
   /* carga inicial */
   useEffect(() => {
     (async () => {
       setCargando(true);
-      await Promise.all([recargar(), recargarPersonas(), recargarCategoriasPersonal(), recargarSectoresPersonal(), recargarClientes()]);
+      await Promise.all([
+        recargar(), recargarPersonas(), recargarCategoriasPersonal(), recargarSectoresPersonal(),
+        recargarClientes(), recargarEventosLed(), recargarClientesLed(),
+      ]);
       setCargando(false);
     })();
-  }, [recargar, recargarPersonas, recargarCategoriasPersonal, recargarSectoresPersonal, recargarClientes]);
+  }, [recargar, recargarPersonas, recargarCategoriasPersonal, recargarSectoresPersonal, recargarClientes, recargarEventosLed, recargarClientesLed]);
 
   /* tiempo real: refresca si otro usuario carga/edita/borra un evento */
   useEffect(() => {
@@ -634,6 +734,16 @@ export default function PanelEventos() {
     const unsub = subscribeClientes(() => recargarClientes());
     return unsub;
   }, [recargarClientes]);
+
+  /* tiempo real: eventos y clientes LED */
+  useEffect(() => {
+    const unsub = subscribeEventosLed(() => recargarEventosLed());
+    return unsub;
+  }, [recargarEventosLed]);
+  useEffect(() => {
+    const unsub = subscribeClientesLed(() => recargarClientesLed());
+    return unsub;
+  }, [recargarClientesLed]);
 
   /* handlers de clientes */
   const guardarCliente = async (c) => {
@@ -708,6 +818,57 @@ export default function PanelEventos() {
     } catch (e) {
       console.error(e);
       alert("No se pudo borrar el evento: " + e.message);
+    }
+  };
+
+  /* handlers de clientes LED */
+  const guardarClienteLed = async (c) => {
+    const saved = await upsertClienteLed(c);
+    await recargarClientesLed();
+    return saved;
+  };
+  const borrarClienteLed = async (id) => {
+    await deleteClienteLed(id);
+    await recargarClientesLed();
+  };
+
+  /* handlers de eventos LED */
+  const guardarEventoLed = async (ev) => {
+    setGuardando(true);
+    try {
+      await upsertEventoLed(ev);
+      await recargarEventosLed();
+      setWorkspace("led");
+      setVista("lista-led");
+      setEditIdLed(null);
+    } catch (e) {
+      console.error(e);
+      alert("No se pudo guardar el trabajo: " + e.message);
+    } finally {
+      setGuardando(false);
+    }
+  };
+
+  const actualizarEventoLed = async (id, patch) => {
+    const ev = eventosLed.find((e) => e.id === id);
+    if (!ev) return;
+    try {
+      await upsertEventoLed({ ...ev, ...patch });
+      await recargarEventosLed();
+    } catch (e) {
+      console.error(e);
+      alert("No se pudo actualizar el trabajo: " + e.message);
+    }
+  };
+
+  const borrarEventoLed = async (id) => {
+    try {
+      await deleteEventoLed(id);
+      await recargarEventosLed();
+      if (verIdLed === id) setVista("lista-led");
+    } catch (e) {
+      console.error(e);
+      alert("No se pudo borrar el trabajo: " + e.message);
     }
   };
 
@@ -871,6 +1032,10 @@ export default function PanelEventos() {
   );
   const pendVenc = eventos.filter((e) => { const d = diasVencimientoPago(e); return d !== null && d < 0; });
 
+  const pendFactLed = eventosLed.filter((e) => e.nombre && e.confirmado && !e.facturado);
+  const pendCompLed = eventosLed.filter((e) => e.nombre && e.facturado && !e.comprobantePago);
+  const pendVencLed = eventosLed.filter((e) => { const d = diasVencimientoPago(e); return d !== null && d < 0; });
+
   // Asistente de consultas (IA)
   const [showAsistente, setShowAsistente] = useState(false);
 
@@ -910,6 +1075,8 @@ export default function PanelEventos() {
 
   const eventoEdit = editId ? eventos.find((e) => e.id === editId) : null;
   const eventoVer = verId ? eventos.find((e) => e.id === verId) : null;
+  const eventoLedEdit = editIdLed ? eventosLed.find((e) => e.id === editIdLed) : null;
+  const eventoLedVer = verIdLed ? eventosLed.find((e) => e.id === verIdLed) : null;
 
   /* ---------- handlers de usuarios (admin) ---------- */
   const onCrearUsuario = async (datos) => {
@@ -980,21 +1147,23 @@ export default function PanelEventos() {
           </div>
         </div>
 
+        {!p.soloLed && !p.soloAsistencia && p.verLed && (
+          <div className="flex items-center gap-0.5 p-0.5 rounded-lg" style={{ background: C.panel2, border: `1px solid ${C.border}` }}>
+            {[{ v: "estudios", l: "Estudios" }, { v: "led", l: "LED" }].map(({ v, l }) => (
+              <button key={v} onClick={() => setWorkspace(v)}
+                className="text-xs font-medium px-3 py-1.5 rounded-md transition-all"
+                style={{ background: workspace === v ? C.gold : "transparent", color: workspace === v ? C.onGold : C.dim }}>
+                {l}
+              </button>
+            ))}
+          </div>
+        )}
+
         <nav className="flex items-center gap-1 ml-auto">
-          {!p.soloLed && !p.soloAsistencia && (
+          {!p.soloLed && !p.soloAsistencia && workspace === "estudios" && (
             <>
               <Tab active={vista === "home"} onClick={() => setVista("home")} icon={<BarChart2 size={15} />}>Resumen</Tab>
               <Tab active={vista === "lista"} onClick={() => setVista("lista")} icon={<Layers size={15} />}>Eventos</Tab>
-            </>
-          )}
-          {!p.soloLed && (
-            <>
-              <Tab active={vista === "personal"} onClick={() => setVista("personal")} icon={<Users size={15} />}>Personal</Tab>
-              <Tab active={vista === "asistencia"} onClick={() => setVista("asistencia")} icon={<CalendarCheck size={15} />}>Asistencia</Tab>
-            </>
-          )}
-          {!p.soloLed && !p.soloAsistencia && (
-            <>
               {p.clientes && (
                 <Tab active={vista === "clientes"} onClick={() => setVista("clientes")} icon={<Building2 size={15} />}>Clientes</Tab>
               )}
@@ -1009,10 +1178,34 @@ export default function PanelEventos() {
               </Tab>
             </>
           )}
-          {p.ledVer && (
-            <Tab active={vista === "led"} onClick={() => setVista("led")} icon={<Grid3x3 size={15} />}>
-              LED
-            </Tab>
+          {p.verLed && (p.soloLed || workspace === "led") && (
+            <>
+              <Tab active={vista === "home-led"} onClick={() => setVista("home-led")} icon={<BarChart2 size={15} />}>Resumen</Tab>
+              <Tab active={vista === "lista-led"} onClick={() => setVista("lista-led")} icon={<Layers size={15} />}>Eventos</Tab>
+              {p.clientesLed && (
+                <Tab active={vista === "clientes-led"} onClick={() => setVista("clientes-led")} icon={<Building2 size={15} />}>Clientes</Tab>
+              )}
+              <Tab active={vista === "dashboard-led"} onClick={() => setVista("dashboard-led")} icon={<AlertTriangle size={15} />}>
+                Pendientes
+                {(pendFactLed.length + pendCompLed.length + pendVencLed.length) > 0 && (
+                  <span className="ml-1.5 text-[10px] font-mono px-1.5 rounded-full"
+                    style={{ background: pendVencLed.length > 0 ? C.rose : C.amber, color: pendVencLed.length > 0 ? "#fff" : "#1a1200" }}>
+                    {pendFactLed.length + pendCompLed.length + pendVencLed.length}
+                  </span>
+                )}
+              </Tab>
+              {p.ledVer && (
+                <Tab active={vista === "led"} onClick={() => setVista("led")} icon={<Grid3x3 size={15} />}>
+                  Catálogo
+                </Tab>
+              )}
+            </>
+          )}
+          {!p.soloLed && (
+            <>
+              <Tab active={vista === "personal"} onClick={() => setVista("personal")} icon={<Users size={15} />}>Personal</Tab>
+              <Tab active={vista === "asistencia"} onClick={() => setVista("asistencia")} icon={<CalendarCheck size={15} />}>Asistencia</Tab>
+            </>
           )}
           {p.usuarios && (
             <Tab active={vista === "usuarios"} onClick={() => setVista("usuarios")} icon={<UserCog size={15} />}>
@@ -1126,8 +1319,8 @@ export default function PanelEventos() {
       <main className="px-4 sm:px-6 py-5 max-w-6xl mx-auto">
         {cargando ? (
           <div style={{ color: C.dim }} className="font-mono text-sm py-20 text-center">cargando…</div>
-        ) : p.soloLed ? (
-          <LedModulo perms={p} />
+        ) : p.soloLed && !LED_VISTAS.includes(vista) ? (
+          <ResumenLed eventosLed={eventosLed} onVer={(id) => { setVerIdLed(id); setVista("detalle-led"); }} />
         ) : p.soloAsistencia && vista !== "personal" && vista !== "asistencia" ? (
           <Personal
             personas={personas}
@@ -1182,6 +1375,57 @@ export default function PanelEventos() {
           />
         ) : vista === "led" && p.ledVer ? (
           <LedModulo perms={p} />
+        ) : vista === "home-led" && p.verLed ? (
+          <ResumenLed eventosLed={eventosLed} onVer={(id) => { setVerIdLed(id); setVista("detalle-led"); }} />
+        ) : vista === "lista-led" && p.verLed ? (
+          <ListaEventosLed
+            eventosLed={eventosLed}
+            busqueda={busquedaLed}
+            setBusqueda={setBusquedaLed}
+            perms={p}
+            onNuevo={() => { setEditIdLed(null); setVista("form-led"); }}
+            onVer={(id) => { setVerIdLed(id); setVista("detalle-led"); }}
+          />
+        ) : vista === "form-led" && p.verLed ? (
+          <FormEventoLed
+            base={eventoLedEdit || nuevoEventoLed()}
+            onCancel={() => { setVista("lista-led"); setEditIdLed(null); }}
+            onSave={guardarEventoLed}
+            guardando={guardando}
+            clientesLed={clientesLed}
+            onSaveClienteLed={guardarClienteLed}
+            perms={p}
+          />
+        ) : vista === "detalle-led" && eventoLedVer ? (
+          <DetalleLed
+            ev={eventoLedVer}
+            onBack={() => setVista("lista-led")}
+            onEdit={() => { setEditIdLed(eventoLedVer.id); setVista("form-led"); }}
+            onDelete={() => borrarEventoLed(eventoLedVer.id)}
+            onUpdate={(patch) => actualizarEventoLed(eventoLedVer.id, patch)}
+            perms={p}
+            usuario={usuario}
+            clientesLed={clientesLed}
+            onSaveClienteLed={guardarClienteLed}
+            eventosLed={eventosLed}
+            onUpdateEventoLed={actualizarEventoLed}
+          />
+        ) : vista === "dashboard-led" && p.verLed ? (
+          <Dashboard
+            pendFact={pendFactLed}
+            pendComp={pendCompLed}
+            pagosVencidos={pendVencLed}
+            onVer={(id) => { setVerIdLed(id); setVista("detalle-led"); }}
+          />
+        ) : vista === "clientes-led" && p.clientesLed ? (
+          <ClientesSection
+            clientes={clientesLed}
+            eventos={eventosLed}
+            onSave={guardarClienteLed}
+            onDelete={borrarClienteLed}
+            perms={{ ...p, clientes: p.clientesLed, clienteCrear: p.clienteLedCrear, clienteBorrar: p.clienteLedBorrar }}
+            onVer={(id) => { setVerIdLed(id); setVista("detalle-led"); }}
+          />
         ) : vista === "usuarios" && p.usuarios ? (
           <Usuarios
             usuarios={usuarios}
@@ -2910,6 +3154,544 @@ function LedEquiposTabla({ items, onSave, onDelete, editable }) {
             </tbody>
           </table>
         </div>
+      </div>
+    </div>
+  );
+}
+
+/* ====================== LED: RESUMEN ====================== */
+function ResumenLed({ eventosLed, onVer }) {
+  const hoy = new Date();
+  const [anio, setAnio] = useState(hoy.getFullYear());
+  const [mes, setMes] = useState(hoy.getMonth());
+
+  const prefijo = `${anio}-${String(mes + 1).padStart(2, "0")}`;
+  const eventosMes = useMemo(() => eventosLed.filter((e) => (e.fecha || "").startsWith(prefijo)), [eventosLed, prefijo]);
+
+  const navMes = (dir) => {
+    let m = mes + dir, a = anio;
+    if (m < 0) { m = 11; a--; }
+    if (m > 11) { m = 0; a++; }
+    setMes(m); setAnio(a);
+  };
+
+  const finStats = useMemo(() => {
+    let totalARS = 0, facturadoARS = 0, totalUSD = 0, facturadoUSD = 0;
+    eventosMes.forEach((e) => {
+      const tot = totalFacturable(e);
+      if ((e.moneda || "ARS") === "USD") { totalUSD += tot; if (e.facturado) facturadoUSD += tot; }
+      else { totalARS += tot; if (e.facturado) facturadoARS += tot; }
+    });
+    return { totalARS, facturadoARS, pendienteARS: totalARS - facturadoARS, totalUSD, facturadoUSD, pendienteUSD: totalUSD - facturadoUSD, tieneUSD: totalUSD > 0 };
+  }, [eventosMes]);
+
+  const contarPor = useCallback((campo) => {
+    const map = {};
+    eventosMes.forEach((e) => { const k = e[campo] || "Sin definir"; map[k] = (map[k] || 0) + 1; });
+    return Object.entries(map);
+  }, [eventosMes]);
+  const porTipo = useMemo(() => contarPor("tipoInstalacion"), [contarPor]);
+  const porUbicacion = useMemo(() => contarPor("ubicacion"), [contarPor]);
+
+  return (
+    <div className="fade">
+      <div className="flex items-center gap-2 mb-1">
+        <Grid3x3 size={18} color={C.gold} />
+        <h1 className="text-lg font-semibold">Resumen LED</h1>
+      </div>
+      <p className="text-xs mb-4" style={{ color: C.dim }}>Vista general de instalaciones y facturación LED.</p>
+
+      <div className="flex items-center gap-1 mb-4">
+        <IconBtn onClick={() => navMes(-1)} title="Mes anterior"><ChevronLeft size={16} /></IconBtn>
+        <span className="text-sm font-semibold w-36 text-center">{MESES_ES[mes]} {anio}</span>
+        <IconBtn onClick={() => navMes(1)} title="Mes siguiente"><ChevronRight size={16} /></IconBtn>
+      </div>
+
+      <div className="rounded-xl p-4 mb-5" style={{ background: C.panel, border: `1px solid ${C.border}` }}>
+        <h2 className="text-sm font-semibold mb-3">Facturación — {MESES_ES[mes]} {anio}</h2>
+        <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 mb-3">
+          {[
+            { label: "Total ARS", val: finStats.totalARS, color: C.gold },
+            { label: "Facturado ARS", val: finStats.facturadoARS, color: C.amber },
+            { label: "Sin facturar ARS", val: finStats.pendienteARS, color: C.gold, bold: true },
+          ].map(({ label, val, color, bold }) => (
+            <div key={label} className="rounded-xl p-3 flex flex-col gap-1" style={{ background: C.panel2, border: `1px solid ${bold ? color + "60" : C.border}` }}>
+              <span className={`text-[10px] font-semibold uppercase tracking-wide ${bold ? "font-extrabold" : ""}`} style={{ color }}>{label}</span>
+              <span className={`font-mono text-sm ${bold ? "font-extrabold text-base" : "font-bold"}`} style={{ color }}>{fmtMoneda(val, "ARS")}</span>
+            </div>
+          ))}
+        </div>
+        {finStats.tieneUSD && (
+          <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+            {[
+              { label: "Total USD", val: finStats.totalUSD, color: C.cyan },
+              { label: "Facturado USD", val: finStats.facturadoUSD, color: C.cyanMid },
+              { label: "Sin facturar USD", val: finStats.pendienteUSD, color: C.cyan, bold: true },
+            ].map(({ label, val, color, bold }) => (
+              <div key={label} className="rounded-xl p-3 flex flex-col gap-1" style={{ background: C.panel2, border: `1px solid ${bold ? color + "60" : C.border}` }}>
+                <span className={`text-[10px] font-semibold uppercase tracking-wide ${bold ? "font-extrabold" : ""}`} style={{ color }}>{label}</span>
+                <span className={`font-mono text-sm ${bold ? "font-extrabold text-base" : "font-bold"}`} style={{ color }}>{fmtMoneda(val, "USD")}</span>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+
+      <div className="grid sm:grid-cols-2 gap-4 mb-5">
+        <div className="rounded-xl p-4" style={{ background: C.panel, border: `1px solid ${C.border}` }}>
+          <h2 className="text-sm font-semibold mb-3">Tipo de instalación</h2>
+          {porTipo.length === 0 ? (
+            <p className="text-xs" style={{ color: C.dim }}>Sin trabajos este mes.</p>
+          ) : (
+            <div className="flex flex-wrap gap-2">{porTipo.map(([k, v]) => <Badge key={k} color={C.gold}>{k} ×{v}</Badge>)}</div>
+          )}
+        </div>
+        <div className="rounded-xl p-4" style={{ background: C.panel, border: `1px solid ${C.border}` }}>
+          <h2 className="text-sm font-semibold mb-3">Ubicación</h2>
+          {porUbicacion.length === 0 ? (
+            <p className="text-xs" style={{ color: C.dim }}>Sin trabajos este mes.</p>
+          ) : (
+            <div className="flex flex-wrap gap-2">{porUbicacion.map(([k, v]) => <Badge key={k} color={C.cyan}>{k} ×{v}</Badge>)}</div>
+          )}
+        </div>
+      </div>
+
+      <div className="rounded-xl p-4" style={{ background: C.panel, border: `1px solid ${C.border}` }}>
+        <h2 className="text-sm font-semibold mb-3">Trabajos del mes ({eventosMes.length})</h2>
+        {eventosMes.length === 0 ? (
+          <p className="text-xs" style={{ color: C.dim }}>Sin trabajos cargados este mes.</p>
+        ) : (
+          <div className="grid gap-2">
+            {eventosMes.map((e) => (
+              <button key={e.id} onClick={() => onVer(e.id)} className="text-left rounded-lg p-3 flex items-center justify-between gap-2"
+                style={{ background: C.panel2, border: `1px solid ${C.border}` }}>
+                <div className="min-w-0">
+                  <div className="font-medium text-sm truncate">{e.nombre || "Sin nombre"}</div>
+                  <div className="text-[11px]" style={{ color: C.dim }}>{fmtFecha(e.fecha)} · {e.tipoInstalacion || "—"} · {e.ubicacion || "—"}</div>
+                </div>
+                <span className="font-mono text-xs shrink-0" style={{ color: C.gold }}>{fmtMoneda(totalFacturable(e), e.moneda)}</span>
+              </button>
+            ))}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+/* ====================== LED: LISTA DE EVENTOS ====================== */
+function ListaEventosLed({ eventosLed, busqueda, setBusqueda, perms, onNuevo, onVer }) {
+  const filtrados = useMemo(() => {
+    const q = busqueda.trim().toLowerCase();
+    if (!q) return eventosLed;
+    return eventosLed.filter((e) => (e.nombre + " " + e.razonSocial).toLowerCase().includes(q));
+  }, [eventosLed, busqueda]);
+
+  const estadoInfo = (e) => {
+    if (!e.confirmado) return { label: "Borrador", color: C.amber };
+    if (!e.facturado) return { label: "Listo p/ facturar", color: C.cyan };
+    if (!e.comprobantePago) return { label: "S/comprob.", color: C.rose };
+    return { label: "Facturado", color: C.green };
+  };
+
+  return (
+    <div className="fade">
+      <div className="flex flex-wrap gap-2 mb-4 items-center">
+        <div className="relative flex-1 min-w-[180px]">
+          <Search size={15} color={C.dim} className="absolute left-3 top-1/2 -translate-y-1/2" />
+          <input value={busqueda} onChange={(e) => setBusqueda(e.target.value)} placeholder="Buscar trabajo, cliente…"
+            className="w-full text-sm pl-9 pr-3 py-2 rounded-md" style={{ background: C.panel, border: `1px solid ${C.border}`, color: C.text }} />
+        </div>
+        {perms.eventoLedCrear && (
+          <button onClick={onNuevo} className="flex items-center gap-1.5 text-sm font-medium px-3 py-2 rounded-md" style={{ background: C.gold, color: C.onGold }}>
+            <Plus size={16} /> Nuevo trabajo
+          </button>
+        )}
+      </div>
+
+      {filtrados.length === 0 ? (
+        <div className="rounded-xl text-center py-16 px-4" style={{ background: C.panel, border: `1px dashed ${C.border}` }}>
+          <Grid3x3 size={28} color={C.dim} className="mx-auto mb-3" />
+          <p className="text-sm mb-3" style={{ color: C.dim }}>Todavía no cargaste trabajos LED.</p>
+          {perms.eventoLedCrear && (
+            <button onClick={onNuevo} className="text-sm font-medium px-4 py-2 rounded-md" style={{ background: C.gold, color: C.onGold }}>Cargar el primero</button>
+          )}
+        </div>
+      ) : (
+        <div className="grid gap-2">
+          {filtrados.map((e) => {
+            const info = estadoInfo(e);
+            return (
+              <button key={e.id} onClick={() => onVer(e.id)} className="text-left rounded-xl p-3.5 flex items-center gap-3 w-full"
+                style={{ background: C.panel, border: `1px solid ${C.border}` }}>
+                <div className="flex-1 min-w-0">
+                  <div className="font-medium truncate">{e.nombre || "Sin nombre"}</div>
+                  <div className="flex flex-wrap gap-1.5 mt-1.5 text-xs items-center" style={{ color: C.dim }}>
+                    <span className="font-mono">{fmtFecha(e.fecha)}</span>
+                    {e.tipoInstalacion && <Badge color={C.gold}>{e.tipoInstalacion}</Badge>}
+                    {e.ubicacion && <Badge color={C.cyan}>{e.ubicacion}</Badge>}
+                    {e.razonSocial && <span>{e.razonSocial}</span>}
+                  </div>
+                </div>
+                <span className="text-[11px] font-semibold px-2 py-0.5 rounded-full shrink-0" style={{ background: `${info.color}1e`, color: info.color, border: `1px solid ${info.color}55` }}>{info.label}</span>
+                <span className="font-mono text-sm shrink-0" style={{ color: C.gold }}>{fmtMoneda(totalFacturable(e), e.moneda)}</span>
+              </button>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
+
+/* ====================== LED: FORMULARIO ====================== */
+function FormEventoLed({ base, onCancel, onSave, guardando, clientesLed = [], onSaveClienteLed, perms = {} }) {
+  const [f, setF] = useState(() => ({ ...base }));
+  const set = (k, v) => setF((p) => ({ ...p, [k]: v }));
+  const [fechaArmadoInput, setFechaArmadoInput] = useState("");
+  const [fechaDesarmeInput, setFechaDesarmeInput] = useState("");
+
+  const seleccionarClienteLed = (id) => {
+    if (id === "__nuevo") { set("clienteId", ""); return; }
+    const c = clientesLed.find((x) => x.id === id);
+    if (!c) { set("clienteId", ""); return; }
+    setF((p) => ({ ...p, clienteId: c.id, razonSocial: c.razonSocial || "", cuit: c.cuit || "" }));
+  };
+
+  const agregarFechaArmado = () => {
+    if (!fechaArmadoInput) return;
+    setF((p) => ({ ...p, armadoFechas: [...new Set([...(p.armadoFechas || []), fechaArmadoInput])].sort() }));
+    setFechaArmadoInput("");
+  };
+  const quitarFechaArmado = (fecha) => setF((p) => ({ ...p, armadoFechas: p.armadoFechas.filter((x) => x !== fecha) }));
+  const agregarFechaDesarme = () => {
+    if (!fechaDesarmeInput) return;
+    setF((p) => ({ ...p, desarmeFechas: [...new Set([...(p.desarmeFechas || []), fechaDesarmeInput])].sort() }));
+    setFechaDesarmeInput("");
+  };
+  const quitarFechaDesarme = (fecha) => setF((p) => ({ ...p, desarmeFechas: p.desarmeFechas.filter((x) => x !== fecha) }));
+
+  const agregarCuota = () => setF((p) => ({ ...p, cuotasPago: [...(p.cuotasPago || []), { id: crypto.randomUUID(), label: "", dias: "", fecha: "", monto: "" }] }));
+  const setCuota = (idx, campo, val) => setF((p) => {
+    const arr = [...(p.cuotasPago || [])];
+    arr[idx] = { ...arr[idx], [campo]: val };
+    if (campo === "fecha" && val) arr[idx].dias = "";
+    if (campo === "dias" && val) arr[idx].fecha = "";
+    return { ...p, cuotasPago: arr };
+  });
+  const quitarCuota = (idx) => setF((p) => ({ ...p, cuotasPago: p.cuotasPago.filter((_, i) => i !== idx) }));
+
+  const onCantFacturasChange = (v) => {
+    const n = Number(v) || 0;
+    set("cantFacturas", v);
+    if (n > 1) {
+      setF((p) => {
+        const prev = p.facturasDesglose || [];
+        const arr = Array.from({ length: n }, (_, i) => prev[i] || { montoM1: "", montoM2: "" });
+        return { ...p, facturasDesglose: arr };
+      });
+    } else set("facturasDesglose", []);
+  };
+  const setDesglose = (idx, campo, val) => setF((p) => {
+    const arr = [...(p.facturasDesglose || [])];
+    arr[idx] = { ...arr[idx], [campo]: val };
+    return { ...p, facturasDesglose: arr };
+  });
+
+  const guardar = async () => {
+    if (!f.nombre.trim()) { alert("Poné el nombre del trabajo."); return; }
+    const datos = { ...f };
+    datos.fecha = fechaEventoLed(datos);
+    const cant = Number(datos.cantFacturas) || 0;
+    if (cant > 1 && datos.facturasDesglose?.length > 0) {
+      datos.montoM1 = String(datos.facturasDesglose.reduce((s, d) => s + (Number(d.montoM1) || 0), 0));
+      datos.montoM2 = String(datos.facturasDesglose.reduce((s, d) => s + (Number(d.montoM2) || 0), 0));
+    } else {
+      datos.facturasDesglose = [];
+    }
+    datos.cuotasPago = (datos.cuotasPago || []).filter((c) => c.label?.trim() || c.dias || c.fecha);
+    if (!datos.clienteId && datos.razonSocial?.trim() && onSaveClienteLed && perms.clienteLedCrear) {
+      try {
+        const nuevo = await onSaveClienteLed({ razonSocial: datos.razonSocial.trim(), cuit: datos.cuit || "" });
+        if (nuevo?.id) datos.clienteId = nuevo.id;
+      } catch (e) {
+        console.error("No se pudo guardar el cliente LED nuevo:", e);
+      }
+    }
+    onSave(datos);
+  };
+
+  const cantNum = Number(f.cantFacturas) || 0;
+  const usaDesglose = cantNum > 1;
+
+  return (
+    <div className="fade max-w-3xl mx-auto">
+      <div className="flex items-center gap-2 mb-4">
+        <IconBtn onClick={onCancel} title="Volver"><ChevronLeft size={18} /></IconBtn>
+        <h1 className="text-lg font-semibold">{f.nombre ? "Editar trabajo LED" : "Nuevo trabajo LED"}</h1>
+      </div>
+
+      <div className="grid gap-4">
+        <Seccion titulo="Datos generales" icon={<Grid3x3 size={15} color={C.gold} />}>
+          <Field label="Nombre del trabajo" full>
+            <Input value={f.nombre} onChange={(v) => set("nombre", v)} placeholder="Ej: Instalación fachada Cliente X" />
+          </Field>
+          <Field label="Tipo de instalación">
+            <Select value={f.tipoInstalacion} onChange={(v) => set("tipoInstalacion", v)} options={TIPO_INSTALACION_LED} placeholder="Elegir" />
+          </Field>
+          <Field label="Ubicación">
+            <Select value={f.ubicacion} onChange={(v) => set("ubicacion", v)} options={UBICACION_LED} placeholder="Elegir" />
+          </Field>
+          <Field label="Ancho pantalla (m)">
+            <Input type="number" value={f.anchoPantallaM} onChange={(v) => set("anchoPantallaM", v)} placeholder="0" />
+          </Field>
+          <Field label="Alto pantalla (m)">
+            <Input type="number" value={f.altoPantallaM} onChange={(v) => set("altoPantallaM", v)} placeholder="0" />
+          </Field>
+        </Seccion>
+
+        <Seccion titulo="Partes del trabajo" icon={<Calendar size={15} color={C.amber} />}>
+          <Field label="Armado (fechas)" full>
+            {(f.armadoFechas || []).length > 0 && (
+              <div className="flex flex-wrap gap-1.5 mb-2">
+                {f.armadoFechas.map((fe) => (
+                  <span key={fe} className="flex items-center gap-1 text-xs px-2 py-1 rounded-full" style={{ background: C.panel2, border: `1px solid ${C.border}` }}>
+                    {fmtFecha(fe)} <button type="button" onClick={() => quitarFechaArmado(fe)} style={{ color: C.dim }}><X size={11} /></button>
+                  </span>
+                ))}
+              </div>
+            )}
+            <div className="flex gap-2">
+              <input type="date" value={fechaArmadoInput} onChange={(e) => setFechaArmadoInput(e.target.value)}
+                className="text-sm px-3 py-2 rounded-md" style={{ background: C.panel2, border: `1px solid ${C.border}`, color: C.text, colorScheme: "dark" }} />
+              <button type="button" onClick={agregarFechaArmado} className="px-3 py-2 rounded-md" style={{ background: C.panel2, border: `1px solid ${C.border}`, color: C.dim }}><Plus size={15} /></button>
+            </div>
+          </Field>
+          <Field label="Servicio — inicio">
+            <Input type="date" value={f.servicioInicio} onChange={(v) => set("servicioInicio", v)} />
+          </Field>
+          <Field label="Servicio — fin">
+            <Input type="date" value={f.servicioFin} onChange={(v) => set("servicioFin", v)} />
+          </Field>
+          <Field label="Desarme (fechas)" full>
+            {(f.desarmeFechas || []).length > 0 && (
+              <div className="flex flex-wrap gap-1.5 mb-2">
+                {f.desarmeFechas.map((fe) => (
+                  <span key={fe} className="flex items-center gap-1 text-xs px-2 py-1 rounded-full" style={{ background: C.panel2, border: `1px solid ${C.border}` }}>
+                    {fmtFecha(fe)} <button type="button" onClick={() => quitarFechaDesarme(fe)} style={{ color: C.dim }}><X size={11} /></button>
+                  </span>
+                ))}
+              </div>
+            )}
+            <div className="flex gap-2">
+              <input type="date" value={fechaDesarmeInput} onChange={(e) => setFechaDesarmeInput(e.target.value)}
+                className="text-sm px-3 py-2 rounded-md" style={{ background: C.panel2, border: `1px solid ${C.border}`, color: C.text, colorScheme: "dark" }} />
+              <button type="button" onClick={agregarFechaDesarme} className="px-3 py-2 rounded-md" style={{ background: C.panel2, border: `1px solid ${C.border}`, color: C.dim }}><Plus size={15} /></button>
+            </div>
+          </Field>
+        </Seccion>
+
+        <Seccion titulo="Facturación" icon={<DollarSign size={15} color={C.green} />}>
+          <Field label="Cliente" full>
+            <select value={f.clienteId || "__nuevo"} onChange={(e) => seleccionarClienteLed(e.target.value)}
+              className="w-full text-sm px-3 py-2 rounded-md" style={{ background: C.panel2, border: `1px solid ${C.border}`, color: f.clienteId ? C.text : C.dim, colorScheme: "dark" }}>
+              <option value="__nuevo" style={{ background: C.panel2, color: C.dim }}>➕ Otro / nuevo cliente (escribir a mano)</option>
+              {clientesLed.map((c) => (
+                <option key={c.id} value={c.id} style={{ background: C.panel2, color: C.text }}>{c.razonSocial}{c.cuit ? ` — CUIT ${c.cuit}` : ""}</option>
+              ))}
+            </select>
+          </Field>
+          <Field label="Razón social">
+            <Input value={f.razonSocial} onChange={(v) => set("razonSocial", v)} placeholder="Razón social" />
+          </Field>
+          <Field label="CUIT">
+            <Input value={f.cuit} onChange={(v) => set("cuit", v)} placeholder="30-12345678-9" />
+          </Field>
+          <Field label="Distribución" full>
+            <div className="grid sm:grid-cols-3 gap-2">
+              {DISTRIBUCION_OPCIONES.map((o) => {
+                const active = (f.distribucion || "M1") === o.value;
+                return (
+                  <button type="button" key={o.value} onClick={() => set("distribucion", o.value)}
+                    className="text-left rounded-md px-3 py-2 transition-colors"
+                    style={{ background: active ? C.gold : C.panel2, color: active ? C.onGold : C.text, border: `1px solid ${active ? C.gold : C.border}` }}>
+                    <span className="text-sm font-medium block">{o.label}</span>
+                    <span className="text-[11px] block" style={{ color: active ? C.onGold : C.dim }}>{o.help}</span>
+                  </button>
+                );
+              })}
+            </div>
+          </Field>
+          <Field label="Moneda">
+            <Select value={f.moneda} onChange={(v) => set("moneda", v)} options={MONEDAS} />
+          </Field>
+          {f.moneda === "USD" && (
+            <Field label="Tipo de cambio USD → ARS">
+              <Input type="number" value={f.tipoCambio} onChange={(v) => set("tipoCambio", v)} placeholder="Ej: 1200" />
+            </Field>
+          )}
+          <Field label="Cant. facturas a emitir">
+            <Input type="number" value={f.cantFacturas} onChange={onCantFacturasChange} placeholder="1" min="1" />
+          </Field>
+          {usaDesglose ? (
+            <Field label="Montos por factura" full>
+              <div className="grid gap-2">
+                {(f.facturasDesglose || []).map((d, idx) => (
+                  <div key={idx} className="rounded-lg p-2.5" style={{ background: C.panel2, border: `1px solid ${C.border}` }}>
+                    <span className="text-[11px] font-semibold block mb-1.5" style={{ color: C.amber }}>Factura {idx + 1}</span>
+                    <div className="grid gap-1.5">
+                      {(f.distribucion === "M1" || f.distribucion === "MIXTO") && (
+                        <div className="flex items-center gap-2"><span className="text-[11px] w-20 shrink-0" style={{ color: C.dim }}>M1 (neto)</span><Input type="number" value={d.montoM1} onChange={(v) => setDesglose(idx, "montoM1", v)} placeholder="0" /></div>
+                      )}
+                      {(f.distribucion === "M2" || f.distribucion === "MIXTO") && (
+                        <div className="flex items-center gap-2"><span className="text-[11px] w-20 shrink-0" style={{ color: C.dim }}>M2 (efect.)</span><Input type="number" value={d.montoM2} onChange={(v) => setDesglose(idx, "montoM2", v)} placeholder="0" /></div>
+                      )}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </Field>
+          ) : (
+            <>
+              {(f.distribucion === "M1" || f.distribucion === "MIXTO") && (
+                <Field label="Monto M1 (neto)"><Input type="number" value={f.montoM1} onChange={(v) => set("montoM1", v)} placeholder="0" /></Field>
+              )}
+              {(f.distribucion === "M2" || f.distribucion === "MIXTO") && (
+                <Field label="Monto M2 (efectivo)"><Input type="number" value={f.montoM2} onChange={(v) => set("montoM2", v)} placeholder="0" /></Field>
+              )}
+            </>
+          )}
+          <Field label="Medio de pago">
+            <Input value={f.medioPago} onChange={(v) => set("medioPago", v)} placeholder="Transferencia, efectivo…" />
+          </Field>
+          <Field label="Forma de pago">
+            <Input value={f.formaPago} onChange={(v) => set("formaPago", v)} placeholder="Contado, 30 días, 2 semanas…" />
+          </Field>
+          <Field label="Cronograma de pagos / facturación" full>
+            <div className="rounded-lg p-2.5" style={{ background: C.panel2, border: `1px solid ${C.border}` }}>
+              <div className="grid gap-2">
+                {(f.cuotasPago || []).map((c, idx) => (
+                  <div key={c.id || idx} className="rounded-md p-2" style={{ background: C.panel, border: `1px solid ${C.border}` }}>
+                    <div className="flex items-center gap-2 mb-1.5">
+                      <Input value={c.label} onChange={(v) => setCuota(idx, "label", v)} placeholder="Ej: Anticipo, Saldo…" />
+                      <IconBtn onClick={() => quitarCuota(idx)} title="Quitar" danger><X size={14} /></IconBtn>
+                    </div>
+                    <div className="grid grid-cols-2 gap-1.5">
+                      <div><label className="text-[10px] block mb-0.5" style={{ color: C.dim }}>Días desde el evento</label><Input type="number" value={c.dias} onChange={(v) => setCuota(idx, "dias", v)} placeholder="Ej: 0, 30…" /></div>
+                      <div><label className="text-[10px] block mb-0.5" style={{ color: C.dim }}>o fecha fija</label><Input type="date" value={c.fecha} onChange={(v) => setCuota(idx, "fecha", v)} /></div>
+                    </div>
+                    <div className="mt-1.5"><label className="text-[10px] block mb-0.5" style={{ color: C.dim }}>Monto (opcional)</label><Input type="number" value={c.monto} onChange={(v) => setCuota(idx, "monto", v)} placeholder="0" /></div>
+                  </div>
+                ))}
+              </div>
+              <button type="button" onClick={agregarCuota} className="w-full mt-2 text-xs font-medium px-3 py-1.5 rounded-md flex items-center justify-center gap-1.5" style={{ background: C.panel, border: `1px solid ${C.border}`, color: C.gold }}>
+                <Plus size={13} /> Agregar cuota
+              </button>
+            </div>
+          </Field>
+        </Seccion>
+
+        <Seccion titulo="Observaciones" icon={<FileText size={15} color={C.dim} />}>
+          <Field label="Observaciones" full>
+            <textarea value={f.observaciones} onChange={(e) => set("observaciones", e.target.value)} placeholder="Notas, pendientes, detalles del trabajo…"
+              rows={3} className="w-full text-sm px-3 py-2 rounded-md" style={{ background: C.panel2, border: `1px solid ${C.border}`, color: C.text }} />
+          </Field>
+        </Seccion>
+
+        <div className="flex gap-2 justify-end">
+          <button onClick={onCancel} className="text-sm px-4 py-2 rounded-md" style={{ background: C.panel2, border: `1px solid ${C.border}`, color: C.dim }}>Cancelar</button>
+          <button onClick={guardar} disabled={guardando} className="text-sm font-medium px-5 py-2 rounded-md flex items-center gap-1.5 disabled:opacity-50" style={{ background: C.gold, color: C.onGold }}>
+            <Check size={16} /> {guardando ? "Guardando…" : "Guardar"}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* ====================== LED: DETALLE ====================== */
+function DetalleLed({ ev, onBack, onEdit, onDelete, onUpdate, perms = {}, usuario = {}, clientesLed = [], onSaveClienteLed, eventosLed = [], onUpdateEventoLed }) {
+  useEffect(() => {
+    if (usuario?.id && ev?.id) marcarLeido(ev.id, usuario.id);
+  }, [ev?.id, ev?.mensajes?.length, usuario?.id]);
+
+  const permsFact = { ...perms, facturacionEditar: perms.facturacionLedEditar, eventoFacturar: perms.eventoLedFacturar, clienteCrear: perms.clienteLedCrear };
+
+  return (
+    <div className="fade">
+      <div className="flex items-center gap-2 mb-4 flex-wrap">
+        <IconBtn onClick={onBack} title="Volver"><ChevronLeft size={18} /></IconBtn>
+        <h1 className="text-lg font-semibold flex-1 truncate">{ev.nombre || "Sin nombre"}</h1>
+        {perms.eventoLedEditar && (
+          <button onClick={onEdit} className="text-sm flex items-center gap-1.5 px-3 py-1.5 rounded-md" style={{ background: C.panel2, border: `1px solid ${C.border}` }}><Pencil size={14} /> Editar</button>
+        )}
+        {perms.eventoLedBorrar && (
+          <IconBtn onClick={() => { if (confirm("¿Borrar trabajo?")) onDelete(); }} title="Borrar" danger><Trash2 size={16} /></IconBtn>
+        )}
+      </div>
+
+      <div className="flex flex-wrap gap-1.5 mb-4">
+        {ev.tipoInstalacion && <Badge color={C.gold}>{ev.tipoInstalacion}</Badge>}
+        {ev.ubicacion && <Badge color={C.cyan}>{ev.ubicacion}</Badge>}
+      </div>
+
+      {!ev.confirmado && (
+        <div className="rounded-xl p-4 mb-4 flex items-center gap-3 flex-wrap" style={{ background: `${C.amber}10`, border: `1px dashed ${C.amber}50` }}>
+          <div className="flex-1 min-w-0">
+            <div className="text-sm font-semibold flex items-center gap-1.5" style={{ color: C.amber }}><Pencil size={14} /> Borrador</div>
+            <p className="text-xs mt-0.5" style={{ color: C.dim }}>Este trabajo está en modo borrador. Confirmalo cuando esté listo para facturar.</p>
+          </div>
+          {perms.eventoLedConfirmar && (
+            <button onClick={() => onUpdate({ confirmado: true, confirmadoAt: new Date().toISOString() })}
+              className="text-sm font-semibold px-4 py-2 rounded-md flex items-center gap-1.5 shrink-0" style={{ background: C.green, color: "#000" }}>
+              <Check size={15} /> Confirmar listo para facturar
+            </button>
+          )}
+        </div>
+      )}
+      {ev.confirmado && !ev.facturado && (
+        <div className="rounded-xl px-4 py-2.5 mb-4 flex items-center gap-2 justify-between flex-wrap" style={{ background: `${C.green}12`, border: `1px solid ${C.green}40` }}>
+          <div className="flex items-center gap-2 text-sm" style={{ color: C.green }}><CheckCircle size={15} /><span className="font-medium">Confirmado</span><span className="text-xs" style={{ color: C.dim }}>— pendiente de facturación</span></div>
+          {perms.eventoLedConfirmar && (
+            <button onClick={() => { if (confirm("¿Volver a modo borrador?")) onUpdate({ confirmado: false, confirmadoAt: null }); }}
+              className="text-[11px] px-2 py-1 rounded hover:opacity-80" style={{ color: C.dim, border: `1px solid ${C.border}` }}>
+              Deshacer confirmación
+            </button>
+          )}
+        </div>
+      )}
+
+      <div className="grid sm:grid-cols-2 gap-4">
+        <MensajesEquipo ev={ev} usuario={usuario} onUpdate={onUpdate} />
+
+        <Card titulo="Datos del trabajo" icon={<Grid3x3 size={15} color={C.gold} />}>
+          <Dato k="Tipo de instalación" v={ev.tipoInstalacion || "—"} />
+          <Dato k="Ubicación" v={ev.ubicacion || "—"} />
+          <Dato k="Tamaño pantalla" v={ev.anchoPantallaM && ev.altoPantallaM ? `${ev.anchoPantallaM} × ${ev.altoPantallaM} m` : "—"} />
+        </Card>
+
+        <FacturacionCard ev={ev} onUpdate={onUpdate} perms={permsFact} clientes={clientesLed} onSaveCliente={onSaveClienteLed} />
+
+        <PagosCard ev={ev} onUpdate={onUpdate} onUpdateEvento={onUpdateEventoLed} perms={permsFact} eventos={eventosLed} />
+
+        <Card titulo="Estado administrativo" icon={<DollarSign size={15} color={C.gold} />}>
+          <p className="text-xs mb-1" style={{ color: C.dim }}>
+            {perms.eventoLedFacturar ? "Editable solo por administración una vez creado el trabajo." : "Solo administración / contabilidad puede modificar este estado."}
+          </p>
+          <Toggle checked={ev.facturado} onChange={(v) => onUpdate({ facturado: v, ...(v ? { facturadoAt: new Date().toISOString() } : { facturadoAt: null }) })} label="Facturado" disabled={!perms.eventoLedFacturar} />
+          <Toggle checked={ev.comprobantePago} onChange={(v) => onUpdate({ comprobantePago: v, ...(v ? { comprobantePagoAt: new Date().toISOString() } : { comprobantePagoAt: null }) })} label="Comprobante de pago adjunto" disabled={!perms.eventoLedFacturar} />
+          <Toggle checked={ev.facturadoTotal} onChange={(v) => onUpdate({ facturadoTotal: v })} label="Facturado total" disabled={!perms.eventoLedFacturar} />
+        </Card>
+
+        <Card titulo="Partes del trabajo" icon={<Calendar size={15} color={C.amber} />}>
+          <Dato k="Armado" v={(ev.armadoFechas || []).length > 0 ? ev.armadoFechas.map(fmtFecha).join(", ") : "Sin fechas"} />
+          <Dato k="Servicio" v={ev.servicioInicio && ev.servicioFin ? `${fmtFecha(ev.servicioInicio)} → ${fmtFecha(ev.servicioFin)}` : "Sin definir"} />
+          <Dato k="Desarme" v={(ev.desarmeFechas || []).length > 0 ? ev.desarmeFechas.map(fmtFecha).join(", ") : "Sin fechas"} />
+        </Card>
+
+        <Card titulo="Observaciones" icon={<FileText size={15} color={C.dim} />}>
+          <p className="text-sm" style={{ color: ev.observaciones ? C.text : C.dim }}>{ev.observaciones || "Sin observaciones."}</p>
+        </Card>
       </div>
     </div>
   );

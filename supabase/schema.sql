@@ -410,6 +410,113 @@ begin
 end $$;
 
 -- ---------------------------------------------------------------------
+-- LED: clientes y eventos/trabajos (instalación fija o alquiler), en
+-- paralelo a "clientes"/"eventos" de Estudios pero con su propio negocio.
+-- ---------------------------------------------------------------------
+create table if not exists public.clientes_led (
+  id uuid primary key default gen_random_uuid(),
+  created_at timestamptz not null default now(),
+  razon_social text not null default '',
+  cuit text,
+  telefono text,
+  email text,
+  domicilio text,
+  director jsonb not null default '{}'::jsonb,
+  contactos jsonb not null default '[]'::jsonb,
+  notas text,
+  activo boolean not null default true
+);
+alter table public.clientes_led enable row level security;
+drop policy if exists "Acceso interno completo" on public.clientes_led;
+create policy "Acceso interno completo"
+  on public.clientes_led
+  for all
+  using (true)
+  with check (true);
+do $$
+begin
+  if not exists (
+    select 1 from pg_publication_tables
+    where pubname = 'supabase_realtime' and tablename = 'clientes_led'
+  ) then
+    alter publication supabase_realtime add table public.clientes_led;
+  end if;
+end $$;
+
+create table if not exists public.eventos_led (
+  id uuid primary key default gen_random_uuid(),
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+
+  fecha date,
+  nombre text not null default '',
+
+  -- Instalación fija o alquiler/evento temporal; interior o exterior;
+  -- tamaño de pantalla deseado — insumos para sugerir módulo + reproductor.
+  tipo_instalacion text,           -- 'fija' | 'temporal'
+  ubicacion text,                  -- 'indoor' | 'outdoor'
+  ancho_pantalla_m numeric,
+  alto_pantalla_m numeric,
+
+  -- Partes: Armado y Desarme son fechas puntuales (como Estudios); Servicio
+  -- es un período continuo (fecha_inicio -> fecha_fin), no días sueltos.
+  armado_fechas jsonb not null default '[]'::jsonb,
+  servicio_inicio date,
+  servicio_fin date,
+  desarme_fechas jsonb not null default '[]'::jsonb,
+
+  cliente_id text,
+  razon_social text,
+  cuit text,
+  empresa text,
+  moneda text default 'ARS',
+  distribucion text default 'M1',
+  monto_m1 numeric,
+  monto_m2 numeric,
+  cant_facturas integer,
+  facturas_desglose jsonb not null default '[]'::jsonb,
+  tipo_cambio numeric,
+  medio_pago text,
+  forma_pago text,
+  cuotas_pago jsonb not null default '[]'::jsonb,
+
+  facturas jsonb not null default '[]'::jsonb,
+  comprobantes jsonb not null default '[]'::jsonb,
+  pagos jsonb not null default '[]'::jsonb,
+  mensajes jsonb not null default '[]'::jsonb,
+
+  facturado boolean not null default false,
+  comprobante_pago boolean not null default false,
+  facturado_total boolean not null default false,
+  confirmado boolean not null default false,
+  confirmado_at timestamptz,
+  facturado_at timestamptz,
+  comprobante_pago_at timestamptz,
+
+  observaciones text
+);
+drop trigger if exists trg_eventos_led_updated_at on public.eventos_led;
+create trigger trg_eventos_led_updated_at
+  before update on public.eventos_led
+  for each row execute function public.set_updated_at();
+alter table public.eventos_led enable row level security;
+drop policy if exists "Acceso interno completo" on public.eventos_led;
+create policy "Acceso interno completo"
+  on public.eventos_led
+  for all
+  using (true)
+  with check (true);
+do $$
+begin
+  if not exists (
+    select 1 from pg_publication_tables
+    where pubname = 'supabase_realtime' and tablename = 'eventos_led'
+  ) then
+    alter publication supabase_realtime add table public.eventos_led;
+  end if;
+end $$;
+
+-- ---------------------------------------------------------------------
 -- Storage: bucket para facturas y comprobantes de pago de cada evento
 -- ---------------------------------------------------------------------
 insert into storage.buckets (id, name, public)

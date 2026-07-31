@@ -234,6 +234,11 @@ export function perms(rol) {
         liberarPersona: true,
         usuarios: true,
         ledVer: true, ledEditar: true,
+        verLed: true,
+        eventoLedCrear: true, eventoLedEditar: true, eventoLedBorrar: true,
+        eventoLedConfirmar: true, eventoLedFacturar: true, facturacionLedEditar: true,
+        archivosLed: true, archivosLedVer: true,
+        clientesLed: true, clienteLedCrear: true, clienteLedBorrar: true,
       };
     case "contabilidad":
       return {
@@ -246,6 +251,11 @@ export function perms(rol) {
         liberarPersona: false,
         usuarios: false,
         ledVer: false, ledEditar: false,
+        verLed: true,
+        eventoLedCrear: false, eventoLedEditar: true, eventoLedBorrar: true,
+        eventoLedConfirmar: false, eventoLedFacturar: true, facturacionLedEditar: true,
+        archivosLed: true, archivosLedVer: true,
+        clientesLed: true, clienteLedCrear: true, clienteLedBorrar: true,
       };
     case "produccion":
       return {
@@ -257,7 +267,12 @@ export function perms(rol) {
         importarExportar: true,
         liberarPersona: true,
         usuarios: false,
-        ledVer: true, ledEditar: false,
+        ledVer: false, ledEditar: false,
+        verLed: false,
+        eventoLedCrear: false, eventoLedEditar: false, eventoLedBorrar: false,
+        eventoLedConfirmar: false, eventoLedFacturar: false, facturacionLedEditar: false,
+        archivosLed: false, archivosLedVer: false,
+        clientesLed: false, clienteLedCrear: false, clienteLedBorrar: false,
       };
     case "led":
       return {
@@ -271,6 +286,11 @@ export function perms(rol) {
         usuarios: false,
         ledVer: true, ledEditar: true,
         soloLed: true,
+        verLed: true,
+        eventoLedCrear: true, eventoLedEditar: true, eventoLedBorrar: true,
+        eventoLedConfirmar: true, eventoLedFacturar: true, facturacionLedEditar: true,
+        archivosLed: true, archivosLedVer: true,
+        clientesLed: true, clienteLedCrear: true, clienteLedBorrar: true,
       };
     case "asistencia":
       return {
@@ -284,6 +304,11 @@ export function perms(rol) {
         usuarios: false,
         ledVer: false, ledEditar: false,
         soloAsistencia: true,
+        verLed: false,
+        eventoLedCrear: false, eventoLedEditar: false, eventoLedBorrar: false,
+        eventoLedConfirmar: false, eventoLedFacturar: false, facturacionLedEditar: false,
+        archivosLed: false, archivosLedVer: false,
+        clientesLed: false, clienteLedCrear: false, clienteLedBorrar: false,
       };
     case "espectador":
     default:
@@ -297,6 +322,11 @@ export function perms(rol) {
         liberarPersona: false,
         usuarios: false,
         ledVer: false, ledEditar: false,
+        verLed: true,
+        eventoLedCrear: false, eventoLedEditar: false, eventoLedBorrar: false,
+        eventoLedConfirmar: false, eventoLedFacturar: false, facturacionLedEditar: false,
+        archivosLed: false, archivosLedVer: true,
+        clientesLed: true, clienteLedCrear: false, clienteLedBorrar: false,
       };
   }
 }

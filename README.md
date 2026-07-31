@@ -20,8 +20,17 @@ desde cualquier computadora o celular. Sin Supabase configurado, funciona en
 
 ## 1. Pantallas
 
-Toda la app requiere **iniciar sesión** (ver sección 6). La navegación es por
-pestañas en el header:
+Toda la app requiere **iniciar sesión** (ver sección 6). Hay dos **espacios
+de trabajo** — **Estudios** (producción audiovisual) y **LED** (venta y
+alquiler de pantallas) — cada uno con su propio Resumen/Eventos/Clientes/
+Pendientes y sus propios datos (clientes y trabajos completamente separados
+entre los dos negocios). Un selector "Estudios | LED" en el header cambia
+cuál se ve; solo aparece para quien tiene acceso a ambos (admin,
+contabilidad, espectador). Producción solo ve Estudios y el rol **LED** solo
+ve LED — a ninguno de los dos les aparece el selector. Personal, Asistencia
+y Usuarios son comunes a toda la empresa, no dependen del espacio elegido.
+
+Dentro de cada espacio, la navegación es por pestañas en el header:
 
 - **Resumen**: pantalla de inicio. Selector de mes, calendario mensual con
   los eventos coloreados por fase de producción, tarjetas de estadísticas
@@ -60,13 +69,23 @@ pestañas en el header:
   que contratan a Cacodelphia), con cuenta corriente por moneda.
 - **Pendientes**: tres tablas — pagos vencidos, eventos sin facturar y
   eventos facturados sin comprobante de pago cargado.
-- **LED**: catálogo de módulos de pantalla LED y equipos de video (senders,
-  escaladores, media servers, procesadores) para venta y alquiler, con
-  alta/edición/borrado y buscador. Pensado para un futuro asistente de
-  recomendación (todavía en diseño) que arme la configuración de pantalla
-  según los requerimientos del cliente. Acceso exclusivo del rol **LED**
-  (que no ve ninguna otra pantalla de la app) y de **admin**; el resto de
-  los roles con permiso `ledVer` (ej. producción) lo ven en solo lectura.
+- **Espacio LED** (Resumen / Eventos / Clientes / Pendientes): mismo patrón
+  que Estudios, pero para trabajos de instalación LED. Cada trabajo tiene
+  tipo de instalación (Fija / Temporal), ubicación (Indoor / Outdoor),
+  tamaño de pantalla deseado, partes (**Armado** y **Desarme** por fechas
+  puntuales, **Servicio** como un período continuo — fecha de inicio a fecha
+  de fin, no días sueltos) y la misma Facturación/Cobros/cronograma de
+  cuotas que Estudios. Clientes LED es una lista totalmente aparte de
+  Clientes de Estudios. Todavía no tiene subida de archivos (facturas/
+  comprobantes) ni el asistente de recomendación de equipo — el estado
+  Facturado/Comprobante/Facturado total se marca a mano por ahora.
+- **Catálogo** (dentro del espacio LED): el módulo de módulos de pantalla y
+  equipos de video (senders, escaladores, media servers, procesadores) que
+  ya existía, con alta/edición/borrado y buscador — pensado como insumo para
+  un futuro asistente de recomendación (todavía en diseño) que sugiera la
+  configuración de pantalla según los requerimientos del cliente. Solo lo
+  ven admin y el rol LED (ni siquiera contabilidad, para no sumarle más
+  pestañas de las necesarias).
 - **Usuarios**: administración de cuentas, solo visible para el rol admin.
 - **Asistente** (ícono ✨) y **Notificaciones** (ícono campana): overlays
   accesibles desde el header.
@@ -194,16 +213,22 @@ Roles y permisos (gestionables en **Usuarios**, visible solo para admin):
   categorías/personal/clientes.
 - **contabilidad**: no crea ni confirma eventos, pero sí los edita/borra,
   gestiona facturación, sube archivos, y administra clientes y personal.
+  Ve **ambos espacios** (Estudios y LED) con el mismo nivel de acceso en
+  cada uno, salvo el Catálogo LED (no lo ve). Puede usar el selector de
+  espacio de trabajo.
 - **producción**: crea, edita y confirma eventos, y puede editar el bloque
   de **Facturación** (distribución, cliente, montos, forma de pago,
   cronograma de cuotas). No puede registrar cobros, marcar Facturado/
   Comprobante/Facturado total, ni subir o borrar archivos (puede verlos)
-  — eso sigue siendo exclusivo de administración/contabilidad. Ve el
-  módulo LED en solo lectura.
-- **espectador**: solo lectura.
-- **led**: caso especial — solo ve y edita el módulo **LED**; ninguna otra
-  pantalla de la app (Eventos, Personal, Clientes, etc.) le aparece, ni
-  siquiera el Asistente o las Notificaciones.
+  — eso sigue siendo exclusivo de administración/contabilidad. No tiene
+  ningún acceso al espacio LED (ni siquiera de solo lectura): no le
+  aparece el selector.
+- **espectador**: solo lectura, incluido el espacio LED (que ve en solo
+  lectura, con el selector disponible).
+- **led**: caso especial — solo ve y edita el **espacio LED completo**
+  (Resumen/Eventos/Clientes/Pendientes/Catálogo); ninguna otra pantalla de
+  la app (Estudios, Personal, Clientes de Estudios, etc.) le aparece, ni
+  siquiera el Asistente o las Notificaciones. No tiene selector de espacio.
 - **asistencia**: caso especial — solo ve y edita **Personal** y
   **Asistencia** (incluida la gestión de categorías y sectores); ninguna
   otra pantalla le aparece.
@@ -321,6 +346,8 @@ src/
     ledModulosApi.js      -> catálogo de módulos de pantalla LED
     ledEquiposApi.js      -> catálogo de senders/escaladores/media servers/procesadores
     ledSeedData.js         -> datos de fábrica del catálogo LED (desde Excel)
+    eventosLedApi.js       -> leer/guardar/borrar trabajos LED (espacio LED)
+    clientesLedApi.js      -> leer/guardar/borrar clientes LED (separados de Clientes de Estudios)
 api/
   asistente.js             -> función serverless: traduce la pregunta a un filtro (Claude)
 supabase/
