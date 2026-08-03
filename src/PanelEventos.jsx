@@ -370,8 +370,21 @@ const estudioLabel = (est) => {
 };
 
 /* ---------- helpers ---------- */
-const totalDias = (partes) =>
-  new Set((partes || []).flatMap((p) => p.fechas || [])).size;
+// Para Rental el equipo está afuera todo el tramo entre la prueba de cámara y la
+// devolución (aunque en el medio no haya una fecha marcada), así que el total es
+// el rango completo entre la fecha más temprana y la más tardía, no solo los días
+// puntuales cargados. Para el resto de las modalidades se cuentan los días únicos.
+const totalDias = (partes, modalidadRodaje) => {
+  const fechas = (partes || []).flatMap((p) => p.fechas || []);
+  if (modalidadRodaje === "Rental") {
+    if (fechas.length === 0) return 0;
+    const ordenadas = [...fechas].sort();
+    const ini = new Date(ordenadas[0] + "T12:00:00");
+    const fin = new Date(ordenadas[ordenadas.length - 1] + "T12:00:00");
+    return Math.round((fin - ini) / 86400000) + 1;
+  }
+  return new Set(fechas).size;
+};
 
 // Devuelve Map<fecha, Set<estudio>> con los estudios ocupados por fecha para un evento.
 const getEstudiosPorFecha = (ev) => {
@@ -2281,7 +2294,7 @@ function Lista({ eventos, total, busqueda, setBusqueda, filtroCats, setFiltroCat
                   {e.tipoProd && <Badge color="#9b8cff">{e.tipoProd}</Badge>}
                   {e.trackeo && <Badge color={e.trackeo === "Con trackeo" ? C.green : C.dim}><Crosshair size={11} />{e.trackeo.replace(" trackeo", "")}</Badge>}
                   <Badge color={C.dim}><Building2 size={11} />{empresaLabel(e.distribucion)}</Badge>
-                  {totalDias(e.partes) > 0 && <Badge color={C.amber}><Clock size={11} />{totalDias(e.partes)}d</Badge>}
+                  {totalDias(e.partes, e.modalidadRodaje) > 0 && <Badge color={C.amber}><Clock size={11} />{totalDias(e.partes, e.modalidadRodaje)}d</Badge>}
                 </div>
               </div>
               <div className="flex items-center gap-3 shrink-0">
@@ -6137,7 +6150,7 @@ function PartesDetalle({ ev, onUpdate, perms, eventos = [] }) {
   }, [ev.partes, tiposPartes]);
 
   const display = partesTmp || partes;
-  const total = totalDias(display);
+  const total = totalDias(display, ev.modalidadRodaje);
   const canEdit = perms?.eventoEditar;
 
   const startEdit = (idx) => {
@@ -7801,7 +7814,7 @@ function FormEvento({ base, onCancel, onSave, guardando, personas = [], eventos 
           <Field label="Nombre del evento" full>
             <Input value={f.nombre} onChange={(v) => set("nombre", v)} placeholder="Ej: Videoclip — Artista X" />
           </Field>
-          <Field label={totalDias(f.partes) > 0 ? "Fecha (auto desde partes)" : "Fecha"}>
+          <Field label={totalDias(f.partes, f.modalidadRodaje) > 0 ? "Fecha (auto desde partes)" : "Fecha"}>
             <Input type="date" value={f.fecha} onChange={(v) => set("fecha", v)} />
           </Field>
           <Field label="Categoría">
@@ -7915,11 +7928,11 @@ function FormEvento({ base, onCancel, onSave, guardando, personas = [], eventos 
                 </div>
               );
             })}
-            {totalDias(f.partes) > 0 && (
+            {totalDias(f.partes, f.modalidadRodaje) > 0 && (
               <div className="flex items-center justify-end gap-2 px-1 pt-1">
                 <Clock size={13} color={C.amber} />
                 <span className="text-sm font-semibold" style={{ color: C.amber }}>
-                  Total: {totalDias(f.partes)} {totalDias(f.partes) === 1 ? "día" : "días"} de producción
+                  Total: {totalDias(f.partes, f.modalidadRodaje)} {totalDias(f.partes, f.modalidadRodaje) === 1 ? "día" : "días"} de producción
                 </span>
               </div>
             )}
