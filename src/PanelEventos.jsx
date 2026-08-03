@@ -1232,7 +1232,7 @@ export default function PanelEventos() {
         button:not(:disabled),select,input[type="checkbox"],input[type="radio"],label[for]{cursor:pointer}
         button:not(:disabled):hover{filter:brightness(1.09)}
         @media (prefers-reduced-motion: no-preference){.fade{animation:f .25s ease both}}
-        @keyframes f{from{opacity:0;transform:translateY(4px)}to{opacity:1;transform:none}}
+        @keyframes f{from{opacity:0}to{opacity:1}}
         @keyframes slideR{from{opacity:0;transform:translateX(52px) scale(0.96)}to{opacity:1;transform:none}}
         @keyframes slideL{from{opacity:0;transform:translateX(-52px) scale(0.96)}to{opacity:1;transform:none}}
         .slide-r{animation:slideR 0.35s cubic-bezier(0.34,1.56,0.64,1) both}
@@ -4837,6 +4837,13 @@ function Personal({ personas, categorias, sectores = [], onSave, onDelete, onSav
   const [catAbierto, setCatAbierto] = useState(false);
   const [sectorAbierto, setSectorAbierto] = useState(false);
   const [tabPersonal, setTabPersonal] = useState("lista");
+  const formRef = useRef(null);
+
+  // Al abrir el formulario (nuevo o editar), lo trae a la vista sin que el usuario
+  // tenga que buscarlo manualmente scrolleando hasta arriba.
+  useEffect(() => {
+    if (editando !== null) formRef.current?.scrollIntoView({ behavior: "instant", block: "center" });
+  }, [editando]);
 
   const parseRoles = (p) => p.rolHabitual ? p.rolHabitual.split(",").map((r) => r.trim()).filter(Boolean) : [];
   const parseCategorias = (p) => p.categoriaId ? p.categoriaId.split(",").map((s) => s.trim()).filter(Boolean) : [];
@@ -4964,7 +4971,7 @@ function Personal({ personas, categorias, sectores = [], onSave, onDelete, onSav
       />
 
       {editando !== null && (
-        <div className="rounded-xl p-4 mb-4 grid sm:grid-cols-2 gap-3.5" style={{ background: C.panel, border: `1px solid ${C.border}` }}>
+        <div ref={formRef} className="rounded-xl p-4 mb-4 grid sm:grid-cols-2 gap-3.5" style={{ background: C.panel, border: `1px solid ${C.border}` }}>
           <Field label="Nombre" full>
             <Input value={f.nombre} onChange={(v) => setF({ ...f, nombre: v })}
               onKeyDown={(e) => { if (e.key === "Enter") guardar(); }}
