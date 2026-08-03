@@ -210,14 +210,14 @@ end $$;
 alter table public.personas add column if not exists sector_id text;
 
 -- ---------------------------------------------------------------------
--- Asistencia del personal (presente / ausente / franco / medio día por día)
+-- Asistencia del personal (presente / ausente / franco / medio día / vacaciones / feriado / ART por día)
 -- ---------------------------------------------------------------------
 create table if not exists public.asistencias (
   id uuid primary key default gen_random_uuid(),
   created_at timestamptz not null default now(),
   persona_id uuid not null references public.personas(id) on delete cascade,
   fecha date not null,
-  estado text not null default 'presente', -- presente | ausente | franco | mediodia
+  estado text not null default 'presente', -- presente | ausente | franco | mediodia | vacaciones | feriado | art
   observacion text,
   unique (persona_id, fecha)
 );
