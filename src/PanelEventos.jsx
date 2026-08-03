@@ -3231,16 +3231,40 @@ function ResumenLed({ eventosLed, onVer }) {
 
   return (
     <div className="fade">
-      <div className="flex items-center gap-2 mb-1">
-        <Grid3x3 size={18} color={C.gold} />
-        <h1 className="text-lg font-semibold">Resumen LED</h1>
-      </div>
-      <p className="text-xs mb-4" style={{ color: C.dim }}>Vista general de instalaciones y facturación LED.</p>
-
-      <div className="flex items-center gap-1 mb-4">
-        <IconBtn onClick={() => navMes(-1)} title="Mes anterior"><ChevronLeft size={16} /></IconBtn>
-        <span className="text-sm font-semibold w-36 text-center">{MESES_ES[mes]} {anio}</span>
-        <IconBtn onClick={() => navMes(1)} title="Mes siguiente"><ChevronRight size={16} /></IconBtn>
+      <div className="flex flex-wrap items-center gap-3 mb-6">
+        <div>
+          <div className="flex items-center gap-2">
+            <Grid3x3 size={18} color={C.gold} />
+            <h1 className="text-xl font-bold tracking-tight">Resumen LED</h1>
+          </div>
+          <p className="text-xs mt-0.5" style={{ color: C.dim }}>Vista general de instalaciones y facturación LED.</p>
+        </div>
+        <div
+          className="ml-auto flex items-center gap-1 rounded-xl px-3 py-1.5"
+          style={{ background: C.panel, border: `1px solid ${C.border}` }}
+        >
+          <button
+            onClick={() => navMes(-1)}
+            className="p-1 rounded transition-colors"
+            style={{ color: C.dim }}
+            onMouseEnter={(e) => e.currentTarget.style.color = C.text}
+            onMouseLeave={(e) => e.currentTarget.style.color = C.dim}
+          >
+            <ChevronLeft size={16} />
+          </button>
+          <span className="font-semibold text-sm w-40 text-center select-none">
+            {MESES_ES[mes]} {anio}
+          </span>
+          <button
+            onClick={() => navMes(1)}
+            className="p-1 rounded transition-colors"
+            style={{ color: C.dim }}
+            onMouseEnter={(e) => e.currentTarget.style.color = C.text}
+            onMouseLeave={(e) => e.currentTarget.style.color = C.dim}
+          >
+            <ChevronRight size={16} />
+          </button>
+        </div>
       </div>
 
       <CalendarioMes anio={anio} mes={mes} eventos={eventosCalendario} onVer={onVer} mostrarFiltroEstudio={false} leyendaPartes={PARTES_LED} />
