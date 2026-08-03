@@ -156,7 +156,84 @@ const ASISTENCIA_ESTADOS = [
   { value: "ausente", label: "Ausente", short: "A", color: C.rose },
   { value: "franco", label: "Franco", short: "F", color: C.dim },
   { value: "mediodia", label: "Medio día", short: "M", color: C.amber },
+  { value: "vacaciones", label: "Vacaciones", short: "V", color: C.cyan },
+  { value: "feriado", label: "Feriado", short: "H", color: "#9b8cff" },
+  { value: "art", label: "ART", short: "R", color: "#FB923C" },
 ];
+
+const DIAS_SEMANA_CORTO = ["Do", "Lu", "Ma", "Mi", "Ju", "Vi", "Sá"];
+// Meses en formato planilla de presentismo, ej. "jul-26" -> mes 6 (0-indexado), año 2026.
+const MESES_ABREV_PRESENTISMO = ["ene", "feb", "mar", "abr", "may", "jun", "jul", "ago", "sep", "oct", "nov", "dic"];
+
+/* ---------- CSV genérico (parseo/generación, usado por import/export de presentismo) ---------- */
+// Parser de CSV completo: soporta campos entre comillas con comas y saltos de línea embebidos.
+function parseCSV(text) {
+  const rows = [];
+  let row = [], field = "", enComillas = false;
+  for (let i = 0; i < text.length; i++) {
+    const c = text[i];
+    if (enComillas) {
+      if (c === '"') {
+        if (text[i + 1] === '"') { field += '"'; i++; }
+        else enComillas = false;
+      } else field += c;
+    } else if (c === '"') {
+      enComillas = true;
+    } else if (c === ",") {
+      row.push(field); field = "";
+    } else if (c === "\n" || c === "\r") {
+      if (c === "\r" && text[i + 1] === "\n") i++;
+      row.push(field); field = "";
+      rows.push(row); row = [];
+    } else field += c;
+  }
+  if (field !== "" || row.length > 0) { row.push(field); rows.push(row); }
+  return rows;
+}
+function csvEscape(v) {
+  const s = v === null || v === undefined ? "" : String(v);
+  return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+}
+function filasACSV(filas) {
+  return filas.map((f) => f.map(csvEscape).join(",")).join("\r\n");
+}
+function descargarTexto(nombre, contenido, mime) {
+  const blob = new Blob(["﻿" + contenido], { type: `${mime};charset=utf-8` });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = nombre;
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
+// Interpreta el texto de una celda diaria de la planilla de presentismo y la traduce
+// a un estado de asistencia + observación. null = celda vacía / sin marcar.
+function clasificarCeldaPresentismo(raw) {
+  const t = (raw || "").trim();
+  if (!t || t === "-") return null;
+  const up = t.toUpperCase();
+  if (up.startsWith("FRANCO")) return { estado: "franco", observacion: up === "FRANCO" ? "" : t };
+  if (up === "AUSENTE") return { estado: "ausente", observacion: "" };
+  if (up === "MEDIA JORNADA") return { estado: "mediodia", observacion: "" };
+  if (up === "FERIADO") return { estado: "feriado", observacion: "" };
+  if (up === "VACACIONES") return { estado: "vacaciones", observacion: "" };
+  if (up === "ART") return { estado: "art", observacion: "" };
+  if (up === "NO TRABAJA") return { estado: "franco", observacion: t };
+  return { estado: "presente", observacion: t };
+}
+// Texto de celda para exportar: reconstruye lo que iría en la planilla para un día dado.
+function celdaPresentismoTexto(a) {
+  if (!a) return "";
+  if (a.observacion) return a.observacion;
+  const info = ASISTENCIA_ESTADOS.find((e) => e.value === a.estado);
+  return info ? info.label.toUpperCase() : "";
+}
+// Normaliza un nombre de persona para matchear entre la planilla y la base (ignora
+// mayúsculas, espacios de más y apodos entre paréntesis como "(Paisa) ").
+function normalizarNombrePersona(s) {
+  return (s || "").replace(/\([^)]*\)/g, "").replace(/\s+/g, " ").trim().toUpperCase();
+}
 
 const nuevoEvento = () => ({
   id: crypto.randomUUID(),
@@ -5491,6 +5568,8 @@ function AsistenciaModulo({ personas, sectores, perms }) {
   const [asistencias, setAsistencias] = useState([]);
   const [cargando, setCargando] = useState(true);
   const [celda, setCelda] = useState(null); // { personaId, fecha } | null
+  const [importando, setImportando] = useState(false);
+  const fileInputRef = useRef(null);
 
   const diasEnMes = new Date(anio, mes + 1, 0).getDate();
   const prefijo = `${anio}-${String(mes + 1).padStart(2, "0")}`;
@@ -5548,6 +5627,122 @@ function AsistenciaModulo({ personas, sectores, perms }) {
   const nombreSector = (id) => sectores.find((s) => s.id === id)?.nombre || "";
   const dias = useMemo(() => Array.from({ length: diasEnMes }, (_, i) => i + 1), [diasEnMes]);
 
+  // Importa una planilla de presentismo (formato Jupiter: una fila por persona, una
+  // columna por día del mes) generando/matcheando personas y sectores por nombre.
+  const importarCSV = async (file) => {
+    const texto = await file.text();
+    const filas = parseCSV(texto).filter((f) => f.some((c) => (c || "").trim() !== ""));
+    const idxHeader = filas.findIndex((f) => f.some((c) => /nombre/i.test(c || "")));
+    if (idxHeader === -1) { alert('No se encontró la fila de encabezados (con "Nombre").'); return; }
+    const header = filas[idxHeader];
+
+    let anioImport = anio, mesImport = mes;
+    const mMes = (header[0] || "").trim().toLowerCase().match(/^([a-z]{3})-(\d{2})$/);
+    if (mMes) {
+      const idxM = MESES_ABREV_PRESENTISMO.indexOf(mMes[1]);
+      if (idxM >= 0) { mesImport = idxM; anioImport = 2000 + parseInt(mMes[2], 10); }
+    }
+
+    let nDias = 0;
+    while (/^\d+$/.test((header[3 + nDias] || "").trim())) nDias++;
+    if (nDias === 0) { alert("No se encontraron columnas de días (1, 2, 3…) en el encabezado."); return; }
+    const diasEnMesImport = new Date(anioImport, mesImport + 1, 0).getDate();
+
+    const filasDatos = filas.slice(idxHeader + 2).filter((f) => (f[1] || "").trim() !== "");
+    if (filasDatos.length === 0) { alert("No se encontraron filas de datos debajo del encabezado."); return; }
+    if (!confirm(`Se van a importar ${filasDatos.length} personas para ${MESES_ES[mesImport]} ${anioImport}. ¿Continuar?`)) return;
+
+    setImportando(true);
+    try {
+      const personasPorNombre = new Map(personas.map((p) => [normalizarNombrePersona(p.nombre), p]));
+      const sectoresPorNombre = new Map(sectores.map((s) => [normalizarNombrePersona(s.nombre), s]));
+      let personasNuevas = 0, sectoresNuevos = 0, marcas = 0;
+
+      for (const f of filasDatos) {
+        const nombreRaw = (f[1] || "").trim();
+        if (!nombreRaw) continue;
+        const sectorRaw = (f[2] || "").trim();
+
+        let sectorId = "";
+        if (sectorRaw) {
+          const keyS = normalizarNombrePersona(sectorRaw);
+          let sector = sectoresPorNombre.get(keyS);
+          if (!sector) {
+            sector = await upsertSectorPersonal({ nombre: sectorRaw });
+            sectoresPorNombre.set(keyS, sector);
+            sectoresNuevos++;
+          }
+          sectorId = sector.id;
+        }
+
+        const key = normalizarNombrePersona(nombreRaw);
+        let persona = personasPorNombre.get(key);
+        if (!persona) {
+          persona = await upsertPersona({ nombre: nombreRaw, sectorId, activo: true });
+          personasPorNombre.set(key, persona);
+          personasNuevas++;
+        }
+
+        for (let d = 1; d <= Math.min(nDias, diasEnMesImport); d++) {
+          const clasif = clasificarCeldaPresentismo(f[3 + d - 1]);
+          if (!clasif) continue;
+          const fecha = `${anioImport}-${String(mesImport + 1).padStart(2, "0")}-${String(d).padStart(2, "0")}`;
+          await upsertAsistencia({ personaId: persona.id, fecha, estado: clasif.estado, observacion: clasif.observacion });
+          marcas++;
+        }
+      }
+      if (anioImport === anio && mesImport === mes) await cargar();
+      alert(`Importación completa: ${marcas} marcas de asistencia, ${personasNuevas} personas nuevas, ${sectoresNuevos} sectores nuevos.`);
+    } catch (e) {
+      console.error(e);
+      alert("Error al importar: " + e.message);
+    } finally {
+      setImportando(false);
+    }
+  };
+
+  // Exporta el mes actualmente visible en el mismo formato de planilla (una fila por
+  // persona, una columna por día, más las columnas resumen calculadas).
+  const exportarCSV = () => {
+    const headerRow = [
+      `${MESES_ABREV_PRESENTISMO[mes]}-${String(anio).slice(-2)}`, "Nombre", "Área / Sector",
+      ...dias.map(String),
+      "Francos", "Medias Jornadas", "Total Francos", "Ausencias", "Francos + Ausencias",
+      "Feriados", "Francos Ausencias Feriados", "ART", "Dias Trabajados", "Dias sin completar", "Observaciones",
+    ];
+    const dowRow = [
+      "", "", "",
+      ...dias.map((d) => DIAS_SEMANA_CORTO[new Date(anio, mes, d).getDay()].toUpperCase()),
+      "", "", "", "", "", "", "", "", "", "", "",
+    ];
+    const filas = [headerRow, dowRow];
+    personasFiltradas.forEach((p, idx) => {
+      let francos = 0, medias = 0, ausencias = 0, feriados = 0, art = 0, trabajados = 0;
+      const diasVal = dias.map((d) => {
+        const fecha = `${prefijo}-${String(d).padStart(2, "0")}`;
+        const a = mapa.get(`${p.id}|${fecha}`);
+        if (a) {
+          if (a.estado === "franco") francos++;
+          else if (a.estado === "mediodia") medias++;
+          else if (a.estado === "ausente") ausencias++;
+          else if (a.estado === "feriado") feriados++;
+          else if (a.estado === "art") art++;
+          else if (a.estado === "presente") trabajados++;
+        }
+        return celdaPresentismoTexto(a);
+      });
+      const totalFrancos = francos + medias * 0.5;
+      const francosAusencias = totalFrancos + ausencias;
+      const faf = francosAusencias + feriados;
+      const sinCompletar = diasEnMes - francos - medias - ausencias - feriados - art - trabajados;
+      filas.push([
+        idx + 1, p.nombre, nombreSector(p.sectorId), ...diasVal,
+        francos, medias, totalFrancos, ausencias, francosAusencias, feriados, faf, art, trabajados, sinCompletar, "",
+      ]);
+    });
+    descargarTexto(`presentismo-${prefijo}.csv`, filasACSV(filas), "text/csv");
+  };
+
   return (
     <div className="fade">
       <div className="flex items-center gap-2 mb-1">
@@ -5555,14 +5750,39 @@ function AsistenciaModulo({ personas, sectores, perms }) {
         <h1 className="text-lg font-semibold">Asistencia</h1>
       </div>
       <p className="text-xs mb-4" style={{ color: C.dim }}>
-        Marcá día por día quién está presente, ausente, de franco o medio día — filtrable por sector.
+        Marcá día por día quién está presente, ausente, de franco, media jornada, vacaciones, feriado o ART — filtrable por sector.
         {!editable && " Tenés acceso de solo lectura."}
       </p>
 
-      <div className="flex items-center gap-1 mb-4">
+      <div className="flex items-center gap-1 mb-4 flex-wrap">
         <IconBtn onClick={() => irMes(-1)} title="Mes anterior"><ChevronLeft size={16} /></IconBtn>
         <span className="text-sm font-semibold w-36 text-center">{MESES_ES[mes]} {anio}</span>
         <IconBtn onClick={() => irMes(1)} title="Mes siguiente"><ChevronRight size={16} /></IconBtn>
+        <button type="button" onClick={exportarCSV}
+          className="ml-2 text-xs px-3 py-1.5 rounded-md flex items-center gap-1.5"
+          style={{ background: C.panel2, border: `1px solid ${C.border}`, color: C.dim }}>
+          <Download size={13} /> Exportar Excel
+        </button>
+        {editable && (
+          <>
+            <button type="button" disabled={importando} onClick={() => fileInputRef.current?.click()}
+              className="text-xs px-3 py-1.5 rounded-md flex items-center gap-1.5"
+              style={{ background: C.panel2, border: `1px solid ${C.border}`, color: C.dim, opacity: importando ? 0.5 : 1 }}>
+              <Upload size={13} /> {importando ? "Importando…" : "Importar Excel"}
+            </button>
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept=".csv"
+              className="hidden"
+              onChange={(e) => {
+                const file = e.target.files?.[0];
+                e.target.value = "";
+                if (file) importarCSV(file);
+              }}
+            />
+          </>
+        )}
       </div>
 
       {sectores.length > 0 && (
@@ -5602,7 +5822,10 @@ function AsistenciaModulo({ personas, sectores, perms }) {
                     Persona
                   </th>
                   {dias.map((d) => (
-                    <th key={d} className="px-1 py-2 font-mono font-medium text-center" style={{ color: C.dim, minWidth: 28 }}>{d}</th>
+                    <th key={d} className="px-1 py-2 font-mono font-medium text-center" style={{ color: C.dim, minWidth: 28 }}>
+                      <div>{d}</div>
+                      <div className="text-[9px] font-normal opacity-70">{DIAS_SEMANA_CORTO[new Date(anio, mes, d).getDay()]}</div>
+                    </th>
                   ))}
                 </tr>
               </thead>
