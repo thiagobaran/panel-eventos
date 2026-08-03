@@ -4826,6 +4826,93 @@ function Home({ eventos, onVer }) {
   );
 }
 
+/* Formulario de alta/edición de una persona — se usa tanto para "nueva persona" (arriba
+   de la lista) como inline, desplegado sobre la tarjeta de la persona que se edita. */
+function PersonaEditForm({ f, setF, categorias, sectores, nuevoRol, setNuevoRol, agregarRol, agregarCategoria, quitarCategoria, onGuardar, onCancelar }) {
+  return (
+    <div className="rounded-xl p-4 grid sm:grid-cols-2 gap-3.5" style={{ background: C.panel, border: `1px solid ${C.gold}50` }}>
+      <Field label="Nombre" full>
+        <Input value={f.nombre} onChange={(v) => setF({ ...f, nombre: v })}
+          onKeyDown={(e) => { if (e.key === "Enter") onGuardar(); }}
+          placeholder="Nombre y apellido" />
+      </Field>
+      <Field label="Sector">
+        <select value={f.sectorId} onChange={(e) => setF({ ...f, sectorId: e.target.value })}
+          className="w-full text-sm px-3 py-2 rounded-md"
+          style={{ background: C.panel2, border: `1px solid ${C.border}`, color: f.sectorId ? C.text : C.dim, colorScheme: "dark" }}>
+          <option value="" style={{ background: C.panel2, color: C.dim }}>Sin sector</option>
+          {sectores.map((s) => (
+            <option key={s.id} value={s.id} style={{ background: C.panel2, color: C.text }}>{s.nombre}</option>
+          ))}
+        </select>
+      </Field>
+      <Field label="Categorías">
+        <div>
+          {f.categoriaIds.length > 0 && (
+            <div className="flex flex-wrap gap-1.5 mb-2">
+              {f.categoriaIds.map((cid) => {
+                const cat = categorias.find((c) => c.id === cid);
+                return cat ? (
+                  <span key={cid} className="flex items-center gap-1 text-xs px-2 py-1 rounded-full"
+                    style={{ background: C.panel2, border: `1px solid ${C.gold}50`, color: C.text }}>
+                    {cat.nombre}
+                    <button type="button" onClick={() => quitarCategoria(cid)} style={{ color: C.dim }}><X size={11} /></button>
+                  </span>
+                ) : null;
+              })}
+            </div>
+          )}
+          <select value="" onChange={(e) => agregarCategoria(e.target.value)}
+            className="w-full text-sm px-3 py-2 rounded-md"
+            style={{ background: C.panel2, border: `1px solid ${C.border}`, color: C.dim, colorScheme: "dark" }}>
+            <option value="">Agregar categoría…</option>
+            {categorias.filter((c) => !f.categoriaIds.includes(c.id)).map((c) => (
+              <option key={c.id} value={c.id} style={{ background: C.panel2, color: C.text }}>{c.nombre}</option>
+            ))}
+          </select>
+        </div>
+      </Field>
+      <Field label="Roles" full>
+        <div>
+          {f.roles.length > 0 && (
+            <div className="flex flex-wrap gap-1.5 mb-2">
+              {f.roles.map((r) => (
+                <span key={r} className="flex items-center gap-1 text-xs px-2 py-1 rounded-full"
+                  style={{ background: C.panel2, border: `1px solid ${C.border}`, color: C.text }}>
+                  {r}
+                  <button type="button" onClick={() => setF((prev) => ({ ...prev, roles: prev.roles.filter((x) => x !== r) }))}
+                    style={{ color: C.dim }}><X size={11} /></button>
+                </span>
+              ))}
+            </div>
+          )}
+          <div className="flex gap-2">
+            <input
+              value={nuevoRol}
+              onChange={(e) => setNuevoRol(e.target.value)}
+              onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); agregarRol(); } }}
+              placeholder="Agregar rol (ej: DF, gaffer…) — Enter para agregar"
+              className="flex-1 text-sm px-3 py-2 rounded-md"
+              style={{ background: C.panel2, border: `1px solid ${C.border}`, color: C.text, colorScheme: "dark" }}
+            />
+            <button type="button" onClick={agregarRol}
+              className="px-3 py-2 rounded-md flex items-center"
+              style={{ background: C.panel2, border: `1px solid ${C.border}`, color: C.dim }}>
+              <Plus size={15} />
+            </button>
+          </div>
+        </div>
+      </Field>
+      <div className="sm:col-span-2 flex gap-2 justify-end">
+        <button onClick={onCancelar} className="text-sm px-4 py-2 rounded-md" style={{ background: C.panel2, border: `1px solid ${C.border}`, color: C.dim }}>Cancelar</button>
+        <button onClick={onGuardar} className="text-sm font-medium px-5 py-2 rounded-md flex items-center gap-1.5" style={{ background: C.gold, color: C.onGold }}>
+          <Check size={16} /> Guardar
+        </button>
+      </div>
+    </div>
+  );
+}
+
 /* ====================== PERSONAL ====================== */
 function Personal({ personas, categorias, sectores = [], onSave, onDelete, onSaveCategoria, onDeleteCategoria, onSaveSector, onDeleteSector, perms = {}, eventos = [] }) {
   const vacio = { nombre: "", roles: [], categoriaIds: [], sectorId: "", activo: true };
@@ -4837,13 +4924,6 @@ function Personal({ personas, categorias, sectores = [], onSave, onDelete, onSav
   const [catAbierto, setCatAbierto] = useState(false);
   const [sectorAbierto, setSectorAbierto] = useState(false);
   const [tabPersonal, setTabPersonal] = useState("lista");
-  const formRef = useRef(null);
-
-  // Al abrir el formulario (nuevo o editar), lo trae a la vista sin que el usuario
-  // tenga que buscarlo manualmente scrolleando hasta arriba.
-  useEffect(() => {
-    if (editando !== null) formRef.current?.scrollIntoView({ behavior: "instant", block: "center" });
-  }, [editando]);
 
   const parseRoles = (p) => p.rolHabitual ? p.rolHabitual.split(",").map((r) => r.trim()).filter(Boolean) : [];
   const parseCategorias = (p) => p.categoriaId ? p.categoriaId.split(",").map((s) => s.trim()).filter(Boolean) : [];
@@ -4970,86 +5050,12 @@ function Personal({ personas, categorias, sectores = [], onSave, onDelete, onSav
         perms={perms}
       />
 
-      {editando !== null && (
-        <div ref={formRef} className="rounded-xl p-4 mb-4 grid sm:grid-cols-2 gap-3.5" style={{ background: C.panel, border: `1px solid ${C.border}` }}>
-          <Field label="Nombre" full>
-            <Input value={f.nombre} onChange={(v) => setF({ ...f, nombre: v })}
-              onKeyDown={(e) => { if (e.key === "Enter") guardar(); }}
-              placeholder="Nombre y apellido" />
-          </Field>
-          <Field label="Sector">
-            <select value={f.sectorId} onChange={(e) => setF({ ...f, sectorId: e.target.value })}
-              className="w-full text-sm px-3 py-2 rounded-md"
-              style={{ background: C.panel2, border: `1px solid ${C.border}`, color: f.sectorId ? C.text : C.dim, colorScheme: "dark" }}>
-              <option value="" style={{ background: C.panel2, color: C.dim }}>Sin sector</option>
-              {sectores.map((s) => (
-                <option key={s.id} value={s.id} style={{ background: C.panel2, color: C.text }}>{s.nombre}</option>
-              ))}
-            </select>
-          </Field>
-          <Field label="Categorías">
-            <div>
-              {f.categoriaIds.length > 0 && (
-                <div className="flex flex-wrap gap-1.5 mb-2">
-                  {f.categoriaIds.map((cid) => {
-                    const cat = categorias.find((c) => c.id === cid);
-                    return cat ? (
-                      <span key={cid} className="flex items-center gap-1 text-xs px-2 py-1 rounded-full"
-                        style={{ background: C.panel2, border: `1px solid ${C.gold}50`, color: C.text }}>
-                        {cat.nombre}
-                        <button type="button" onClick={() => quitarCategoria(cid)} style={{ color: C.dim }}><X size={11} /></button>
-                      </span>
-                    ) : null;
-                  })}
-                </div>
-              )}
-              <select value="" onChange={(e) => agregarCategoria(e.target.value)}
-                className="w-full text-sm px-3 py-2 rounded-md"
-                style={{ background: C.panel2, border: `1px solid ${C.border}`, color: C.dim, colorScheme: "dark" }}>
-                <option value="">Agregar categoría…</option>
-                {categorias.filter((c) => !f.categoriaIds.includes(c.id)).map((c) => (
-                  <option key={c.id} value={c.id} style={{ background: C.panel2, color: C.text }}>{c.nombre}</option>
-                ))}
-              </select>
-            </div>
-          </Field>
-          <Field label="Roles" full>
-            <div>
-              {f.roles.length > 0 && (
-                <div className="flex flex-wrap gap-1.5 mb-2">
-                  {f.roles.map((r) => (
-                    <span key={r} className="flex items-center gap-1 text-xs px-2 py-1 rounded-full"
-                      style={{ background: C.panel2, border: `1px solid ${C.border}`, color: C.text }}>
-                      {r}
-                      <button type="button" onClick={() => setF((prev) => ({ ...prev, roles: prev.roles.filter((x) => x !== r) }))}
-                        style={{ color: C.dim }}><X size={11} /></button>
-                    </span>
-                  ))}
-                </div>
-              )}
-              <div className="flex gap-2">
-                <input
-                  value={nuevoRol}
-                  onChange={(e) => setNuevoRol(e.target.value)}
-                  onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); agregarRol(); } }}
-                  placeholder="Agregar rol (ej: DF, gaffer…) — Enter para agregar"
-                  className="flex-1 text-sm px-3 py-2 rounded-md"
-                  style={{ background: C.panel2, border: `1px solid ${C.border}`, color: C.text, colorScheme: "dark" }}
-                />
-                <button type="button" onClick={agregarRol}
-                  className="px-3 py-2 rounded-md flex items-center"
-                  style={{ background: C.panel2, border: `1px solid ${C.border}`, color: C.dim }}>
-                  <Plus size={15} />
-                </button>
-              </div>
-            </div>
-          </Field>
-          <div className="sm:col-span-2 flex gap-2 justify-end">
-            <button onClick={cancelar} className="text-sm px-4 py-2 rounded-md" style={{ background: C.panel2, border: `1px solid ${C.border}`, color: C.dim }}>Cancelar</button>
-            <button onClick={guardar} className="text-sm font-medium px-5 py-2 rounded-md flex items-center gap-1.5" style={{ background: C.gold, color: C.onGold }}>
-              <Check size={16} /> Guardar
-            </button>
-          </div>
+      {editando === "new" && (
+        <div className="mb-4">
+          <PersonaEditForm f={f} setF={setF} categorias={categorias} sectores={sectores}
+            nuevoRol={nuevoRol} setNuevoRol={setNuevoRol} agregarRol={agregarRol}
+            agregarCategoria={agregarCategoria} quitarCategoria={quitarCategoria}
+            onGuardar={guardar} onCancelar={cancelar} />
         </div>
       )}
 
@@ -5160,6 +5166,12 @@ function Personal({ personas, categorias, sectores = [], onSave, onDelete, onSav
               </div>
               <div className="grid gap-2">
                 {g.items.map((p) => (
+                  editando === p.id ? (
+                    <PersonaEditForm key={p.id} f={f} setF={setF} categorias={categorias} sectores={sectores}
+                      nuevoRol={nuevoRol} setNuevoRol={setNuevoRol} agregarRol={agregarRol}
+                      agregarCategoria={agregarCategoria} quitarCategoria={quitarCategoria}
+                      onGuardar={guardar} onCancelar={cancelar} />
+                  ) : (
                   <div key={p.id} className="rounded-xl p-3.5 flex flex-col sm:flex-row sm:items-center gap-2" style={{ background: C.panel, border: `1px solid ${C.border}` }}>
                     <div className="flex-1 min-w-0">
                       <div className="font-medium truncate">{p.nombre}</div>
@@ -5185,6 +5197,7 @@ function Personal({ personas, categorias, sectores = [], onSave, onDelete, onSav
                       )}
                     </div>
                   </div>
+                  )
                 ))}
               </div>
             </div>
