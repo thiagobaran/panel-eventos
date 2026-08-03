@@ -66,6 +66,10 @@ const MESES_ES = ["Enero","Febrero","Marzo","Abril","Mayo","Junio",
                   "Julio","Agosto","Septiembre","Octubre","Noviembre","Diciembre"];
 const EST_COLORS = { "1": "#D4AF37", "2": "#9b8cff", "3": "#4FD18B" };
 const PARTES_PROD = ["Armado", "Armado + Prelight", "Prelighting", "Rodaje", "Desarme"];
+const PARTES_RENTAL = ["Prueba de cámara", "Salida de equipos", "Devolución"];
+// Devuelve las "partes"/fases correspondientes a la modalidad de rodaje del evento:
+// Rental se maneja con sus propias tres fases en vez de Armado/Prelighting/Rodaje/Desarme.
+const partesDeModalidad = (modalidadRodaje) => modalidadRodaje === "Rental" ? PARTES_RENTAL : PARTES_PROD;
 const PARTES_COLORS = {
   "Armado": "#4FD18B",
   "Armado + Prelight": "#F0B429",
@@ -73,10 +77,13 @@ const PARTES_COLORS = {
   "Rodaje": "#F2557A",
   "Desarme": "#64B5F6",
   "Servicio": "#22D3EE",
+  "Prueba de cámara": "#7DD3FC",
+  "Salida de equipos": "#FB923C",
+  "Devolución": "#F472B6",
 };
 const getColorPartes = (partes) => {
   if (!partes || partes.length === 0) return "#D4AF37";
-  const prio = ["Rodaje", "Prelighting", "Armado + Prelight", "Servicio", "Armado", "Desarme"];
+  const prio = ["Rodaje", "Prelighting", "Armado + Prelight", "Servicio", "Armado", "Desarme", "Prueba de cámara", "Salida de equipos", "Devolución"];
   for (const p of prio) { if (partes.includes(p)) return PARTES_COLORS[p]; }
   return "#D4AF37";
 };
@@ -315,7 +322,7 @@ const getEstudiosPorFecha = (ev) => {
 // Si el integrante no tiene partes asignadas, se considera que va a todas.
 const getFechasTrabajo = (eventPartes, integrantePartes) => {
   if (!eventPartes || eventPartes.length === 0) return new Set();
-  const filtro = (integrantePartes || []).length > 0 ? integrantePartes : PARTES_PROD;
+  const filtro = (integrantePartes || []).length > 0 ? integrantePartes : eventPartes.map((p) => p.tipo);
   return new Set(eventPartes.filter((p) => filtro.includes(p.tipo)).flatMap((p) => p.fechas || []));
 };
 
@@ -1549,7 +1556,7 @@ function generarHtmlEventos(evs) {
   const esc = (s) => String(s ?? "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
   const fmtD = (f) => { if (!f) return "—"; const [y,m,d] = f.split("-"); return `${d}/${m}/${y}`; };
   const fmtM = (n, mon) => new Intl.NumberFormat("es-AR", { style: "currency", currency: (mon || "") === "USD" ? "USD" : "ARS", maximumFractionDigits: 0 }).format(Number(n) || 0);
-  const COLS = { "Armado": "#4FD18B", "Armado + Prelight": "#e6a800", "Prelighting": "#9b8cff", "Rodaje": "#e8335a", "Desarme": "#64B5F6" };
+  const COLS = { "Armado": "#4FD18B", "Armado + Prelight": "#e6a800", "Prelighting": "#9b8cff", "Rodaje": "#e8335a", "Desarme": "#64B5F6", "Prueba de cámara": "#7DD3FC", "Salida de equipos": "#FB923C", "Devolución": "#F472B6" };
   const fechaGen = new Date().toLocaleDateString("es-AR", { day: "2-digit", month: "long", year: "numeric" });
 
   const bloques = evs.map((ev) => {
@@ -2350,7 +2357,7 @@ function TablaPend({ titulo, icon, color, rows, onVer, vacio, extraCol }) {
 }
 
 /* ====================== CALENDARIO MES ====================== */
-function CalendarioMes({ anio, mes, eventos, onVer, mostrarFiltroEstudio = true, leyendaPartes = PARTES_PROD }) {
+function CalendarioMes({ anio, mes, eventos, onVer, mostrarFiltroEstudio = true, leyendaPartes = [...PARTES_PROD, ...PARTES_RENTAL] }) {
   const hoy = new Date().toISOString().slice(0, 10);
   const [filtroEstudio, setFiltroEstudio] = useState("");
   const prefix = `${anio}-${String(mes + 1).padStart(2, "0")}`;
@@ -2604,7 +2611,7 @@ function generarHtmlPdf(ev, sel) {
   }
 
   if (sel.partes && ev.partes?.length) {
-    const COLS = { "Armado": "#4FD18B", "Armado + Prelight": "#e6a800", "Prelighting": "#9b8cff", "Rodaje": "#e8335a", "Desarme": "#64B5F6" };
+    const COLS = { "Armado": "#4FD18B", "Armado + Prelight": "#e6a800", "Prelighting": "#9b8cff", "Rodaje": "#e8335a", "Desarme": "#64B5F6", "Prueba de cámara": "#7DD3FC", "Salida de equipos": "#FB923C", "Devolución": "#F472B6" };
     let inner = "";
     ev.partes.filter(p => p.fechas?.length).forEach((p) => {
       const fechasStr = (p.fechas || []).map(fmtD).join(" · ");
@@ -5853,13 +5860,14 @@ function PartesDetalle({ ev, onUpdate, perms, eventos = [] }) {
   const [fechaInput, setFechaInput] = useState("");
   const [partesTmp, setPartesTmp] = useState(null);
 
+  const tiposPartes = partesDeModalidad(ev.modalidadRodaje);
   const partes = useMemo(() => {
     const existentes = Array.isArray(ev.partes) ? ev.partes : [];
-    return PARTES_PROD.map((tipo) => {
+    return tiposPartes.map((tipo) => {
       const ex = existentes.find((p) => p.tipo === tipo);
       return ex || { tipo, fechas: [] };
     });
-  }, [ev.partes]);
+  }, [ev.partes, tiposPartes]);
 
   const display = partesTmp || partes;
   const total = totalDias(display);
@@ -5932,7 +5940,7 @@ function PartesDetalle({ ev, onUpdate, perms, eventos = [] }) {
 
   return (
     <Card titulo="Partes del proyecto" icon={<Clock size={15} color={C.amber} />} full>
-      <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-2">
+      <div className={`grid grid-cols-2 sm:grid-cols-3 ${tiposPartes.length > 3 ? "md:grid-cols-5" : ""} gap-2`}>
         {display.map((parte, idx) => {
           const isEditing = editandoIdx === idx;
           const fechas = parte.fechas || [];
@@ -6659,6 +6667,7 @@ function EquipoCard({ ev, onUpdate, perms, personas = [], eventos = [] }) {
   const [editando, setEditando] = useState(false);
   const [integrantes, setIntegrantes] = useState([]);
   const [nuevo, setNuevo] = useState({ personaId: "", rol: "" });
+  const tiposPartes = partesDeModalidad(ev.modalidadRodaje);
 
   const startEdit = () => {
     setIntegrantes((ev.integrantes || []).map((i) => ({ ...i, partes: i.partes || [] })));
@@ -6668,8 +6677,8 @@ function EquipoCard({ ev, onUpdate, perms, personas = [], eventos = [] }) {
 
   // Misma lógica de conflictos que en FormEvento
   const partesSuperpuestas = (a, b) => {
-    const fa = (a || []).length === 0 ? PARTES_PROD : a;
-    const fb = (b || []).length === 0 ? PARTES_PROD : b;
+    const fa = (a || []).length === 0 ? tiposPartes : a;
+    const fb = (b || []).length === 0 ? tiposPartes : b;
     return fa.some((p) => fb.includes(p));
   };
 
@@ -6738,7 +6747,7 @@ function EquipoCard({ ev, onUpdate, perms, personas = [], eventos = [] }) {
             const choques = conflictosPorPersona(integ.personaId, idx);
             const dups = dupInternos(idx);
             const hayError = choques.length > 0 || dups.length > 0;
-            const todasSel = (integ.partes || []).length === PARTES_PROD.length;
+            const todasSel = (integ.partes || []).length === tiposPartes.length;
             return (
               <div key={idx} className="grid gap-1.5 pb-2.5" style={{ borderBottom: `1px solid ${C.border}` }}>
                 <div className="flex items-center gap-2">
@@ -6753,12 +6762,12 @@ function EquipoCard({ ev, onUpdate, perms, personas = [], eventos = [] }) {
                 <div className="flex flex-wrap items-center gap-1.5 pl-1">
                   <span className="text-[10px]" style={{ color: C.dim }}>Fases:</span>
                   <button type="button"
-                    onClick={() => setIntegrantes((prev) => prev.map((x, i) => i === idx ? { ...x, partes: todasSel ? [] : [...PARTES_PROD] } : x))}
+                    onClick={() => setIntegrantes((prev) => prev.map((x, i) => i === idx ? { ...x, partes: todasSel ? [] : [...tiposPartes] } : x))}
                     className="text-[10px] px-2 py-0.5 rounded-full transition-colors"
                     style={{ background: todasSel ? `${C.gold}22` : C.panel, color: todasSel ? C.gold : C.dim, border: `1px solid ${todasSel ? C.gold + "60" : C.border}` }}>
                     {todasSel ? "✓ Todas" : "Todas"}
                   </button>
-                  {PARTES_PROD.map((tipo) => {
+                  {tiposPartes.map((tipo) => {
                     const sel = (integ.partes || []).includes(tipo);
                     return (
                       <button key={tipo} type="button" onClick={() => toggleParte(idx, tipo)}
@@ -7231,7 +7240,7 @@ function Dato({ k, v, mono, accent }) {
 function FormEvento({ base, onCancel, onSave, guardando, personas = [], eventos = [], clientes = [], onSaveCliente, onLiberarPersona, onReemplazarEnEvento, onIrAPersonal, perms = {} }) {
   const [f, setF] = useState(() => {
     const partesExistentes = Array.isArray(base.partes) ? base.partes : [];
-    const partes = PARTES_PROD.map((tipo) => {
+    const partes = partesDeModalidad(base.modalidadRodaje).map((tipo) => {
       const existente = partesExistentes.find((p) => p.tipo === tipo);
       return existente || { tipo, fechas: [] };
     });
@@ -7239,6 +7248,30 @@ function FormEvento({ base, onCancel, onSave, guardando, personas = [], eventos 
   });
   const set = (k, v) => setF((p) => ({ ...p, [k]: v }));
   const setDir = (k, v) => setF((p) => ({ ...p, director: { ...p.director, [k]: v } }));
+  const tiposPartes = partesDeModalidad(f.modalidadRodaje);
+
+  // Cambia la modalidad de rodaje. Si se entra o sale de "Rental" las fases son
+  // incompatibles (Prueba de cámara/Salida/Devolución vs Armado/Rodaje/Desarme),
+  // así que se reinician las partes y las fases asignadas a cada integrante.
+  const setModalidad = (v) => {
+    setF((prev) => {
+      const eraRental = prev.modalidadRodaje === "Rental";
+      const esRental = v === "Rental";
+      const cambioDeGrupo = eraRental !== esRental;
+      const partes = cambioDeGrupo
+        ? partesDeModalidad(v).map((tipo) => ({ tipo, fechas: [] }))
+        : prev.partes;
+      return {
+        ...prev,
+        modalidadRodaje: v,
+        estudio: v && v !== "En estudio" ? [] : prev.estudio,
+        partes,
+        fecha: cambioDeGrupo ? "" : prev.fecha,
+        integrantes: cambioDeGrupo ? prev.integrantes.map((i) => ({ ...i, partes: [] })) : prev.integrantes,
+      };
+    });
+    setFechaInputs(Array(partesDeModalidad(v).length).fill(""));
+  };
 
   // Cliente: al elegir uno del desplegable se autocompletan los datos.
   const seleccionarCliente = (id) => {
@@ -7276,7 +7309,7 @@ function FormEvento({ base, onCancel, onSave, guardando, personas = [], eventos 
   };
 
   // Estado para el input de fecha pendiente por parte (indexado)
-  const [fechaInputs, setFechaInputs] = useState(() => Array(PARTES_PROD.length).fill(""));
+  const [fechaInputs, setFechaInputs] = useState(() => Array(tiposPartes.length).fill(""));
   // Reemplazo de integrante en otro evento: { eventoId, personaId, nuevoId }
   const [reemplazando, setReemplazando] = useState(null);
 
@@ -7396,8 +7429,8 @@ function FormEvento({ base, onCancel, onSave, guardando, personas = [], eventos 
 
   // Verifica si dos listas de partes se superponen (vacío = todas las fases)
   const partesSuperpuestas = (a, b) => {
-    const fa = (a || []).length === 0 ? PARTES_PROD : a;
-    const fb = (b || []).length === 0 ? PARTES_PROD : b;
+    const fa = (a || []).length === 0 ? tiposPartes : a;
+    const fb = (b || []).length === 0 ? tiposPartes : b;
     return fa.some((p) => fb.includes(p));
   };
   // Devuelve los otros integrantes del mismo evento que sean la misma persona con partes superpuestas
@@ -7508,7 +7541,7 @@ function FormEvento({ base, onCancel, onSave, guardando, personas = [], eventos 
             <Select value={f.categoria} onChange={(v) => set("categoria", v)} options={CATEGORIAS} placeholder="Elegir" />
           </Field>
           <Field label="Modalidad de rodaje">
-            <Select value={f.modalidadRodaje || ""} onChange={(v) => { set("modalidadRodaje", v); if (v && v !== "En estudio") set("estudio", []); }} options={MODALIDAD_RODAJE} placeholder="Elegir" />
+            <Select value={f.modalidadRodaje || ""} onChange={setModalidad} options={MODALIDAD_RODAJE} placeholder="Elegir" />
           </Field>
           {(!f.modalidadRodaje || f.modalidadRodaje === "En estudio") && (
           <Field label="Estudios (se puede elegir más de uno)" full>
@@ -7681,10 +7714,10 @@ function FormEvento({ base, onCancel, onSave, guardando, personas = [], eventos 
                       <span className="text-[10px]" style={{ color: C.dim }}>Seleccioná las fases donde participa:</span>
                       {/* Botón toggle todas */}
                       {(() => {
-                        const todasSel = (integrante.partes || []).length === PARTES_PROD.length;
+                        const todasSel = (integrante.partes || []).length === tiposPartes.length;
                         return (
                           <button type="button"
-                            onClick={() => setIntegrante(idx, "partes", todasSel ? [] : [...PARTES_PROD])}
+                            onClick={() => setIntegrante(idx, "partes", todasSel ? [] : [...tiposPartes])}
                             className="text-[10px] px-2 py-0.5 rounded-full transition-colors"
                             style={{
                               background: todasSel ? `${C.gold}22` : C.panel,
@@ -7695,7 +7728,7 @@ function FormEvento({ base, onCancel, onSave, guardando, personas = [], eventos 
                           </button>
                         );
                       })()}
-                      {PARTES_PROD.map((tipo) => {
+                      {tiposPartes.map((tipo) => {
                         const sel = (integrante.partes || []).includes(tipo);
                         return (
                           <button key={tipo} type="button" onClick={() => toggleIntegranteParte(idx, tipo)}
