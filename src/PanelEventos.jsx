@@ -5079,86 +5079,18 @@ function Personal({ personas, categorias, sectores = [], onSave, onDelete, onSav
       )}
 
       {personas.length > 0 && sectores.length > 0 && (
-        <div className="flex flex-wrap items-center gap-2 mb-2">
-          <span className="text-xs" style={{ color: C.dim }}>Sector:</span>
-          <button
-            onClick={() => setFiltroSectorId("")}
-            className="text-xs px-2.5 py-1 rounded-full"
-            style={{
-              background: !filtroSectorId ? C.gold : C.panel2,
-              color: !filtroSectorId ? C.onGold : C.dim,
-              border: `1px solid ${!filtroSectorId ? C.gold : C.border}`,
-            }}
-          >
-            Todos
-          </button>
-          {sectores.map((s) => (
-            <button
-              key={s.id}
-              onClick={() => setFiltroSectorId(s.id)}
-              className="text-xs px-2.5 py-1 rounded-full"
-              style={{
-                background: filtroSectorId === s.id ? C.gold : C.panel2,
-                color: filtroSectorId === s.id ? C.onGold : C.dim,
-                border: `1px solid ${filtroSectorId === s.id ? C.gold : C.border}`,
-              }}
-            >
-              {s.nombre}
-            </button>
-          ))}
-          <button
-            onClick={() => setFiltroSectorId("__sin")}
-            className="text-xs px-2.5 py-1 rounded-full"
-            style={{
-              background: filtroSectorId === "__sin" ? C.gold : C.panel2,
-              color: filtroSectorId === "__sin" ? C.onGold : C.dim,
-              border: `1px solid ${filtroSectorId === "__sin" ? C.gold : C.border}`,
-            }}
-          >
-            Sin sector
-          </button>
+        <div className="flex items-center gap-2 mb-2">
+          <span className="text-xs shrink-0" style={{ color: C.dim }}>Sector:</span>
+          <SelectKV compact value={filtroSectorId} onChange={setFiltroSectorId}
+            options={[{ value: "", label: "Todos" }, ...sectores.map((s) => ({ value: s.id, label: s.nombre })), { value: "__sin", label: "Sin sector" }]} />
         </div>
       )}
 
       {personas.length > 0 && (
-        <div className="flex flex-wrap items-center gap-2 mb-3">
-          <span className="text-xs" style={{ color: C.dim }}>Filtrar:</span>
-          <button
-            onClick={() => setFiltroCatId("")}
-            className="text-xs px-2.5 py-1 rounded-full"
-            style={{
-              background: !filtroCatId ? C.gold : C.panel2,
-              color: !filtroCatId ? C.onGold : C.dim,
-              border: `1px solid ${!filtroCatId ? C.gold : C.border}`,
-            }}
-          >
-            Todas
-          </button>
-          {categorias.map((c) => (
-            <button
-              key={c.id}
-              onClick={() => setFiltroCatId(c.id)}
-              className="text-xs px-2.5 py-1 rounded-full"
-              style={{
-                background: filtroCatId === c.id ? C.gold : C.panel2,
-                color: filtroCatId === c.id ? C.onGold : C.dim,
-                border: `1px solid ${filtroCatId === c.id ? C.gold : C.border}`,
-              }}
-            >
-              {c.nombre}
-            </button>
-          ))}
-          <button
-            onClick={() => setFiltroCatId("__sin")}
-            className="text-xs px-2.5 py-1 rounded-full"
-            style={{
-              background: filtroCatId === "__sin" ? C.gold : C.panel2,
-              color: filtroCatId === "__sin" ? C.onGold : C.dim,
-              border: `1px solid ${filtroCatId === "__sin" ? C.gold : C.border}`,
-            }}
-          >
-            Sin categoría
-          </button>
+        <div className="flex items-center gap-2 mb-3">
+          <span className="text-xs shrink-0" style={{ color: C.dim }}>Categoría:</span>
+          <SelectKV compact value={filtroCatId} onChange={setFiltroCatId}
+            options={[{ value: "", label: "Todas" }, ...categorias.map((c) => ({ value: c.id, label: c.nombre })), { value: "__sin", label: "Sin categoría" }]} />
         </div>
       )}
 
@@ -5832,22 +5764,10 @@ function AsistenciaModulo({ personas, sectores, perms }) {
       </div>
 
       {sectores.length > 0 && (
-        <div className="flex flex-wrap items-center gap-2 mb-4">
-          <span className="text-xs" style={{ color: C.dim }}>Sector:</span>
-          <button onClick={() => setFiltroSectorId("")} className="text-xs px-2.5 py-1 rounded-full"
-            style={{ background: !filtroSectorId ? C.gold : C.panel2, color: !filtroSectorId ? C.onGold : C.dim, border: `1px solid ${!filtroSectorId ? C.gold : C.border}` }}>
-            Todos
-          </button>
-          {sectores.map((s) => (
-            <button key={s.id} onClick={() => setFiltroSectorId(s.id)} className="text-xs px-2.5 py-1 rounded-full"
-              style={{ background: filtroSectorId === s.id ? C.gold : C.panel2, color: filtroSectorId === s.id ? C.onGold : C.dim, border: `1px solid ${filtroSectorId === s.id ? C.gold : C.border}` }}>
-              {s.nombre}
-            </button>
-          ))}
-          <button onClick={() => setFiltroSectorId("__sin")} className="text-xs px-2.5 py-1 rounded-full"
-            style={{ background: filtroSectorId === "__sin" ? C.gold : C.panel2, color: filtroSectorId === "__sin" ? C.onGold : C.dim, border: `1px solid ${filtroSectorId === "__sin" ? C.gold : C.border}` }}>
-            Sin sector
-          </button>
+        <div className="flex items-center gap-2 mb-4">
+          <span className="text-xs shrink-0" style={{ color: C.dim }}>Sector:</span>
+          <SelectKV compact value={filtroSectorId} onChange={setFiltroSectorId}
+            options={[{ value: "", label: "Todos" }, ...sectores.map((s) => ({ value: s.id, label: s.nombre })), { value: "__sin", label: "Sin sector" }]} />
         </div>
       )}
 
