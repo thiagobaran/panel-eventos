@@ -1641,9 +1641,14 @@ function Badge({ color, children, solid }) {
   );
 }
 
+// Escapa texto que puede venir de un usuario (nombre, observaciones, etc.) antes de
+// insertarlo en un string de HTML armado a mano (exports a PDF/HTML) — sin esto, un
+// <script> en un campo de texto se ejecutaría al abrir el archivo exportado.
+const escHtml = (s) => String(s ?? "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+
 /* ====================== GENERADOR HTML MULTI-EVENTO ====================== */
 function generarHtmlEventos(evs) {
-  const esc = (s) => String(s ?? "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+  const esc = escHtml;
   const fmtD = (f) => { if (!f) return "—"; const [y,m,d] = f.split("-"); return `${d}/${m}/${y}`; };
   const fmtM = (n, mon) => new Intl.NumberFormat("es-AR", { style: "currency", currency: (mon || "") === "USD" ? "USD" : "ARS", maximumFractionDigits: 0 }).format(Number(n) || 0);
   const COLS = { "Armado": "#4FD18B", "Armado + Prelight": "#e6a800", "Prelighting": "#9b8cff", "Rodaje": "#e8335a", "Desarme": "#64B5F6", "Prueba de cámara": "#7DD3FC", "Salida de equipos": "#FB923C", "Devolución": "#F472B6" };
@@ -2649,6 +2654,7 @@ function BarChart6Meses({ eventos, mesActual, anioActual, onMesClick }) {
 
 /* ====================== PDF MODAL ====================== */
 function generarHtmlPdf(ev, sel) {
+  const esc = escHtml;
   const fmtD = (f) => { if (!f) return "—"; const [y,m,d] = f.split("-"); return `${d}/${m}/${y}`; };
   const fmtM = (n, mon) => new Intl.NumberFormat("es-AR", { style: "currency", currency: mon === "USD" ? "USD" : "ARS", maximumFractionDigits: 0 }).format(Number(n) || 0);
 
@@ -2663,7 +2669,7 @@ function generarHtmlPdf(ev, sel) {
       ["Modalidad", ev.modalidadRodaje || "—"],
       ["Tipo producción", ev.tipoProd || "—"],
       ["Trackeo", ev.trackeo || "—"],
-      ["Equipamiento", ev.equipamiento ? `Sí — ${ev.equipamientoDetalle || ""}` : "No"],
+      ["Equipamiento", ev.equipamiento ? `Sí — ${esc(ev.equipamientoDetalle || "")}` : "No"],
     ];
     campos.forEach(([l, v]) => { rows += `<tr><td class="lbl">${l}</td><td>${v}</td></tr>`; });
     secciones.push(`<div class="sec"><div class="sec-hdr">Producción</div><div class="sec-body"><table>${rows}</table></div></div>`);
@@ -2676,13 +2682,13 @@ function generarHtmlPdf(ev, sel) {
     const m2 = Number(ev.montoM2) || 0;
     const campos = [
       ["Empresa", dist],
-      ["Razón social", ev.razonSocial || "—"],
+      ["Razón social", esc(ev.razonSocial) || "—"],
       ["Moneda", ev.moneda || "ARS"],
       ...(m1 ? [["Monto M1 (c/IVA)", fmtM(m1 * 1.21, ev.moneda)]] : []),
       ...(m2 ? [["Monto M2 (efectivo)", fmtM(m2, ev.moneda)]] : []),
       ["Total facturable", fmtM((m1 * 1.21) + m2, ev.moneda)],
-      ["Medio de pago", ev.medioPago || "—"],
-      ["Forma de pago", ev.formaPago || "—"],
+      ["Medio de pago", esc(ev.medioPago) || "—"],
+      ["Forma de pago", esc(ev.formaPago) || "—"],
       ["Cant. facturas", ev.cantFacturas || "—"],
       ["Estado", ev.facturado ? "Facturado" : ev.confirmado ? "Listo p/ facturar" : "Borrador"],
       ["Comprobante de pago", ev.comprobantePago ? "Adjunto" : "Pendiente"],
@@ -2694,8 +2700,8 @@ function generarHtmlPdf(ev, sel) {
   if (sel.equipo && ev.integrantes?.length) {
     let rows = `<tr><th>Nombre</th><th>Rol</th><th>Fases</th></tr>`;
     ev.integrantes.forEach((i) => {
-      const fases = i.partes?.length ? i.partes.join(", ") : "Todas";
-      rows += `<tr><td>${i.nombre || "—"}</td><td>${i.rol || "—"}</td><td style="font-size:11px;color:#666">${fases}</td></tr>`;
+      const fases = i.partes?.length ? esc(i.partes.join(", ")) : "Todas";
+      rows += `<tr><td>${esc(i.nombre) || "—"}</td><td>${esc(i.rol) || "—"}</td><td style="font-size:11px;color:#666">${fases}</td></tr>`;
     });
     secciones.push(`<div class="sec"><div class="sec-hdr">Equipo</div><div class="sec-body"><table class="data">${rows}</table></div></div>`);
   }
@@ -2715,7 +2721,7 @@ function generarHtmlPdf(ev, sel) {
   if (sel.direccion && ev.director) {
     const d = ev.director;
     let rows = "";
-    [["Nombre", d.nombre || "—"], ["Teléfono", d.telefono || "—"], ["Email", d.email || "—"]].forEach(([l,v]) => {
+    [["Nombre", esc(d.nombre) || "—"], ["Teléfono", esc(d.telefono) || "—"], ["Email", esc(d.email) || "—"]].forEach(([l,v]) => {
       rows += `<tr><td class="lbl">${l}</td><td>${v}</td></tr>`;
     });
     secciones.push(`<div class="sec"><div class="sec-hdr">Dirección</div><div class="sec-body"><table>${rows}</table></div></div>`);
@@ -2723,16 +2729,16 @@ function generarHtmlPdf(ev, sel) {
 
   if (sel.externo && ev.equipoExterno?.length) {
     let rows = `<tr><th>Nombre</th><th>Rol</th></tr>`;
-    ev.equipoExterno.forEach((x) => { rows += `<tr><td>${x.nombre || "—"}</td><td>${x.rol || "—"}</td></tr>`; });
+    ev.equipoExterno.forEach((x) => { rows += `<tr><td>${esc(x.nombre) || "—"}</td><td>${esc(x.rol) || "—"}</td></tr>`; });
     secciones.push(`<div class="sec"><div class="sec-hdr">Equipo técnico externo</div><div class="sec-body"><table class="data">${rows}</table></div></div>`);
   }
 
   if (sel.observaciones && ev.observaciones) {
-    secciones.push(`<div class="sec"><div class="sec-hdr">Observaciones</div><div class="sec-body"><p style="white-space:pre-wrap;line-height:1.6">${ev.observaciones}</p></div></div>`);
+    secciones.push(`<div class="sec"><div class="sec-hdr">Observaciones</div><div class="sec-body"><p style="white-space:pre-wrap;line-height:1.6">${esc(ev.observaciones)}</p></div></div>`);
   }
 
   const fecha = new Date().toLocaleDateString("es-AR", { day: "2-digit", month: "2-digit", year: "numeric" });
-  return `<!DOCTYPE html><html lang="es"><head><meta charset="UTF-8"><title>${ev.nombre || "Evento"}</title><style>
+  return `<!DOCTYPE html><html lang="es"><head><meta charset="UTF-8"><title>${esc(ev.nombre) || "Evento"}</title><style>
     *{margin:0;padding:0;box-sizing:border-box}
     body{font-family:Arial,Helvetica,sans-serif;background:#fff;color:#1a1a1a;padding:24px 28px;max-width:800px;margin:0 auto;font-size:13px}
     h1{font-size:22px;font-weight:700;margin-bottom:2px;color:#1a1400}
@@ -2751,8 +2757,8 @@ function generarHtmlPdf(ev, sel) {
     .fase-fechas{color:#666;font-size:11px}
     @media print{body{padding:0}@page{margin:1.5cm}}
   </style></head><body>
-    <h1>${ev.nombre || "Sin nombre"}</h1>
-    <div class="meta">Fecha: <strong>${new Date(ev.fecha + "T12:00:00").toLocaleDateString("es-AR", {day:"2-digit",month:"long",year:"numeric"}) || "—"}</strong> &nbsp;·&nbsp; ${ev.categoria || ""} ${ev.estudio ? "· Estudio " + ev.estudio : ""} &nbsp;·&nbsp; Generado el ${fecha}</div>
+    <h1>${esc(ev.nombre) || "Sin nombre"}</h1>
+    <div class="meta">Fecha: <strong>${new Date(ev.fecha + "T12:00:00").toLocaleDateString("es-AR", {day:"2-digit",month:"long",year:"numeric"}) || "—"}</strong> &nbsp;·&nbsp; ${esc(ev.categoria) || ""} ${ev.estudio ? "· Estudio " + esc(String(ev.estudio)) : ""} &nbsp;·&nbsp; Generado el ${fecha}</div>
     ${secciones.join("")}
   </body></html>`;
 }
