@@ -5682,14 +5682,20 @@ function AsistenciaModulo({ personas, sectores, perms }) {
       if (idxM >= 0) { mesImport = idxM; anioImport = 2000 + parseInt(mMes[2], 10); }
     }
 
+    // Columnas de días (1, 2, 3…) son opcionales: una planilla con solo Nombre/Sector
+    // (sin columnas de días) da de alta el personal sin cargar asistencia.
     let nDias = 0;
     while (/^\d+$/.test((header[3 + nDias] || "").trim())) nDias++;
-    if (nDias === 0) { alert("No se encontraron columnas de días (1, 2, 3…) en el encabezado."); return; }
     const diasEnMesImport = new Date(anioImport, mesImport + 1, 0).getDate();
 
-    const filasDatos = filas.slice(idxHeader + 2).filter((f) => (f[1] || "").trim() !== "");
+    // Se salta solo el encabezado: cualquier fila sin nombre (la de días de la semana,
+    // separadores en blanco) queda afuera con el filtro de abajo.
+    const filasDatos = filas.slice(idxHeader + 1).filter((f) => (f[1] || "").trim() !== "");
     if (filasDatos.length === 0) { alert("No se encontraron filas de datos debajo del encabezado."); return; }
-    if (!confirm(`Se van a importar ${filasDatos.length} personas para ${MESES_ES[mesImport]} ${anioImport}. ¿Continuar?`)) return;
+    const mensajeConfirm = nDias > 0
+      ? `Se van a importar ${filasDatos.length} personas y su asistencia de ${MESES_ES[mesImport]} ${anioImport}. ¿Continuar?`
+      : `Se van a importar ${filasDatos.length} personas con su sector (esta planilla no tiene columnas de días, no se carga asistencia). ¿Continuar?`;
+    if (!confirm(mensajeConfirm)) return;
 
     setImportando(true);
     try {
@@ -5731,7 +5737,8 @@ function AsistenciaModulo({ personas, sectores, perms }) {
         }
       }
       if (anioImport === anio && mesImport === mes) await cargar();
-      alert(`Importación completa: ${marcas} marcas de asistencia, ${personasNuevas} personas nuevas, ${sectoresNuevos} sectores nuevos.`);
+      const resumenAsistencia = nDias > 0 ? `${marcas} marcas de asistencia, ` : "";
+      alert(`Importación completa: ${resumenAsistencia}${personasNuevas} personas nuevas, ${sectoresNuevos} sectores nuevos.`);
     } catch (e) {
       console.error(e);
       alert("Error al importar: " + e.message);
