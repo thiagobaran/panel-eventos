@@ -236,9 +236,10 @@ function normalizarNombrePersona(s) {
 }
 // Una persona puede tener varias categorías, guardadas como "id1,id2" en categoriaId.
 const categoriasDePersona = (p) => p.categoriaId ? p.categoriaId.split(",").map((s) => s.trim()).filter(Boolean) : [];
-// Filtra personas por sector/categoría/nombre elegidos en un buscador de integrantes
-// (valor "" = sin filtro, "__sin" = sin sector/categoría asignada).
-const filtrarPersonasPorSectorCat = (personas, filtroSectorId, filtroCatId, busquedaNombre = "") => {
+// Filtra personas por sector/categoría elegidos en un buscador de integrantes
+// (valor "" = sin filtro, "__sin" = sin sector/categoría asignada). El filtro por
+// nombre se hace en vivo dentro de PersonaCombobox, no acá.
+const filtrarPersonasPorSectorCat = (personas, filtroSectorId, filtroCatId) => {
   let out = personas;
   if (filtroSectorId) {
     out = filtroSectorId === "__sin" ? out.filter((p) => !p.sectorId) : out.filter((p) => p.sectorId === filtroSectorId);
@@ -247,10 +248,6 @@ const filtrarPersonasPorSectorCat = (personas, filtroSectorId, filtroCatId, busq
     out = filtroCatId === "__sin"
       ? out.filter((p) => categoriasDePersona(p).length === 0)
       : out.filter((p) => categoriasDePersona(p).includes(filtroCatId));
-  }
-  if (busquedaNombre.trim()) {
-    const q = normalizarNombrePersona(busquedaNombre);
-    out = out.filter((p) => normalizarNombrePersona(p.nombre).includes(q));
   }
   return out;
 };
@@ -6906,9 +6903,8 @@ function EquipoCard({ ev, onUpdate, perms, personas = [], categorias = [], secto
   const [nuevo, setNuevo] = useState({ personaId: "", rol: "" });
   const [filtroSectorId, setFiltroSectorId] = useState("");
   const [filtroCatId, setFiltroCatId] = useState("");
-  const [busquedaPersona, setBusquedaPersona] = useState("");
   const tiposPartes = partesDeModalidad(ev.modalidadRodaje);
-  const personasFiltradas = filtrarPersonasPorSectorCat(personas, filtroSectorId, filtroCatId, busquedaPersona);
+  const personasFiltradas = filtrarPersonasPorSectorCat(personas, filtroSectorId, filtroCatId);
 
   const startEdit = () => {
     setIntegrantes((ev.integrantes || []).map((i) => ({ ...i, partes: i.partes || [] })));
@@ -7038,12 +7034,8 @@ function EquipoCard({ ev, onUpdate, perms, personas = [], categorias = [], secto
             );
           })}
           {/* Filtro para achicar el buscador de personas */}
-          {(sectores.length > 0 || categorias.length > 0 || personas.length > 5) && (
+          {(sectores.length > 0 || categorias.length > 0) && (
             <div className="flex flex-wrap gap-1.5">
-              <input value={busquedaPersona} onChange={(e) => setBusquedaPersona(e.target.value)}
-                placeholder="Buscar por nombre…"
-                className="text-sm px-2 py-1.5 rounded-md"
-                style={{ background: C.panel2, border: `1px solid ${C.border}`, color: C.text, colorScheme: "dark" }} />
               {sectores.length > 0 && (
                 <SelectKV compact value={filtroSectorId} onChange={setFiltroSectorId}
                   options={[{ value: "", label: "Todos los sectores" }, ...sectores.map((s) => ({ value: s.id, label: s.nombre })), { value: "__sin", label: "Sin sector" }]} />
@@ -7056,12 +7048,9 @@ function EquipoCard({ ev, onUpdate, perms, personas = [], categorias = [], secto
           )}
           {/* Fila para agregar nuevo integrante */}
           <div className="flex gap-2">
-            <select value={nuevo.personaId} onChange={(e) => setNuevo((p) => ({ ...p, personaId: e.target.value }))}
-              className="flex-1 text-sm px-2 py-1.5 rounded"
-              style={{ background: C.panel2, border: `1px solid ${C.border}`, color: nuevo.personaId ? C.text : C.dim, colorScheme: "dark" }}>
-              <option value="" style={{ color: C.dim }}>Agregar persona… ({personasFiltradas.length})</option>
-              {personasFiltradas.map((p) => <option key={p.id} value={p.id} style={{ background: C.panel2, color: C.text }}>{p.nombre}</option>)}
-            </select>
+            <PersonaCombobox personas={personasFiltradas} value={nuevo.personaId}
+              onChange={(v) => setNuevo((p) => ({ ...p, personaId: v }))}
+              placeholder={`Agregar persona… (${personasFiltradas.length})`} />
             <input value={nuevo.rol} onChange={(e) => setNuevo((p) => ({ ...p, rol: e.target.value }))}
               onKeyDown={(e) => { if (e.key === "Enter") addIntegrante(); }}
               placeholder="Rol"
@@ -7498,8 +7487,7 @@ function Dato({ k, v, mono, accent }) {
 function FormEvento({ base, onCancel, onSave, guardando, personas = [], categorias = [], sectores = [], eventos = [], clientes = [], onSaveCliente, onLiberarPersona, onReemplazarEnEvento, onIrAPersonal, perms = {} }) {
   const [filtroSectorId, setFiltroSectorId] = useState("");
   const [filtroCatId, setFiltroCatId] = useState("");
-  const [busquedaPersona, setBusquedaPersona] = useState("");
-  const personasFiltradas = filtrarPersonasPorSectorCat(personas, filtroSectorId, filtroCatId, busquedaPersona);
+  const personasFiltradas = filtrarPersonasPorSectorCat(personas, filtroSectorId, filtroCatId);
   const [f, setF] = useState(() => {
     const partesExistentes = Array.isArray(base.partes) ? base.partes : [];
     const partes = partesDeModalidad(base.modalidadRodaje).map((tipo) => {
@@ -7947,13 +7935,9 @@ function FormEvento({ base, onCancel, onSave, guardando, personas = [], categori
                 )}
               </p>
             )}
-            {personas.length > 0 && (
+            {personas.length > 0 && (sectores.length > 0 || categorias.length > 0) && (
               <div className="flex flex-wrap items-center gap-1.5">
-                <span className="text-[11px]" style={{ color: C.dim }}>Buscar por:</span>
-                <input value={busquedaPersona} onChange={(e) => setBusquedaPersona(e.target.value)}
-                  placeholder="Nombre…"
-                  className="text-sm px-2 py-1.5 rounded-md"
-                  style={{ background: C.panel2, border: `1px solid ${C.border}`, color: C.text, colorScheme: "dark" }} />
+                <span className="text-[11px]" style={{ color: C.dim }}>Filtrar por:</span>
                 {sectores.length > 0 && (
                   <SelectKV compact value={filtroSectorId} onChange={setFiltroSectorId}
                     options={[{ value: "", label: "Todos los sectores" }, ...sectores.map((s) => ({ value: s.id, label: s.nombre })), { value: "__sin", label: "Sin sector" }]} />
@@ -7976,17 +7960,8 @@ function FormEvento({ base, onCancel, onSave, guardando, personas = [], categori
                 <div key={idx} className="grid gap-1.5">
                   {/* Fila: persona + rol + quitar */}
                   <div className="flex flex-col sm:flex-row gap-2 sm:items-center">
-                    <select value={integrante.personaId || ""} onChange={(e) => elegirPersona(idx, e.target.value)}
-                      className="text-sm px-3 py-2 rounded-md sm:flex-1"
-                      style={{
-                        background: C.panel2,
-                        border: `1px solid ${hayError ? C.rose : C.border}`,
-                        color: integrante.personaId ? C.text : C.dim,
-                        colorScheme: "dark",
-                      }}>
-                      <option value="" style={{ background: C.panel2, color: C.dim }}>Elegir persona…</option>
-                      {opcionesPersona.map((p) => <option key={p.id} value={p.id} style={{ background: C.panel2, color: C.text }}>{p.nombre}</option>)}
-                    </select>
+                    <PersonaCombobox personas={opcionesPersona} value={integrante.personaId || ""}
+                      onChange={(v) => elegirPersona(idx, v)} error={hayError} />
                     <Input value={integrante.rol} onChange={(v) => setIntegrante(idx, "rol", v)} placeholder="Rol en este evento (DF, gaffer…)" />
                     <IconBtn onClick={() => delIntegrante(idx)} title="Quitar" danger><X size={16} /></IconBtn>
                   </div>
@@ -8451,6 +8426,52 @@ function SelectKV({ value, onChange, options, placeholder, compact }) {
       {placeholder && <option value="" style={{ background: C.panel2, color: C.dim }}>{placeholder}</option>}
       {options.map((o) => <option key={o.value} value={o.value} style={{ background: C.panel2, color: C.text }}>{o.label}</option>)}
     </select>
+  );
+}
+// Buscador de persona: caja de texto que filtra en vivo (por nombre) sobre una lista
+// ya acotada por sector/categoría, con un desplegable de resultados clickeables.
+function PersonaCombobox({ personas, value, onChange, placeholder = "Elegir persona…", error }) {
+  const [query, setQuery] = useState("");
+  const [abierto, setAbierto] = useState(false);
+  const boxRef = useRef(null);
+  const seleccionada = personas.find((p) => p.id === value);
+
+  useEffect(() => {
+    const onDocClick = (e) => { if (boxRef.current && !boxRef.current.contains(e.target)) setAbierto(false); };
+    document.addEventListener("mousedown", onDocClick);
+    return () => document.removeEventListener("mousedown", onDocClick);
+  }, []);
+
+  const filtradas = query.trim()
+    ? personas.filter((p) => normalizarNombrePersona(p.nombre).includes(normalizarNombrePersona(query)))
+    : personas;
+
+  return (
+    <div ref={boxRef} className="relative flex-1 min-w-0">
+      <input
+        value={abierto ? query : (seleccionada?.nombre || "")}
+        onChange={(e) => { setQuery(e.target.value); setAbierto(true); if (value) onChange(""); }}
+        onFocus={() => { setQuery(""); setAbierto(true); }}
+        placeholder={placeholder}
+        className="w-full text-sm px-3 py-2 rounded-md"
+        style={{ background: C.panel2, border: `1px solid ${error ? C.rose : C.border}`, color: C.text, colorScheme: "dark" }}
+      />
+      {abierto && (
+        <div className="absolute z-20 left-0 right-0 mt-1 max-h-56 overflow-y-auto rounded-md shadow-lg"
+          style={{ background: C.panel2, border: `1px solid ${C.border}` }}>
+          {filtradas.length === 0 ? (
+            <div className="text-xs px-3 py-2" style={{ color: C.dim }}>Sin resultados</div>
+          ) : filtradas.map((p) => (
+            <button key={p.id} type="button"
+              onClick={() => { onChange(p.id); setQuery(""); setAbierto(false); }}
+              className="w-full text-left text-sm px-3 py-2 hover:opacity-80 transition-opacity"
+              style={{ color: C.text, background: p.id === value ? `${C.gold}22` : "transparent" }}>
+              {p.nombre}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
   );
 }
 function Toggle({ checked, onChange, label, disabled }) {
