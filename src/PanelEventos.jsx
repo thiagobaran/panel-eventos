@@ -236,9 +236,9 @@ function normalizarNombrePersona(s) {
 }
 // Una persona puede tener varias categorías, guardadas como "id1,id2" en categoriaId.
 const categoriasDePersona = (p) => p.categoriaId ? p.categoriaId.split(",").map((s) => s.trim()).filter(Boolean) : [];
-// Filtra personas por sector/categoría elegidos en un buscador de integrantes
+// Filtra personas por sector/categoría/nombre elegidos en un buscador de integrantes
 // (valor "" = sin filtro, "__sin" = sin sector/categoría asignada).
-const filtrarPersonasPorSectorCat = (personas, filtroSectorId, filtroCatId) => {
+const filtrarPersonasPorSectorCat = (personas, filtroSectorId, filtroCatId, busquedaNombre = "") => {
   let out = personas;
   if (filtroSectorId) {
     out = filtroSectorId === "__sin" ? out.filter((p) => !p.sectorId) : out.filter((p) => p.sectorId === filtroSectorId);
@@ -247,6 +247,10 @@ const filtrarPersonasPorSectorCat = (personas, filtroSectorId, filtroCatId) => {
     out = filtroCatId === "__sin"
       ? out.filter((p) => categoriasDePersona(p).length === 0)
       : out.filter((p) => categoriasDePersona(p).includes(filtroCatId));
+  }
+  if (busquedaNombre.trim()) {
+    const q = normalizarNombrePersona(busquedaNombre);
+    out = out.filter((p) => normalizarNombrePersona(p.nombre).includes(q));
   }
   return out;
 };
@@ -6902,8 +6906,9 @@ function EquipoCard({ ev, onUpdate, perms, personas = [], categorias = [], secto
   const [nuevo, setNuevo] = useState({ personaId: "", rol: "" });
   const [filtroSectorId, setFiltroSectorId] = useState("");
   const [filtroCatId, setFiltroCatId] = useState("");
+  const [busquedaPersona, setBusquedaPersona] = useState("");
   const tiposPartes = partesDeModalidad(ev.modalidadRodaje);
-  const personasFiltradas = filtrarPersonasPorSectorCat(personas, filtroSectorId, filtroCatId);
+  const personasFiltradas = filtrarPersonasPorSectorCat(personas, filtroSectorId, filtroCatId, busquedaPersona);
 
   const startEdit = () => {
     setIntegrantes((ev.integrantes || []).map((i) => ({ ...i, partes: i.partes || [] })));
@@ -7033,8 +7038,12 @@ function EquipoCard({ ev, onUpdate, perms, personas = [], categorias = [], secto
             );
           })}
           {/* Filtro para achicar el buscador de personas */}
-          {(sectores.length > 0 || categorias.length > 0) && (
+          {(sectores.length > 0 || categorias.length > 0 || personas.length > 5) && (
             <div className="flex flex-wrap gap-1.5">
+              <input value={busquedaPersona} onChange={(e) => setBusquedaPersona(e.target.value)}
+                placeholder="Buscar por nombre…"
+                className="text-sm px-2 py-1.5 rounded-md"
+                style={{ background: C.panel2, border: `1px solid ${C.border}`, color: C.text, colorScheme: "dark" }} />
               {sectores.length > 0 && (
                 <SelectKV compact value={filtroSectorId} onChange={setFiltroSectorId}
                   options={[{ value: "", label: "Todos los sectores" }, ...sectores.map((s) => ({ value: s.id, label: s.nombre })), { value: "__sin", label: "Sin sector" }]} />
@@ -7489,7 +7498,8 @@ function Dato({ k, v, mono, accent }) {
 function FormEvento({ base, onCancel, onSave, guardando, personas = [], categorias = [], sectores = [], eventos = [], clientes = [], onSaveCliente, onLiberarPersona, onReemplazarEnEvento, onIrAPersonal, perms = {} }) {
   const [filtroSectorId, setFiltroSectorId] = useState("");
   const [filtroCatId, setFiltroCatId] = useState("");
-  const personasFiltradas = filtrarPersonasPorSectorCat(personas, filtroSectorId, filtroCatId);
+  const [busquedaPersona, setBusquedaPersona] = useState("");
+  const personasFiltradas = filtrarPersonasPorSectorCat(personas, filtroSectorId, filtroCatId, busquedaPersona);
   const [f, setF] = useState(() => {
     const partesExistentes = Array.isArray(base.partes) ? base.partes : [];
     const partes = partesDeModalidad(base.modalidadRodaje).map((tipo) => {
@@ -7937,9 +7947,13 @@ function FormEvento({ base, onCancel, onSave, guardando, personas = [], categori
                 )}
               </p>
             )}
-            {personas.length > 0 && (sectores.length > 0 || categorias.length > 0) && (
+            {personas.length > 0 && (
               <div className="flex flex-wrap items-center gap-1.5">
                 <span className="text-[11px]" style={{ color: C.dim }}>Buscar por:</span>
+                <input value={busquedaPersona} onChange={(e) => setBusquedaPersona(e.target.value)}
+                  placeholder="Nombre…"
+                  className="text-sm px-2 py-1.5 rounded-md"
+                  style={{ background: C.panel2, border: `1px solid ${C.border}`, color: C.text, colorScheme: "dark" }} />
                 {sectores.length > 0 && (
                   <SelectKV compact value={filtroSectorId} onChange={setFiltroSectorId}
                     options={[{ value: "", label: "Todos los sectores" }, ...sectores.map((s) => ({ value: s.id, label: s.nombre })), { value: "__sin", label: "Sin sector" }]} />
