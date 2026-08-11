@@ -234,6 +234,26 @@ function celdaPresentismoTexto(a) {
 function normalizarNombrePersona(s) {
   return (s || "").replace(/\([^)]*\)/g, "").replace(/\s+/g, " ").trim().toUpperCase();
 }
+// Una persona puede tener varias categorías, guardadas como "id1,id2" en categoriaId.
+const categoriasDePersona = (p) => p.categoriaId ? p.categoriaId.split(",").map((s) => s.trim()).filter(Boolean) : [];
+// Filtra personas por sector/categoría/nombre elegidos en un buscador de integrantes
+// (valor "" = sin filtro, "__sin" = sin sector/categoría asignada).
+const filtrarPersonasPorSectorCat = (personas, filtroSectorId, filtroCatId, busquedaNombre = "") => {
+  let out = personas;
+  if (filtroSectorId) {
+    out = filtroSectorId === "__sin" ? out.filter((p) => !p.sectorId) : out.filter((p) => p.sectorId === filtroSectorId);
+  }
+  if (filtroCatId) {
+    out = filtroCatId === "__sin"
+      ? out.filter((p) => categoriasDePersona(p).length === 0)
+      : out.filter((p) => categoriasDePersona(p).includes(filtroCatId));
+  }
+  if (busquedaNombre.trim()) {
+    const q = normalizarNombrePersona(busquedaNombre);
+    out = out.filter((p) => normalizarNombrePersona(p.nombre).includes(q));
+  }
+  return out;
+};
 
 const nuevoEvento = () => ({
   id: crypto.randomUUID(),
@@ -1460,6 +1480,8 @@ export default function PanelEventos() {
             onSave={guardarEvento}
             guardando={guardando}
             personas={personas}
+            categorias={categoriasPersonal}
+            sectores={sectoresPersonal}
             eventos={eventos}
             clientes={clientes}
             onSaveCliente={guardarCliente}
@@ -1480,6 +1502,8 @@ export default function PanelEventos() {
             perms={p}
             usuario={usuario}
             personas={personas}
+            categorias={categoriasPersonal}
+            sectores={sectoresPersonal}
             eventos={eventos}
             clientes={clientes}
             onSaveCliente={guardarCliente}
@@ -4952,7 +4976,7 @@ function Personal({ personas, categorias, sectores = [], onSave, onDelete, onSav
   const cancelar = () => { setEditando(null); setF(vacio); setNuevoRol(""); };
   const guardar = async () => {
     if (!f.nombre.trim()) { alert("Poné el nombre de la persona."); return; }
-    await onSave({ ...f, rolHabitual: f.roles.join(", "), categoriaId: f.categoriaIds.join(",") });
+    await onSave({ ...f, nombre: f.nombre.trim().toUpperCase(), rolHabitual: f.roles.join(", "), categoriaId: f.categoriaIds.join(",") });
     cancelar();
   };
   const agregarRol = () => {
@@ -5655,7 +5679,7 @@ function AsistenciaModulo({ personas, sectores, perms }) {
         const key = normalizarNombrePersona(nombreRaw);
         let persona = personasPorNombre.get(key);
         if (!persona) {
-          persona = await upsertPersona({ nombre: nombreRaw, sectorId, activo: true });
+          persona = await upsertPersona({ nombre: nombreRaw.toUpperCase(), sectorId, activo: true });
           personasPorNombre.set(key, persona);
           personasNuevas++;
         }
@@ -5935,7 +5959,7 @@ function AsistenciaCeldaModal({ persona, fecha, actual, onClose, onGuardar, onQu
 }
 
 /* ====================== DETALLE ====================== */
-function Detalle({ ev, onBack, onEdit, onDelete, onUpdate, onUpdateEvento, onDuplicate, perms = {}, usuario = {}, personas = [], eventos = [], clientes = [], onSaveCliente }) {
+function Detalle({ ev, onBack, onEdit, onDelete, onUpdate, onUpdateEvento, onDuplicate, perms = {}, usuario = {}, personas = [], categorias = [], sectores = [], eventos = [], clientes = [], onSaveCliente }) {
   const [pdfModal, setPdfModal] = useState(false);
   useEffect(() => {
     if (usuario?.id && ev?.id) marcarLeido(ev.id, usuario.id);
@@ -6049,7 +6073,7 @@ function Detalle({ ev, onBack, onEdit, onDelete, onUpdate, onUpdateEvento, onDup
           </div>
         )}
 
-        <EquipoCard ev={ev} onUpdate={onUpdate} perms={perms} personas={personas} eventos={eventos} />
+        <EquipoCard ev={ev} onUpdate={onUpdate} perms={perms} personas={personas} categorias={categorias} sectores={sectores} eventos={eventos} />
 
         <DireccionCard ev={ev} onUpdate={onUpdate} perms={perms} />
 
@@ -6876,11 +6900,15 @@ function DireccionCard({ ev, onUpdate, perms }) {
   );
 }
 
-function EquipoCard({ ev, onUpdate, perms, personas = [], eventos = [] }) {
+function EquipoCard({ ev, onUpdate, perms, personas = [], categorias = [], sectores = [], eventos = [] }) {
   const [editando, setEditando] = useState(false);
   const [integrantes, setIntegrantes] = useState([]);
   const [nuevo, setNuevo] = useState({ personaId: "", rol: "" });
+  const [filtroSectorId, setFiltroSectorId] = useState("");
+  const [filtroCatId, setFiltroCatId] = useState("");
+  const [busquedaPersona, setBusquedaPersona] = useState("");
   const tiposPartes = partesDeModalidad(ev.modalidadRodaje);
+  const personasFiltradas = filtrarPersonasPorSectorCat(personas, filtroSectorId, filtroCatId, busquedaPersona);
 
   const startEdit = () => {
     setIntegrantes((ev.integrantes || []).map((i) => ({ ...i, partes: i.partes || [] })));
@@ -7009,13 +7037,30 @@ function EquipoCard({ ev, onUpdate, perms, personas = [], eventos = [] }) {
               </div>
             );
           })}
+          {/* Filtro para achicar el buscador de personas */}
+          {(sectores.length > 0 || categorias.length > 0 || personas.length > 5) && (
+            <div className="flex flex-wrap gap-1.5">
+              <input value={busquedaPersona} onChange={(e) => setBusquedaPersona(e.target.value)}
+                placeholder="Buscar por nombre…"
+                className="text-sm px-2 py-1.5 rounded-md"
+                style={{ background: C.panel2, border: `1px solid ${C.border}`, color: C.text, colorScheme: "dark" }} />
+              {sectores.length > 0 && (
+                <SelectKV compact value={filtroSectorId} onChange={setFiltroSectorId}
+                  options={[{ value: "", label: "Todos los sectores" }, ...sectores.map((s) => ({ value: s.id, label: s.nombre })), { value: "__sin", label: "Sin sector" }]} />
+              )}
+              {categorias.length > 0 && (
+                <SelectKV compact value={filtroCatId} onChange={setFiltroCatId}
+                  options={[{ value: "", label: "Todas las categorías" }, ...categorias.map((c) => ({ value: c.id, label: c.nombre })), { value: "__sin", label: "Sin categoría" }]} />
+              )}
+            </div>
+          )}
           {/* Fila para agregar nuevo integrante */}
           <div className="flex gap-2">
             <select value={nuevo.personaId} onChange={(e) => setNuevo((p) => ({ ...p, personaId: e.target.value }))}
               className="flex-1 text-sm px-2 py-1.5 rounded"
               style={{ background: C.panel2, border: `1px solid ${C.border}`, color: nuevo.personaId ? C.text : C.dim, colorScheme: "dark" }}>
-              <option value="" style={{ color: C.dim }}>Agregar persona…</option>
-              {personas.map((p) => <option key={p.id} value={p.id} style={{ background: C.panel2, color: C.text }}>{p.nombre}</option>)}
+              <option value="" style={{ color: C.dim }}>Agregar persona… ({personasFiltradas.length})</option>
+              {personasFiltradas.map((p) => <option key={p.id} value={p.id} style={{ background: C.panel2, color: C.text }}>{p.nombre}</option>)}
             </select>
             <input value={nuevo.rol} onChange={(e) => setNuevo((p) => ({ ...p, rol: e.target.value }))}
               onKeyDown={(e) => { if (e.key === "Enter") addIntegrante(); }}
@@ -7450,7 +7495,11 @@ function Dato({ k, v, mono, accent }) {
 }
 
 /* ====================== FORMULARIO ====================== */
-function FormEvento({ base, onCancel, onSave, guardando, personas = [], eventos = [], clientes = [], onSaveCliente, onLiberarPersona, onReemplazarEnEvento, onIrAPersonal, perms = {} }) {
+function FormEvento({ base, onCancel, onSave, guardando, personas = [], categorias = [], sectores = [], eventos = [], clientes = [], onSaveCliente, onLiberarPersona, onReemplazarEnEvento, onIrAPersonal, perms = {} }) {
+  const [filtroSectorId, setFiltroSectorId] = useState("");
+  const [filtroCatId, setFiltroCatId] = useState("");
+  const [busquedaPersona, setBusquedaPersona] = useState("");
+  const personasFiltradas = filtrarPersonasPorSectorCat(personas, filtroSectorId, filtroCatId, busquedaPersona);
   const [f, setF] = useState(() => {
     const partesExistentes = Array.isArray(base.partes) ? base.partes : [];
     const partes = partesDeModalidad(base.modalidadRodaje).map((tipo) => {
@@ -7898,10 +7947,31 @@ function FormEvento({ base, onCancel, onSave, guardando, personas = [], eventos 
                 )}
               </p>
             )}
+            {personas.length > 0 && (
+              <div className="flex flex-wrap items-center gap-1.5">
+                <span className="text-[11px]" style={{ color: C.dim }}>Buscar por:</span>
+                <input value={busquedaPersona} onChange={(e) => setBusquedaPersona(e.target.value)}
+                  placeholder="Nombre…"
+                  className="text-sm px-2 py-1.5 rounded-md"
+                  style={{ background: C.panel2, border: `1px solid ${C.border}`, color: C.text, colorScheme: "dark" }} />
+                {sectores.length > 0 && (
+                  <SelectKV compact value={filtroSectorId} onChange={setFiltroSectorId}
+                    options={[{ value: "", label: "Todos los sectores" }, ...sectores.map((s) => ({ value: s.id, label: s.nombre })), { value: "__sin", label: "Sin sector" }]} />
+                )}
+                {categorias.length > 0 && (
+                  <SelectKV compact value={filtroCatId} onChange={setFiltroCatId}
+                    options={[{ value: "", label: "Todas las categorías" }, ...categorias.map((c) => ({ value: c.id, label: c.nombre })), { value: "__sin", label: "Sin categoría" }]} />
+                )}
+                <span className="text-[11px]" style={{ color: C.dim }}>({personasFiltradas.length} de {personas.length})</span>
+              </div>
+            )}
             {f.integrantes.map((integrante, idx) => {
               const choques = conflictosPorPersona(integrante.personaId);
               const dups = dupInternos(idx);
               const hayError = choques.length > 0 || dups.length > 0;
+              const opcionesPersona = personasFiltradas.some((p) => p.id === integrante.personaId)
+                ? personasFiltradas
+                : [...personasFiltradas, personas.find((p) => p.id === integrante.personaId)].filter(Boolean);
               return (
                 <div key={idx} className="grid gap-1.5">
                   {/* Fila: persona + rol + quitar */}
@@ -7915,7 +7985,7 @@ function FormEvento({ base, onCancel, onSave, guardando, personas = [], eventos 
                         colorScheme: "dark",
                       }}>
                       <option value="" style={{ background: C.panel2, color: C.dim }}>Elegir persona…</option>
-                      {personas.map((p) => <option key={p.id} value={p.id} style={{ background: C.panel2, color: C.text }}>{p.nombre}</option>)}
+                      {opcionesPersona.map((p) => <option key={p.id} value={p.id} style={{ background: C.panel2, color: C.text }}>{p.nombre}</option>)}
                     </select>
                     <Input value={integrante.rol} onChange={(v) => setIntegrante(idx, "rol", v)} placeholder="Rol en este evento (DF, gaffer…)" />
                     <IconBtn onClick={() => delIntegrante(idx)} title="Quitar" danger><X size={16} /></IconBtn>
