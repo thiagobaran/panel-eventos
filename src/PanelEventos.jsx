@@ -7050,7 +7050,7 @@ function EquipoCard({ ev, onUpdate, perms, personas = [], categorias = [], secto
           <div className="flex gap-2">
             <PersonaCombobox personas={personasFiltradas} value={nuevo.personaId}
               onChange={(v) => setNuevo((p) => ({ ...p, personaId: v }))}
-              placeholder={`Agregar persona… (${personasFiltradas.length})`} />
+              placeholder={`Buscar integrante… (${personasFiltradas.length})`} />
             <input value={nuevo.rol} onChange={(e) => setNuevo((p) => ({ ...p, rol: e.target.value }))}
               onKeyDown={(e) => { if (e.key === "Enter") addIntegrante(); }}
               placeholder="Rol"
@@ -7962,7 +7962,9 @@ function FormEvento({ base, onCancel, onSave, guardando, personas = [], categori
                   <div className="flex flex-col sm:flex-row gap-2 sm:items-center">
                     <PersonaCombobox personas={opcionesPersona} value={integrante.personaId || ""}
                       onChange={(v) => elegirPersona(idx, v)} error={hayError} />
-                    <Input value={integrante.rol} onChange={(v) => setIntegrante(idx, "rol", v)} placeholder="Rol en este evento (DF, gaffer…)" />
+                    <div className="w-full sm:flex-1 min-w-0">
+                      <Input value={integrante.rol} onChange={(v) => setIntegrante(idx, "rol", v)} placeholder="Rol en este evento (DF, gaffer…)" />
+                    </div>
                     <IconBtn onClick={() => delIntegrante(idx)} title="Quitar" danger><X size={16} /></IconBtn>
                   </div>
 
@@ -8430,7 +8432,7 @@ function SelectKV({ value, onChange, options, placeholder, compact }) {
 }
 // Buscador de persona: caja de texto que filtra en vivo (por nombre) sobre una lista
 // ya acotada por sector/categoría, con un desplegable de resultados clickeables.
-function PersonaCombobox({ personas, value, onChange, placeholder = "Elegir persona…", error }) {
+function PersonaCombobox({ personas, value, onChange, placeholder = "Buscar integrante…", error }) {
   const [query, setQuery] = useState("");
   const [abierto, setAbierto] = useState(false);
   const boxRef = useRef(null);
@@ -8447,7 +8449,7 @@ function PersonaCombobox({ personas, value, onChange, placeholder = "Elegir pers
     : personas;
 
   return (
-    <div ref={boxRef} className="relative flex-1 min-w-0">
+    <div ref={boxRef} className="relative w-full sm:flex-1 min-w-0">
       <input
         value={abierto ? query : (seleccionada?.nombre || "")}
         onChange={(e) => { setQuery(e.target.value); setAbierto(true); if (value) onChange(""); }}
