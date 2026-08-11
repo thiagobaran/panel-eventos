@@ -1534,6 +1534,8 @@ export default function PanelEventos() {
             clientesLed={clientesLed}
             onSaveClienteLed={guardarClienteLed}
             personas={personas}
+            categorias={categoriasPersonal}
+            sectores={sectoresPersonal}
             onIrAPersonal={() => setVista("personal")}
             perms={p}
           />
@@ -1551,6 +1553,8 @@ export default function PanelEventos() {
             eventosLed={eventosLed}
             onUpdateEventoLed={actualizarEventoLed}
             personas={personas}
+            categorias={categoriasPersonal}
+            sectores={sectoresPersonal}
           />
         ) : vista === "dashboard-led" && p.verLed ? (
           <Dashboard
@@ -3524,11 +3528,14 @@ function ListaEventosLed({ eventosLed, busqueda, setBusqueda, perms, onNuevo, on
 }
 
 /* ====================== LED: FORMULARIO ====================== */
-function FormEventoLed({ base, onCancel, onSave, guardando, clientesLed = [], onSaveClienteLed, personas = [], onIrAPersonal, perms = {} }) {
+function FormEventoLed({ base, onCancel, onSave, guardando, clientesLed = [], onSaveClienteLed, personas = [], categorias = [], sectores = [], onIrAPersonal, perms = {} }) {
   const [f, setF] = useState(() => ({ ...base }));
   const set = (k, v) => setF((p) => ({ ...p, [k]: v }));
   const [fechaArmadoInput, setFechaArmadoInput] = useState("");
   const [fechaDesarmeInput, setFechaDesarmeInput] = useState("");
+  const [filtroSectorId, setFiltroSectorId] = useState("");
+  const [filtroCatId, setFiltroCatId] = useState("");
+  const personasFiltradas = filtrarPersonasPorSectorCat(personas, filtroSectorId, filtroCatId);
 
   const seleccionarClienteLed = (id) => {
     if (id === "__nuevo") { set("clienteId", ""); return; }
@@ -3704,16 +3711,32 @@ function FormEventoLed({ base, onCancel, onSave, guardando, clientesLed = [], on
                 )}
               </p>
             )}
-            {(f.integrantes || []).map((integ, idx) => (
+            {personas.length > 0 && (sectores.length > 0 || categorias.length > 0) && (
+              <div className="flex flex-wrap items-center gap-1.5">
+                <span className="text-[11px]" style={{ color: C.dim }}>Filtrar por:</span>
+                {sectores.length > 0 && (
+                  <SelectKV compact value={filtroSectorId} onChange={setFiltroSectorId}
+                    options={[{ value: "", label: "Todos los sectores" }, ...sectores.map((s) => ({ value: s.id, label: s.nombre })), { value: "__sin", label: "Sin sector" }]} />
+                )}
+                {categorias.length > 0 && (
+                  <SelectKV compact value={filtroCatId} onChange={setFiltroCatId}
+                    options={[{ value: "", label: "Todas las categorías" }, ...categorias.map((c) => ({ value: c.id, label: c.nombre })), { value: "__sin", label: "Sin categoría" }]} />
+                )}
+                <span className="text-[11px]" style={{ color: C.dim }}>({personasFiltradas.length} de {personas.length})</span>
+              </div>
+            )}
+            {(f.integrantes || []).map((integ, idx) => {
+              const opcionesPersona = personasFiltradas.some((p) => p.id === integ.personaId)
+                ? personasFiltradas
+                : [...personasFiltradas, personas.find((p) => p.id === integ.personaId)].filter(Boolean);
+              return (
               <div key={idx} className="grid gap-1.5">
                 <div className="flex flex-col sm:flex-row gap-2 sm:items-center">
-                  <select value={integ.personaId || ""} onChange={(e) => elegirPersonaIntegrante(idx, e.target.value)}
-                    className="text-sm px-3 py-2 rounded-md sm:flex-1"
-                    style={{ background: C.panel2, border: `1px solid ${C.border}`, color: integ.personaId ? C.text : C.dim, colorScheme: "dark" }}>
-                    <option value="" style={{ background: C.panel2, color: C.dim }}>Elegir persona…</option>
-                    {personas.map((p) => <option key={p.id} value={p.id} style={{ background: C.panel2, color: C.text }}>{p.nombre}</option>)}
-                  </select>
-                  <Input value={integ.rol} onChange={(v) => setIntegranteRol(idx, v)} placeholder="Rol en este trabajo" />
+                  <PersonaCombobox personas={opcionesPersona} value={integ.personaId || ""}
+                    onChange={(v) => elegirPersonaIntegrante(idx, v)} />
+                  <div className="w-full sm:flex-1 min-w-0">
+                    <Input value={integ.rol} onChange={(v) => setIntegranteRol(idx, v)} placeholder="Rol en este trabajo" />
+                  </div>
                   <IconBtn onClick={() => quitarIntegrante(idx)} title="Quitar" danger><X size={16} /></IconBtn>
                 </div>
                 {integ.personaId && (
@@ -3732,7 +3755,8 @@ function FormEventoLed({ base, onCancel, onSave, guardando, clientesLed = [], on
                   </div>
                 )}
               </div>
-            ))}
+              );
+            })}
             <button type="button" onClick={agregarIntegrante} className="self-start text-sm flex items-center gap-1.5 px-3 py-1.5 rounded-md mt-1"
               style={{ background: C.panel2, border: `1px solid ${C.border}`, color: C.gold }}>
               <Plus size={14} /> Agregar integrante
@@ -3984,9 +4008,12 @@ function PartesLedCard({ ev, onUpdate, perms }) {
   );
 }
 
-function EquipoLedCard({ ev, onUpdate, perms, personas = [] }) {
+function EquipoLedCard({ ev, onUpdate, perms, personas = [], categorias = [], sectores = [] }) {
   const [editando, setEditando] = useState(false);
   const [integrantes, setIntegrantes] = useState([]);
+  const [filtroSectorId, setFiltroSectorId] = useState("");
+  const [filtroCatId, setFiltroCatId] = useState("");
+  const personasFiltradas = filtrarPersonasPorSectorCat(personas, filtroSectorId, filtroCatId);
 
   const startEdit = () => {
     setIntegrantes((ev.integrantes || []).map((i) => ({ ...i, partes: i.partes || [] })));
@@ -4011,16 +4038,32 @@ function EquipoLedCard({ ev, onUpdate, perms, personas = [] }) {
       action={perms?.eventoLedEditar && !editando ? <EditCardBtn onClick={startEdit} /> : null}>
       {editando ? (
         <div className="grid gap-3">
-          {integrantes.map((integ, idx) => (
+          {(sectores.length > 0 || categorias.length > 0) && (
+            <div className="flex flex-wrap items-center gap-1.5">
+              <span className="text-[11px]" style={{ color: C.dim }}>Filtrar por:</span>
+              {sectores.length > 0 && (
+                <SelectKV compact value={filtroSectorId} onChange={setFiltroSectorId}
+                  options={[{ value: "", label: "Todos los sectores" }, ...sectores.map((s) => ({ value: s.id, label: s.nombre })), { value: "__sin", label: "Sin sector" }]} />
+              )}
+              {categorias.length > 0 && (
+                <SelectKV compact value={filtroCatId} onChange={setFiltroCatId}
+                  options={[{ value: "", label: "Todas las categorías" }, ...categorias.map((c) => ({ value: c.id, label: c.nombre })), { value: "__sin", label: "Sin categoría" }]} />
+              )}
+              <span className="text-[11px]" style={{ color: C.dim }}>({personasFiltradas.length} de {personas.length})</span>
+            </div>
+          )}
+          {integrantes.map((integ, idx) => {
+            const opcionesPersona = personasFiltradas.some((p) => p.id === integ.personaId)
+              ? personasFiltradas
+              : [...personasFiltradas, personas.find((p) => p.id === integ.personaId)].filter(Boolean);
+            return (
             <div key={idx} className="grid gap-1.5 pb-2.5" style={{ borderBottom: `1px solid ${C.border}` }}>
               <div className="flex flex-col sm:flex-row gap-2 sm:items-center">
-                <select value={integ.personaId || ""} onChange={(e) => elegirPersona(idx, e.target.value)}
-                  className="text-sm px-3 py-2 rounded-md sm:flex-1"
-                  style={{ background: C.panel2, border: `1px solid ${C.border}`, color: integ.personaId ? C.text : C.dim, colorScheme: "dark" }}>
-                  <option value="" style={{ background: C.panel2, color: C.dim }}>Elegir persona…</option>
-                  {personas.map((p) => <option key={p.id} value={p.id} style={{ background: C.panel2, color: C.text }}>{p.nombre}</option>)}
-                </select>
-                <Input value={integ.rol} onChange={(v) => setRol(idx, v)} placeholder="Rol" />
+                <PersonaCombobox personas={opcionesPersona} value={integ.personaId || ""}
+                  onChange={(v) => elegirPersona(idx, v)} />
+                <div className="w-full sm:flex-1 min-w-0">
+                  <Input value={integ.rol} onChange={(v) => setRol(idx, v)} placeholder="Rol" />
+                </div>
                 <IconBtn onClick={() => quitar(idx)} title="Quitar" danger><X size={16} /></IconBtn>
               </div>
               {integ.personaId && (
@@ -4039,7 +4082,8 @@ function EquipoLedCard({ ev, onUpdate, perms, personas = [] }) {
                 </div>
               )}
             </div>
-          ))}
+            );
+          })}
           <button type="button" onClick={agregar} className="self-start text-sm flex items-center gap-1.5 px-3 py-1.5 rounded-md" style={{ background: C.panel2, border: `1px solid ${C.border}`, color: C.gold }}>
             <Plus size={14} /> Agregar integrante
           </button>
@@ -4089,7 +4133,7 @@ function ObservacionesLedCard({ ev, onUpdate, perms }) {
   );
 }
 
-function DetalleLed({ ev, onBack, onEdit, onDelete, onUpdate, perms = {}, usuario = {}, clientesLed = [], onSaveClienteLed, eventosLed = [], onUpdateEventoLed, personas = [] }) {
+function DetalleLed({ ev, onBack, onEdit, onDelete, onUpdate, perms = {}, usuario = {}, clientesLed = [], onSaveClienteLed, eventosLed = [], onUpdateEventoLed, personas = [], categorias = [], sectores = [] }) {
   useEffect(() => {
     if (usuario?.id && ev?.id) marcarLeido(ev.id, usuario.id);
   }, [ev?.id, ev?.mensajes?.length, usuario?.id]);
@@ -4160,7 +4204,7 @@ function DetalleLed({ ev, onBack, onEdit, onDelete, onUpdate, perms = {}, usuari
 
         <PartesLedCard ev={ev} onUpdate={onUpdate} perms={perms} />
 
-        <EquipoLedCard ev={ev} onUpdate={onUpdate} perms={perms} personas={personas} />
+        <EquipoLedCard ev={ev} onUpdate={onUpdate} perms={perms} personas={personas} categorias={categorias} sectores={sectores} />
 
         <ObservacionesLedCard ev={ev} onUpdate={onUpdate} perms={perms} />
       </div>
